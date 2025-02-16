@@ -1,0 +1,40 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://prod-database-url:5432/sallejoven_prod
+    username: prod_user
+    password: prod_password
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      connectionTimeout: 20000
+      minimumIdle: 5
+      maximumPoolSize: 20
+    platform: postgres
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        format_sql: false
+
+  jackson:
+    serialization:
+      fail-on-empty-beans: false
+
+  servlet:
+    multipart:
+      enabled: true
+      file-size-threshold: 2KB
+      max-file-size: 200MB
+      max-request-size: 215MB
+
+  logging:
+    level:
+      org.springframework: WARN
+
+jwt:
+  rsa-private-key: classpath:certs/privateKey.pem
+  rsa-public-key: classpath:certs/publicKey.pem
+
+server:
+  port: 8080
