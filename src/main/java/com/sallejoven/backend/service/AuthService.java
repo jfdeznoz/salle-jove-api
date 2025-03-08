@@ -7,9 +7,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import com.sallejoven.backend.config.security.JwtTokenGenerator;
+import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.mapper.UserInfoMapper;
 import com.sallejoven.backend.model.dto.AuthResponseDto;
 import com.sallejoven.backend.model.dto.UserRegistrationDto;
@@ -33,9 +35,19 @@ public class AuthService {
     private final UserInfoMapper userInfoMapper;
     private final JwtTokenGenerator jwtTokenGenerator;
     private final RefreshTokenRepository refreshTokenRepo;
+    private final UserService userService;
+
+    public String getCurrentUserEmail(){
+        var context = SecurityContextHolder.getContext();
+        var authentication = context.getAuthentication();
+        return authentication.getName();
+    }
+
+    public UserSalle getCurrentUser() throws SalleException {
+        return userService.findByEmail(getCurrentUserEmail());
+    }
 
     public AuthResponseDto getJwtTokensAfterAuthentication(Authentication authentication, HttpServletResponse response) {
-        //fdsfdsfsdfsd
         try
         {
             var userInfoEntity = userInfoRepo.findByEmail(authentication.getName())

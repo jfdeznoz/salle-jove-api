@@ -1,6 +1,9 @@
 package com.sallejoven.backend.service;
 
+import com.sallejoven.backend.errors.SalleException;
+import com.sallejoven.backend.model.dto.UserSelfDto;
 import com.sallejoven.backend.model.entity.UserSalle;
+import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.GrantedAuthority;
@@ -10,9 +13,12 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class UserService {
@@ -27,8 +33,8 @@ public class UserService {
     }
 
     // Buscar un usuario por email (para autenticación y otras operaciones)
-    public Optional<UserSalle> findByEmail(String email) {
-        return userRepository.findByEmail(email);
+    public UserSalle findByEmail(String email) throws SalleException {
+        return userRepository.findByEmail(email).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
     }
 
     // Crear o actualizar un usuario
@@ -77,4 +83,22 @@ public class UserService {
                 authorities
         );
     }*/
+
+    public UserSelfDto buildSelfUserInfo(String userEmail) throws SalleException {
+        UserSalle userTango = findByEmail(userEmail);
+        return UserSelfDto.builder()
+            .id(userTango.getId())  // ID del usuario
+            .name(userTango.getName())  // Nombre
+            .lastName(userTango.getLastName())  // Apellido
+            .dni(userTango.getDni())  // DNI/NIF
+            .phone(userTango.getPhone())  // Teléfono
+            .email(userTango.getEmail())  // Email
+            .tshirtSize(userTango.getTshirtSize())  // Talla de camiseta
+            .healthCardNumber(userTango.getHealthCardNumber())  // Número de tarjeta de salud
+            .intolerances(userTango.getIntolerances())  // Intolerancias alimentarias
+            .chronicDiseases(userTango.getChronicDiseases())  // Enfermedades crónicas
+            .imageAuthorization(userTango.getImageAuthorization())  // Autorización de imagen
+            .birthDate(userTango.getBirthDate())  // Fecha de nacimiento
+            .build();
+}
 }
