@@ -1,0 +1,50 @@
+name: Deploy to AWS Elastic Beanstalk
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_REGION: us-east-1
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v2
+        with:
+          java-version: '11'
+
+      - name: Build with Maven
+        run: mvn clean package
+
+      - name: Build Docker Image
+        run: docker build -t salle-joven:latest .
+
+      - name: Login to AWS ECR
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin 659925004462.dkr.ecr.$AWS_REGION.amazonaws.com
+
+      - name: Tag and Push Docker Image
+        run: |
+          docker tag salle-joven:latest 659925004462.dkr.ecr.$AWS_REGION.amazonaws.com/salle-joven:latest
+          docker push 659925004462.dkr.ecr.$AWS_REGION.amazonaws.com/salle-joven:latest
+
+      - name: Deploy to Elastic Beanstalk
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          zip -r salle-joven.zip .
+          aws s3 cp salle-joven.zip s3://salle-joven-bucket/applications/salle-joven.zip
+          aws elasticbeanstalk create-application-version --application-name salle-joven --version-label ${{ github.sha }} --source-bundle S3Bucket=salle-joven-bucket,S3Key=applications/salle-joven.zip
+          aws elasticbeanstalk update-environment --application-name salle-joven --environment-name salle-joven-env --version-label ${{ github.sha }}
