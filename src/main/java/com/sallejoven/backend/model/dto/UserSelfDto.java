@@ -5,13 +5,11 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.util.Date;
-
-import jakarta.persistence.Column;
+import java.util.List;
+import com.sallejoven.backend.model.enums.Role;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
 
 @Data
 @Builder
@@ -33,7 +31,7 @@ public class UserSelfDto {
 
     private String email;
 
-    private String tshirtSize;
+    private Integer tshirtSize;
 
     private String healthCardNumber;
 
@@ -45,4 +43,7 @@ public class UserSelfDto {
 
     private Date birthDate;
 
+    private List<GroupDto> groups;
+
+    private Role rol;
 }

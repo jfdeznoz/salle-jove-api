@@ -6,7 +6,6 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
@@ -20,6 +19,7 @@ import lombok.ToString;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
+import jakarta.persistence.JoinColumn;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @Data
@@ -50,7 +50,7 @@ public class UserSalle {
     private String email;
 
     @Column(nullable = false)
-    private String tshirtSize;
+    private Integer tshirtSize;
 
     @Column(nullable = false)
     private String healthCardNumber;
@@ -75,11 +75,12 @@ public class UserSalle {
     @ToString.Exclude
     private String password;
 
-    @ManyToMany(fetch = FetchType.LAZY)
+    @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
         name = "user_group",
         joinColumns = @JoinColumn(name = "user_salle"),
         inverseJoinColumns = @JoinColumn(name = "group_salle")
     )
-    private Set<Group> groups = new HashSet<>();
+    
+    private Set<GroupSalle> groups = new HashSet<>();
 }

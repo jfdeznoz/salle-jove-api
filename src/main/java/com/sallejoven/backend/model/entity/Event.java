@@ -29,10 +29,20 @@ public class Event {
     @Column(nullable = false)
     private String name;
 
-    @Column(nullable = false)
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    @Column(name = "event_date", nullable = false)
     @Temporal(TemporalType.DATE)
     private Date eventDate;
 
-    @Column(nullable = false)
     private Boolean divided;
+
+    @Column(name = "file_name")
+    private String fileName;
+
+    private String place;
+
+    @Column(name = "stages", columnDefinition = "INT[]")
+    private Integer[] stages;
 }

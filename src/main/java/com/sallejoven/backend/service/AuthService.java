@@ -1,6 +1,7 @@
 package com.sallejoven.backend.service;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.http.HttpStatus;
@@ -17,6 +18,7 @@ import com.sallejoven.backend.model.dto.AuthResponseDto;
 import com.sallejoven.backend.model.dto.UserRegistrationDto;
 import com.sallejoven.backend.model.entity.RefreshToken;
 import com.sallejoven.backend.model.entity.UserSalle;
+import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.enums.TokenType;
 import com.sallejoven.backend.repository.RefreshTokenRepository;
 import com.sallejoven.backend.repository.UserRepository;
@@ -46,6 +48,17 @@ public class AuthService {
     public UserSalle getCurrentUser() throws SalleException {
         return userService.findByEmail(getCurrentUserEmail());
     }
+
+    public List<Role> getCurrentUserRoles() throws SalleException {
+        UserSalle currentUser = getCurrentUser();
+    
+        return Arrays.stream(currentUser.getRoles().split(","))
+                .map(String::trim)
+                .map(role -> role.replace("ROLE_", ""))
+                .map(String::toUpperCase)
+                .map(Role::valueOf)
+                .toList();
+    }    
 
     public AuthResponseDto getJwtTokensAfterAuthentication(Authentication authentication, HttpServletResponse response) {
         try
@@ -121,7 +134,7 @@ public class AuthService {
         Cookie refreshTokenCookie = new Cookie("refresh_token",refreshToken);
         refreshTokenCookie.setHttpOnly(true);
         refreshTokenCookie.setSecure(true);
-        refreshTokenCookie.setMaxAge(15 * 24 * 60 * 60 ); // in seconds
+        refreshTokenCookie.setMaxAge(15 * 24 * 60 * 60 );
         response.addCookie(refreshTokenCookie);
         return refreshTokenCookie;
     }

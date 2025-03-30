@@ -1,43 +1,36 @@
 package com.sallejoven.backend.service;
 
 import com.sallejoven.backend.errors.SalleException;
-import com.sallejoven.backend.model.dto.UserSelfDto;
+import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-
-import java.util.ArrayList;
-import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
+import java.util.Set;
 
 @Service
 public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final GroupService groupService;
 
     @Autowired
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder, GroupService groupService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.groupService = groupService;
     }
 
-    // Buscar un usuario por email (para autenticación y otras operaciones)
     public UserSalle findByEmail(String email) throws SalleException {
         return userRepository.findByEmail(email).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
     }
 
-    // Crear o actualizar un usuario
     public UserSalle saveUser(UserSalle user) {
         if (user.getPassword() != null) {
             user.setPassword(passwordEncoder.encode(user.getPassword()));
@@ -45,12 +38,28 @@ public class UserService {
         return userRepository.save(user);
     }
 
-    // Buscar todos los usuarios
+    public UserSalle saveUser(UserSalle user, Long groupId) {
+        if (user.getPassword() != null) {
+            user.setPassword(passwordEncoder.encode(user.getPassword()));
+        }
+
+        Optional<GroupSalle> group = groupService.findById(groupId);
+        if (group.isPresent()) {
+            Set<GroupSalle> userGroups = user.getGroups();
+            if (userGroups == null) {
+                userGroups = new HashSet<>();
+            }
+            userGroups.add(group.get());
+            user.setGroups(userGroups);
+        }
+
+        return userRepository.save(user);
+    }
+
     public List<UserSalle> findAllUsers() {
         return userRepository.findAll();
     }
 
-    // Comprobar si un usuario existe por DNI o email
     public boolean existsByDni(String dni) {
         return userRepository.existsByDni(dni);
     }
@@ -59,14 +68,20 @@ public class UserService {
         return userRepository.existsByEmail(email);
     }
 
-    // Buscar un usuario por ID
     public Optional<UserSalle> findById(Long id) {
         return userRepository.findById(id);
     }
 
-    // Eliminar un usuario por ID
     public void deleteUser(Long id) {
         userRepository.deleteById(id);
+    }
+
+    public List<UserSalle> getUsersByStages(List<Integer> stages) {
+        return userRepository.findUsersByStages(stages);
+    }
+
+    public List<UserSalle> getUsersByGroupId(Long groupId) {
+        return userRepository.findUsersByGroupId(groupId);
     }
 
     /*@Override
@@ -84,21 +99,4 @@ public class UserService {
         );
     }*/
 
-    public UserSelfDto buildSelfUserInfo(String userEmail) throws SalleException {
-        UserSalle userTango = findByEmail(userEmail);
-        return UserSelfDto.builder()
-            .id(userTango.getId())  // ID del usuario
-            .name(userTango.getName())  // Nombre
-            .lastName(userTango.getLastName())  // Apellido
-            .dni(userTango.getDni())  // DNI/NIF
-            .phone(userTango.getPhone())  // Teléfono
-            .email(userTango.getEmail())  // Email
-            .tshirtSize(userTango.getTshirtSize())  // Talla de camiseta
-            .healthCardNumber(userTango.getHealthCardNumber())  // Número de tarjeta de salud
-            .intolerances(userTango.getIntolerances())  // Intolerancias alimentarias
-            .chronicDiseases(userTango.getChronicDiseases())  // Enfermedades crónicas
-            .imageAuthorization(userTango.getImageAuthorization())  // Autorización de imagen
-            .birthDate(userTango.getBirthDate())  // Fecha de nacimiento
-            .build();
-}
 }

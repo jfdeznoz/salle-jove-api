@@ -5,6 +5,7 @@ import com.sallejoven.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
@@ -21,7 +22,16 @@ public class InitialUserInfo implements CommandLineRunner {
     
     @Override
     public void run(String... args) throws Exception {
-        /* 
+
+        /*
+        BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+        System.out.println("Admin: " + encoder.encode("password"));
+        System.out.println("Pastoral Delegate: " + encoder.encode("password"));
+        System.out.println("Group Leader: " + encoder.encode("password"));
+        System.out.println("Animator: " + encoder.encode("password"));
+        System.out.println("Participant: " + encoder.encode("password"));
+
+
         UserSalle admin = UserSalle.builder()
                 .name("Admin")
                 .lastName("Admin")
