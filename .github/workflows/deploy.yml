@@ -20,6 +20,7 @@ jobs:
         uses: actions/setup-java@v2
         with:
           java-version: '11'
+          distribution: 'temurin'  # Puedes cambiar 'temurin' a la distribución que prefieras
 
       - name: Build with Maven
         run: mvn clean package
