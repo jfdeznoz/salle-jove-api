@@ -52,7 +52,7 @@ public class SalleConverters {
             .imageAuthorization(userTango.getImageAuthorization())
             .birthDate(userTango.getBirthDate())
             .groups(groupDtos)
-            .rol(roles.getFirst())
+            .rol(roles.get(0))
             .gender(userTango.getGender())
             .address(userTango.getAddress())
             .city(userTango.getCity())
