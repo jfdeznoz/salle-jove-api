@@ -1,26 +1,18 @@
-package com.sallejoven.backend.model.dto;
+package com.sallejoven.backend.model.requestDto;
 
+import java.util.Date;
+
+import jakarta.persistence.Column;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import java.util.Date;
-import java.util.List;
-import com.sallejoven.backend.model.enums.Role;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
 
 @Data
 @Builder
-@AllArgsConstructor
 @NoArgsConstructor
-public class UserSelfDto {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
+@AllArgsConstructor
+public class UserSalleRequest {
     private String name;
 
     private String lastName;
@@ -37,21 +29,17 @@ public class UserSelfDto {
 
     private String intolerances;
 
+    private String address;
+
     private String chronicDiseases;
 
-    private String address;
+    private String city;
 
     private Boolean imageAuthorization;
 
     private Date birthDate;
 
-    private List<GroupDto> groups;
-
-    private Role rol;
-
     private Integer gender;
-
-    private String city;
 
     private String motherFullName;
 
@@ -64,4 +52,5 @@ public class UserSelfDto {
     private String fatherPhone;
 
     private String motherPhone;
+
 }

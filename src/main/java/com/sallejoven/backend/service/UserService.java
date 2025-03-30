@@ -3,12 +3,14 @@ package com.sallejoven.backend.service;
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserSalle;
+import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import java.util.HashSet;
+
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -18,17 +20,19 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final GroupService groupService;
 
     @Autowired
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder, GroupService groupService) {
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
-        this.groupService = groupService;
     }
 
     public UserSalle findByEmail(String email) throws SalleException {
         return userRepository.findByEmail(email).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
+    }
+
+    public UserSalle findByUserId(Long id) throws SalleException {
+        return userRepository.findById(id).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
     }
 
     public UserSalle saveUser(UserSalle user) {
@@ -38,21 +42,27 @@ public class UserService {
         return userRepository.save(user);
     }
 
-    public UserSalle saveUser(UserSalle user, Long groupId) {
-        if (user.getPassword() != null) {
-            user.setPassword(passwordEncoder.encode(user.getPassword()));
-        }
+    public UserSalle saveUser(UserSalleRequest userRequest, Set<GroupSalle> userGroups) {
+        UserSalle user = UserSalle.builder()
+                .name(userRequest.getName())
+                .lastName(userRequest.getLastName())
+                .dni(userRequest.getDni())
+                .phone(userRequest.getPhone())
+                .email(userRequest.getEmail())
+                .tshirtSize(userRequest.getTshirtSize())
+                .healthCardNumber(userRequest.getHealthCardNumber())
+                .intolerances(userRequest.getIntolerances())
+                .chronicDiseases(userRequest.getChronicDiseases())
+                .imageAuthorization(userRequest.getImageAuthorization())
+                .birthDate(userRequest.getBirthDate())
+                .password("fdsrew")
+                .roles("ROLE_PARTICIPANT")
+                .gender(userRequest.getGender())
+                .address(userRequest.getAddress())
+                .city(userRequest.getCity())
+                .build();
 
-        Optional<GroupSalle> group = groupService.findById(groupId);
-        if (group.isPresent()) {
-            Set<GroupSalle> userGroups = user.getGroups();
-            if (userGroups == null) {
-                userGroups = new HashSet<>();
-            }
-            userGroups.add(group.get());
-            user.setGroups(userGroups);
-        }
-
+        user.setGroups(userGroups);        
         return userRepository.save(user);
     }
 
@@ -72,8 +82,11 @@ public class UserService {
         return userRepository.findById(id);
     }
 
-    public void deleteUser(Long id) {
-        userRepository.deleteById(id);
+    public void deleteUser(Long id) throws SalleException {
+        UserSalle userSalle = findByUserId(id);
+
+        userSalle.setDeletedAt(LocalDateTime.now());
+        userRepository.save(userSalle);
     }
 
     public List<UserSalle> getUsersByStages(List<Integer> stages) {

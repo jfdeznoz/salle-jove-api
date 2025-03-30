@@ -16,10 +16,14 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
+
+import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
 import jakarta.persistence.JoinColumn;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @Data
@@ -61,12 +65,18 @@ public class UserSalle {
     @Column
     private String chronicDiseases;
 
+    @Column
+    private String city;
+
     @Column(nullable = false)
     private Boolean imageAuthorization;
 
     @Column(nullable = false)
     @Temporal(TemporalType.DATE)
     private Date birthDate;
+
+    @Column
+    private String address;
 
     @Column(nullable = false)
     private String roles;
@@ -83,4 +93,29 @@ public class UserSalle {
     )
     
     private Set<GroupSalle> groups = new HashSet<>();
+
+    @Column(name = "deleted_at")
+    @JsonFormat(pattern="yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime deletedAt;
+
+    private Integer gender;
+
+    @Column(name = "mother_full_name")
+    private String motherFullName;
+
+    @Column(name = "father_full_name")
+    private String fatherFullName;
+
+    @Column(name = "mother_email")
+    private String motherEmail;
+
+    @Column(name = "father_email")
+    private String fatherEmail;
+
+    @Column(name = "father_phone")
+    private String fatherPhone;
+
+    @Column(name = "mother_phone")
+    private String motherPhone;
+
 }

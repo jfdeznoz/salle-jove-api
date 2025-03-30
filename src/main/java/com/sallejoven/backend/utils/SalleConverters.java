@@ -53,6 +53,15 @@ public class SalleConverters {
             .birthDate(userTango.getBirthDate())
             .groups(groupDtos)
             .rol(roles.getFirst())
+            .gender(userTango.getGender())
+            .address(userTango.getAddress())
+            .city(userTango.getCity())
+            .motherFullName(userTango.getMotherFullName())
+            .fatherFullName(userTango.getFatherFullName())
+            .motherEmail(userTango.getMotherEmail())
+            .fatherEmail(userTango.getFatherEmail())
+            .fatherPhone(userTango.getFatherPhone())
+            .motherPhone(userTango.getMotherPhone())
             .build();
     }
 

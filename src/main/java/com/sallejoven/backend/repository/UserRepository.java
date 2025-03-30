@@ -19,11 +19,11 @@ public interface UserRepository extends JpaRepository<UserSalle, Long> {
     boolean existsByEmail(String email);
 
     @Query("SELECT DISTINCT u FROM UserSalle u " +
-           "JOIN u.groups g " +
-           "WHERE g.stage IN :stages")
+       "JOIN u.groups g " +
+       "WHERE g.stage IN :stages AND u.deletedAt IS NULL")
     List<UserSalle> findUsersByStages(@Param("stages") List<Integer> stages);
 
-    @Query("SELECT u FROM UserSalle u JOIN u.groups g WHERE g.id = :groupId")
+    @Query("SELECT u FROM UserSalle u JOIN u.groups g WHERE g.id = :groupId AND u.deletedAt IS NULL")
     List<UserSalle> findUsersByGroupId(@Param("groupId") Long groupId);
 
 }

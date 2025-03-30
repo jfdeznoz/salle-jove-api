@@ -2,8 +2,11 @@ package com.sallejoven.backend.controller;
 
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.dto.UserSelfDto;
+import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserSalle;
+import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.service.AuthService;
+import com.sallejoven.backend.service.GroupService;
 import com.sallejoven.backend.service.UserService;
 import com.sallejoven.backend.utils.SalleConverters;
 import lombok.RequiredArgsConstructor;
@@ -16,8 +19,11 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
@@ -28,6 +34,7 @@ public class UserController {
     private final UserService userService;
     private final AuthService authService;
     private final SalleConverters salleConverters;
+    private final GroupService groupService;
 
     @GetMapping
     public ResponseEntity<List<UserSalle>> getAllUsers() {
@@ -59,8 +66,14 @@ public class UserController {
     }
 
     @PostMapping("/group/{id}")
-    public ResponseEntity<UserSalle> createUser(@PathVariable Long id, @RequestBody UserSalle user) {
-        return ResponseEntity.ok(userService.saveUser(user));
+    public ResponseEntity<UserSalle> createUser(@PathVariable Long id, @RequestBody UserSalleRequest user) {
+        Optional<GroupSalle> group = groupService.findById(id);
+        Set<GroupSalle> userGroups = new HashSet<>();
+        if (group.isPresent()) {
+            userGroups.add(group.get());
+        }
+
+        return ResponseEntity.ok(userService.saveUser(user, userGroups));
     }
 
     @PutMapping("/{id}")
@@ -79,7 +92,7 @@ public class UserController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteUser(@PathVariable Long id) throws SalleException {
         if (userService.findById(id).isPresent()) {
             userService.deleteUser(id);
             return ResponseEntity.noContent().build();
