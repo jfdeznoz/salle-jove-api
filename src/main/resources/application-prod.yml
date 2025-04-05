@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:postgresql://prod-database-url:5432/sallejoven_prod
-    username: prod_user
-    password: prod_password
+    url: jdbc:postgresql://database-salle.cju6gook2cqu.eu-north-1.rds.amazonaws.com:5432/postgres #sallejoven_prod
+    username: postgres
+    password: 1719_StarCheck
     driver-class-name: org.postgresql.Driver
     hikari:
       connectionTimeout: 20000
