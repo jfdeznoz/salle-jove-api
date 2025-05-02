@@ -36,5 +36,13 @@ jwt:
   rsa-private-key: classpath:certs/privateKey.pem
   rsa-public-key: classpath:certs/publicKey.pem
 
+salle:
+  aws:
+    access-key: AKIAZTJUYOCXO7PYZSUY
+    secret-key: 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
+    bucket-name: sallejoven-events
+    bucket-url: https://sallejoven-events.s3.eu-north-1.amazonaws.com/
+  image-extensions-allowed: jpg,png,jpeg,webp
+
 server:
   port: 8080

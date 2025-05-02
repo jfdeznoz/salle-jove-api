@@ -18,4 +18,14 @@ public interface EventUserRepository extends JpaRepository<EventUser, EventUserI
            "JOIN u.groups g " +
            "WHERE eu.event.id = :eventId AND g.id = :groupId")
     List<EventUser> findByEventIdAndGroupId(@Param("eventId") Integer eventId, @Param("groupId") Integer groupId);
+
+    @Query("""
+        SELECT eu FROM EventUser eu
+        JOIN FETCH eu.user u
+        JOIN u.groups g
+        WHERE eu.event.id = :eventId
+        ORDER BY g.center.name ASC, g.stage ASC
+        """)
+    List<EventUser> findByEventIdOrdered(@Param("eventId") Long eventId);
+
 }
