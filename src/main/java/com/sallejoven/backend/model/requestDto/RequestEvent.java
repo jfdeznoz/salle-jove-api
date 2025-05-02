@@ -9,6 +9,8 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import java.util.Date;
 import java.util.List;
 
+import org.springframework.web.multipart.MultipartFile;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -28,7 +30,7 @@ public class RequestEvent {
 
     private List<Integer> stages;
 
-    private String fileName; 
+    private MultipartFile file;
 
     private String place;
 }

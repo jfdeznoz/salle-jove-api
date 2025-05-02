@@ -5,30 +5,37 @@ import com.sallejoven.backend.model.dto.EventDto;
 import com.sallejoven.backend.model.dto.ParticipantDto;
 import com.sallejoven.backend.model.entity.Event;
 import com.sallejoven.backend.model.entity.EventUser;
-import com.sallejoven.backend.model.requestDto.AttendanceUpdateDto;
 import com.sallejoven.backend.model.requestDto.AttendanceUpdateRequest;
 import com.sallejoven.backend.model.requestDto.RequestEvent;
 import com.sallejoven.backend.service.EventService;
 import com.sallejoven.backend.utils.SalleConverters;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+// @RequestMapping(value = "/api/events", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+@RequestMapping(value = "/api/events")
 @RestController
-@RequestMapping("/api/events")
 public class EventController {
 
     private final EventService eventService;
@@ -42,7 +49,7 @@ public class EventController {
 
     @GetMapping("/paged")
     public ResponseEntity<Page<EventDto>> getAllEvents(@RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
+                                                       @RequestParam(defaultValue = "10") int size) {
         Page<Event> eventPage = eventService.findAll(page, size);
         Page<EventDto> eventDtoPage = eventPage.map(salleConverters::eventToDto);
         return ResponseEntity.ok(eventDtoPage);
@@ -54,16 +61,28 @@ public class EventController {
         return event.map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
-    @PostMapping("/")
-    public ResponseEntity<EventDto> createEvent(@RequestBody RequestEvent event) {
-        Event eventCreated = eventService.saveEvent(event);
+    @PostMapping(value = "/", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<EventDto> createEvent(@ModelAttribute RequestEvent requestEvent) throws IOException {
+        Event eventCreated = eventService.saveEvent(
+            requestEvent.getName(),
+            requestEvent.getDescription(),
+            requestEvent.getEventDate(),
+            requestEvent.getStages(),
+            requestEvent.getPlace(),
+            requestEvent.getFile()
+        );
         return ResponseEntity.ok(salleConverters.eventToDto(eventCreated));
     }
 
-    @PutMapping("/{eventId}")
+    @PutMapping(value = "/{eventId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<EventDto> editEvent(@PathVariable Long eventId,
-                                              @RequestBody RequestEvent event) {
-        Event eventCreated = eventService.editEvent(eventId, event);
+                                            @RequestPart("name") String name,
+                                            @RequestPart(value = "description", required = false) String description,
+                                            @RequestPart("eventDate") @DateTimeFormat(pattern = "dd/MM/yyyy") Date eventDate,
+                                            @RequestPart("stages") List<Integer> stages,
+                                            @RequestPart(value = "place", required = false) String place,
+                                            @RequestPart(value = "file", required = false) MultipartFile file) {
+        Event eventCreated = eventService.editEvent(eventId, name, description, eventDate, stages, place, file);
         return ResponseEntity.ok(salleConverters.eventToDto(eventCreated));
     }
 

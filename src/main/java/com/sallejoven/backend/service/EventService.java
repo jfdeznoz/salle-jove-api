@@ -9,22 +9,19 @@ import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.ids.EventGroupId;
 import com.sallejoven.backend.model.ids.EventUserId;
 import com.sallejoven.backend.model.requestDto.AttendanceUpdateDto;
-import com.sallejoven.backend.model.requestDto.RequestEvent;
-import com.sallejoven.backend.model.types.ErrorCodes;
-import com.sallejoven.backend.repository.EventGroupRepository;
 import com.sallejoven.backend.repository.EventRepository;
 import com.sallejoven.backend.repository.EventUserRepository;
-
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
-
+import org.springframework.format.annotation.DateTimeFormat;
+import java.io.IOException;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -39,14 +36,16 @@ public class EventService {
     private final EventUserRepository eventUserRepository;
     private final GroupService groupService;
     private final UserService userService;
+    private final S3Service s3Service;
 
     @Autowired
-    public EventService(EventRepository eventRepository, GroupService groupService, EventGroupService eventGroupService, EventUserRepository eventUserRepository, UserService userService) {
+    public EventService(EventRepository eventRepository, GroupService groupService, EventGroupService eventGroupService, EventUserRepository eventUserRepository, UserService userService, S3Service s3Service) {
         this.eventRepository = eventRepository;
         this.groupService = groupService;
         this.eventGroupService = eventGroupService;
         this.eventUserRepository = eventUserRepository;
         this.userService = userService;
+        this.s3Service = s3Service;
     }
 
     public Optional<Event> findById(Long id) {
@@ -59,27 +58,33 @@ public class EventService {
     }
 
     @Transactional
-    public Event saveEvent(RequestEvent request) {
-
-        List<Integer> stages = request.getStages();
+    public Event saveEvent(String name, String description, Date eventDate, List<Integer> stages, String place, MultipartFile file) throws IOException {
 
         List<GroupSalle> groups = groupService.findAllByStage(stages);
 
         Event event = Event.builder()
-                .name(request.getName())
-                .description(request.getDescription())
-                .eventDate(request.getEventDate())
-                .fileName(request.getFileName())
+                .name(name)
+                .description(description)
+                .eventDate(eventDate)
                 .stages(stages.toArray(new Integer[0]))
-                .place(request.getPlace())
+                .place(place)
                 .build();
+
         event = eventRepository.save(event);
+
+
+        if (file != null && !file.isEmpty()) {
+            String folderPath = "events/event_" + event.getId();
+            String uploadedUrl = s3Service.uploadFile(file, folderPath);
+            event.setFileName(uploadedUrl);
+        }        
 
         final Event savedEvent = event;
 
+
         List<EventGroup> eventGroups = groups.stream()
                 .map(group -> EventGroup.builder()
-                    .id(new EventGroupId(savedEvent.getId(), group.getId()))
+                        .id(new EventGroupId(savedEvent.getId(), group.getId()))
                         .event(savedEvent)
                         .groupSalle(group)
                         .build())
@@ -95,22 +100,22 @@ public class EventService {
     }
 
     @Transactional
-    public Event editEvent(Long eventId, RequestEvent request) {
-
-        Event event = eventRepository.findById(eventId)
+    public Event editEvent(Long eventId, String name, String description, @DateTimeFormat(pattern = "dd/MM/yyyy") Date eventDate, List<Integer> stages, String place, MultipartFile file) {
+        Event existingEvent = eventRepository.findById(eventId)
                 .orElseThrow(() -> new RuntimeException("Evento no encontrado con ID: " + eventId));
 
-        List<Integer> currentStages = Arrays.asList(event.getStages());
+        List<Integer> currentStages = List.of(existingEvent.getStages());
 
-        event.setName(request.getName());
-        event.setDescription(request.getDescription());
-        event.setPlace(request.getPlace());
-        event.setEventDate(request.getEventDate());
-        event.setFileName(request.getFileName());
-        event.setStages(request.getStages().toArray(new Integer[0]));
+        existingEvent.setName(name);
+        existingEvent.setDescription(description);
+        existingEvent.setEventDate(eventDate);
+        existingEvent.setStages(stages.toArray(new Integer[0]));
+        existingEvent.setPlace(place);
+        existingEvent.setFileName(null); // Imagen aún no se guarda
 
-        Event updatedEvent = eventRepository.save(event);
-        syncEventGroups(event, currentStages);
+        Event updatedEvent = eventRepository.save(existingEvent);
+
+        syncEventGroups(updatedEvent, currentStages);
 
         return updatedEvent;
     }
@@ -165,6 +170,10 @@ public class EventService {
     public List<EventUser> getUsersByEventAndGroup(Integer eventId, Integer groupId){
         return eventUserRepository.findByEventIdAndGroupId(eventId, groupId);
     }
+
+    public List<EventUser> getUsersByEventOrdered(Long eventId) {
+        return eventUserRepository.findByEventIdOrdered(eventId);
+    }     
 
     @Transactional
     public void updateParticipantsAttendance(Long eventId, List<AttendanceUpdateDto> updates) throws SalleException {
