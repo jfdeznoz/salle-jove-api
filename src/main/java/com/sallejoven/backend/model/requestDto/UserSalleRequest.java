@@ -1,8 +1,6 @@
 package com.sallejoven.backend.model.requestDto;
 
 import java.util.Date;
-
-import jakarta.persistence.Column;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

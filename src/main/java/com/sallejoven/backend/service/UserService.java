@@ -66,6 +66,67 @@ public class UserService {
         return userRepository.save(user);
     }
 
+    public UserSalle updateUserFields(Long id, UserSalleRequest userDetails) throws SalleException {
+        UserSalle existingUser = findByUserId(id);
+    
+        if (userDetails.getName() != null) {
+            existingUser.setName(userDetails.getName());
+        }
+        if (userDetails.getLastName() != null) {
+            existingUser.setLastName(userDetails.getLastName());
+        }
+        if (userDetails.getEmail() != null) {
+            existingUser.setEmail(userDetails.getEmail());
+        }
+        if (userDetails.getDni() != null) {
+            existingUser.setDni(userDetails.getDni());
+        }
+        if (userDetails.getPhone() != null) {
+            existingUser.setPhone(userDetails.getPhone());
+        }
+        if (userDetails.getBirthDate() != null) {
+            existingUser.setBirthDate(userDetails.getBirthDate());
+        }
+        if (userDetails.getAddress() != null) {
+            existingUser.setAddress(userDetails.getAddress());
+        }
+        if (userDetails.getCity() != null) {
+            existingUser.setCity(userDetails.getCity());
+        }
+        if (userDetails.getMotherFullName() != null) {
+            existingUser.setMotherFullName(userDetails.getMotherFullName());
+        }
+        if (userDetails.getFatherFullName() != null) {
+            existingUser.setFatherFullName(userDetails.getFatherFullName());
+        }
+        if (userDetails.getMotherEmail() != null) {
+            existingUser.setMotherEmail(userDetails.getMotherEmail());
+        }
+        if (userDetails.getFatherEmail() != null) {
+            existingUser.setFatherEmail(userDetails.getFatherEmail());
+        }
+        if (userDetails.getMotherPhone() != null) {
+            existingUser.setMotherPhone(userDetails.getMotherPhone());
+        }
+        if (userDetails.getFatherPhone() != null) {
+            existingUser.setFatherPhone(userDetails.getFatherPhone());
+        }
+        if (userDetails.getTshirtSize() != null) {
+            existingUser.setTshirtSize(userDetails.getTshirtSize());
+        }
+        if (userDetails.getImageAuthorization() != null) {
+            existingUser.setImageAuthorization(userDetails.getImageAuthorization());
+        }
+        if (userDetails.getChronicDiseases() != null) {
+            existingUser.setChronicDiseases(userDetails.getChronicDiseases());
+        }
+        if (userDetails.getIntolerances() != null) {
+            existingUser.setIntolerances(userDetails.getIntolerances());
+        }
+    
+        return userRepository.save(existingUser);
+    }    
+
     public List<UserSalle> findAllUsers() {
         return userRepository.findAll();
     }

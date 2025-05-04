@@ -29,4 +29,6 @@ public class Center {
     @Column(nullable = false)
     private String city;
 
+    @Column(nullable = false)
+    private String address;
 }

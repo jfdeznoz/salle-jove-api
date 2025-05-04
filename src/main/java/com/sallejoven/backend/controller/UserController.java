@@ -77,18 +77,13 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<UserSalle> updateUser(@PathVariable Long id, @RequestBody UserSalle userDetails) {
-        Optional<UserSalle> user = userService.findById(id);
-        if (user.isPresent()) {
-            UserSalle existingUser = user.get();
-            existingUser.setName(userDetails.getName());
-            existingUser.setLastName(userDetails.getLastName());
-            existingUser.setEmail(userDetails.getEmail());
-            existingUser.setDni(userDetails.getDni());
-            existingUser.setPhone(userDetails.getPhone());
-            return ResponseEntity.ok(userService.saveUser(existingUser));
+    public ResponseEntity<UserSalle> updateUser(@PathVariable Long id, @RequestBody UserSalleRequest userDetails) {
+        try {
+            UserSalle updatedUser = userService.updateUserFields(id, userDetails);
+            return ResponseEntity.ok(updatedUser);
+        } catch (SalleException e) {
+            return ResponseEntity.notFound().build();
         }
-        return ResponseEntity.notFound().build();
     }
 
     @DeleteMapping("/{id}")
