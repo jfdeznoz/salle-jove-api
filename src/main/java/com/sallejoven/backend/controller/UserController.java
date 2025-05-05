@@ -7,6 +7,7 @@ import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.service.AuthService;
 import com.sallejoven.backend.service.GroupService;
+import com.sallejoven.backend.service.UserImporterService;
 import com.sallejoven.backend.service.UserService;
 import com.sallejoven.backend.utils.SalleConverters;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,7 @@ public class UserController {
     private final AuthService authService;
     private final SalleConverters salleConverters;
     private final GroupService groupService;
+    private final UserImporterService userImporterService;
 
     @GetMapping
     public ResponseEntity<List<UserSalle>> getAllUsers() {
@@ -98,6 +100,13 @@ public class UserController {
             return ResponseEntity.noContent().build();
         }
         return ResponseEntity.notFound().build();
+    }
+
+    @PostMapping("/import-users")
+    public ResponseEntity<String> importUsers() throws Exception {
+        String filePath = "C:\\Users\\jfmun\\OneDrive\\Escritorio\\usuarios.csv";
+        userImporterService.importUsersFromCsv(filePath);
+        return ResponseEntity.ok("Import done");
     }
 
 }
