@@ -68,8 +68,9 @@ public class ReportService {
         for (EventUser eu : participants) {
             UserSalle user = eu.getUser();
             Row row = sheet.createRow(rowNum++);
+            Date birthdate = user.getBirthDate();
             row.createCell(0).setCellValue(user.getName() + " " + user.getLastName());
-            row.createCell(1).setCellValue(user.getBirthDate().toString());
+            row.createCell(1).setCellValue(birthdate != null ? birthdate.toString() :"");
             row.createCell(2).setCellValue(user.getDni());
             row.createCell(3).setCellValue(getSchool(user));
             row.createCell(4).setCellValue(getGroup(user));

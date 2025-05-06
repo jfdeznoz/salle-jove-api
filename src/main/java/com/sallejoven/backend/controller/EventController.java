@@ -75,14 +75,9 @@ public class EventController {
     }
 
     @PutMapping(value = "/{eventId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<EventDto> editEvent(@PathVariable Long eventId,
-                                            @RequestPart("name") String name,
-                                            @RequestPart(value = "description", required = false) String description,
-                                            @RequestPart("eventDate") @DateTimeFormat(pattern = "dd/MM/yyyy") Date eventDate,
-                                            @RequestPart("stages") List<Integer> stages,
-                                            @RequestPart(value = "place", required = false) String place,
-                                            @RequestPart(value = "file", required = false) MultipartFile file) {
-        Event eventCreated = eventService.editEvent(eventId, name, description, eventDate, stages, place, file);
+    public ResponseEntity<EventDto> editEvent(@ModelAttribute RequestEvent requestEvent) {
+        Event eventCreated = eventService.editEvent(requestEvent.getId(), requestEvent.getName(), requestEvent.getDescription(), 
+        requestEvent.getEventDate(), requestEvent.getStages(), requestEvent.getPlace(), requestEvent.getFile());
         return ResponseEntity.ok(salleConverters.eventToDto(eventCreated));
     }
 
