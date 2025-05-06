@@ -87,13 +87,16 @@ public class UserImporterService {
                 }
 
                 // Parse tshirt size (default to 0 if empty)
-                int tshirtSize = 0;
-                try {
-                    tshirtSize = Integer.parseInt(tshirtSizeStr);
-                } catch (NumberFormatException ignored) {}
+                // Parse tshirt size (según las tallas S, M, L, etc.)
+                int tshirtSize = mapTshirtSize(tshirtSizeStr);
 
                 // Parse image authorization
-                boolean imageAuthorization = "TRUE".equalsIgnoreCase(imageAuthorizationStr);
+                boolean imageAuthorization = false;
+                if (imageAuthorizationStr != null && !imageAuthorizationStr.trim().isEmpty()) {
+                    imageAuthorization = "TRUE".equalsIgnoreCase(imageAuthorizationStr.trim());
+                } else {
+                    System.out.println("⚠️ Image authorization vacío para: " + name + " " + lastName);
+                }
 
                 // Gender is not present -> default to 3 (not declared)
                 int gender = 3;
@@ -235,6 +238,29 @@ public class UserImporterService {
                 return 8;
             default:
                 return null;
+        }
+    }    
+
+    private int mapTshirtSize(String size) {
+        if (size == null) return -1;
+        String normalized = size.trim().toUpperCase();
+        switch (normalized) {
+            case "XS":
+                return 0;
+            case "S":
+                return 1;
+            case "M":
+                return 2;
+            case "L":
+                return 3;
+            case "XL":
+                return 4;
+            case "XXL":
+                return 5;
+            case "XXXL":
+                return 6;
+            default:
+                return -1;  // o 0 si prefieres default a "XS"
         }
     }    
 

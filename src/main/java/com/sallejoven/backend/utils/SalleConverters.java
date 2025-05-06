@@ -1,6 +1,8 @@
 package com.sallejoven.backend.utils;
 
 import java.util.List;
+import java.util.stream.Collectors;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.sallejoven.backend.errors.SalleException;
@@ -13,6 +15,7 @@ import com.sallejoven.backend.model.entity.EventUser;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.Role;
+import com.sallejoven.backend.repository.GroupRepository;
 import com.sallejoven.backend.service.AuthService;
 import com.sallejoven.backend.service.UserService;
 
@@ -22,21 +25,34 @@ public class SalleConverters {
 
     private final UserService userService;
     private final AuthService authService;
+    private final GroupRepository groupRepository;
 
     @Autowired
-    public SalleConverters(UserService userService, AuthService authService) {
+    public SalleConverters(UserService userService, AuthService authService, GroupRepository groupRepository) {
         this.userService = userService;
         this.authService = authService;
+        this.groupRepository = groupRepository;
     }
 
     public UserSelfDto buildSelfUserInfo(String userEmail) throws SalleException {
         UserSalle userTango = userService.findByEmail(userEmail);
 
-        List<GroupDto> groupDtos = userTango.getGroups().stream()
-            .map(this::groupToDto)
-            .toList();
-        
-            List<Role> roles = authService.getCurrentUserRoles();
+        List<Role> roles = authService.getCurrentUserRoles();
+        Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : roles.get(0);
+
+        List<GroupDto> groupDtos;
+
+        if (mainRole == Role.ADMIN) {
+            groupDtos = groupRepository.findAll()
+                    .stream()
+                    .map(this::groupToDto)
+                    .collect(Collectors.toList());
+        } else {
+            groupDtos = userTango.getGroups()
+                    .stream()
+                    .map(this::groupToDto)
+                    .collect(Collectors.toList());
+        }
 
         return UserSelfDto.builder()
             .id(userTango.getId())
@@ -52,7 +68,7 @@ public class SalleConverters {
             .imageAuthorization(userTango.getImageAuthorization())
             .birthDate(userTango.getBirthDate())
             .groups(groupDtos)
-            .rol(roles.get(0))
+            .rol(mainRole)
             .gender(userTango.getGender())
             .address(userTango.getAddress())
             .city(userTango.getCity())
