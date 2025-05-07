@@ -4,6 +4,7 @@ import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
+import com.sallejoven.backend.model.requestDto.UserSalleRequestOptional;
 import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +35,33 @@ public class UserService {
     public UserSalle findByUserId(Long id) throws SalleException {
         return userRepository.findById(id).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
     }
+
+    public UserSalle updateUserFromDto(Long id, UserSalleRequestOptional dto) throws SalleException {
+        UserSalle user = findByUserId(id);
+    
+        dto.getName().ifPresent(user::setName);
+        dto.getLastName().ifPresent(user::setLastName);
+        dto.getEmail().ifPresent(user::setEmail);
+        dto.getDni().ifPresent(user::setDni);
+        dto.getPhone().ifPresent(user::setPhone);
+        dto.getTshirtSize().ifPresent(user::setTshirtSize);
+        dto.getHealthCardNumber().ifPresent(user::setHealthCardNumber);
+        dto.getIntolerances().ifPresent(user::setIntolerances);
+        dto.getChronicDiseases().ifPresent(user::setChronicDiseases);
+        dto.getAddress().ifPresent(user::setAddress);
+        dto.getCity().ifPresent(user::setCity);
+        dto.getImageAuthorization().ifPresent(user::setImageAuthorization);
+        dto.getBirthDate().ifPresent(user::setBirthDate);
+        dto.getGender().ifPresent(user::setGender);
+        dto.getMotherFullName().ifPresent(user::setMotherFullName);
+        dto.getFatherFullName().ifPresent(user::setFatherFullName);
+        dto.getMotherEmail().ifPresent(user::setMotherEmail);
+        dto.getFatherEmail().ifPresent(user::setFatherEmail);
+        dto.getMotherPhone().ifPresent(user::setMotherPhone);
+        dto.getFatherPhone().ifPresent(user::setFatherPhone);
+    
+        return userRepository.save(user);
+    }    
 
     public UserSalle saveUser(UserSalle user) {
         if (user.getPassword() != null) {

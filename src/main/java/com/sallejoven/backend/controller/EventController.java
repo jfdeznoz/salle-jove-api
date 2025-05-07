@@ -75,9 +75,10 @@ public class EventController {
     }
 
     @PutMapping(value = "/{eventId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<EventDto> editEvent(@ModelAttribute RequestEvent requestEvent) {
+    public ResponseEntity<EventDto> editEvent(@ModelAttribute RequestEvent requestEvent) throws IOException {
         Event eventCreated = eventService.editEvent(requestEvent.getId(), requestEvent.getName(), requestEvent.getDescription(), 
         requestEvent.getEventDate(), requestEvent.getStages(), requestEvent.getPlace(), requestEvent.getFile());
+        
         return ResponseEntity.ok(salleConverters.eventToDto(eventCreated));
     }
 
