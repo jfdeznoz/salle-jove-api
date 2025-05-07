@@ -6,6 +6,7 @@ import com.sallejoven.backend.model.ids.EventUserId;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -28,4 +29,7 @@ public interface EventUserRepository extends JpaRepository<EventUser, EventUserI
         """)
     List<EventUser> findByEventIdOrdered(@Param("eventId") Long eventId);
 
+    @Modifying
+    @Query("UPDATE EventUser eu SET eu.deletedAt = CURRENT_TIMESTAMP WHERE eu.event.id = :eventId")
+    void softDeleteByEventId(@Param("eventId") Long eventId);
 }

@@ -117,8 +117,8 @@ public class UserImporterService {
                     centerCityTemp = "Córdoba";
                 }
 
-                // 👉 Ponemos la coletilla "La Salle"
-                String centerFullName = "La Salle " + centerNameClean;
+                // 👉 Ponemos la coletilla "Salle Joven"
+                String centerFullName = "Salle Joven " + centerNameClean;
 
                 // ✅ Hacemos una copia final
                 final String finalCenterCity = centerCityTemp;

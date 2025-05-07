@@ -77,6 +77,7 @@ CREATE TABLE event (
 CREATE TABLE event_group (
     event INT,
     group_salle INT,
+    deleted_at TIMESTAMP,
     PRIMARY KEY (event, group_salle),
     FOREIGN KEY (event) REFERENCES event(id),
     FOREIGN KEY (group_salle) REFERENCES group_salle(id)
@@ -87,6 +88,7 @@ CREATE TABLE event_user (
     event INT,
     user_salle INT,
     status INT DEFAULT 0,
+    deleted_at TIMESTAMP,
     PRIMARY KEY (event, user_salle),
     FOREIGN KEY (event) REFERENCES event(id),
     FOREIGN KEY (user_salle) REFERENCES user_salle(id)
