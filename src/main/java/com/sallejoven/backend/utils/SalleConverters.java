@@ -81,6 +81,51 @@ public class SalleConverters {
             .build();
     }
 
+    public UserSelfDto buildSelfUserInfo(UserSalle userTango) throws SalleException {
+        List<Role> roles = authService.getCurrentUserRoles();
+        Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : roles.get(0);
+
+        List<GroupDto> groupDtos;
+
+        if (mainRole == Role.ADMIN) {
+            groupDtos = groupRepository.findAll()
+                    .stream()
+                    .map(this::groupToDto)
+                    .collect(Collectors.toList());
+        } else {
+            groupDtos = userTango.getGroups()
+                    .stream()
+                    .map(this::groupToDto)
+                    .collect(Collectors.toList());
+        }
+
+        return UserSelfDto.builder()
+            .id(userTango.getId())
+            .name(userTango.getName())
+            .lastName(userTango.getLastName())
+            .dni(userTango.getDni())
+            .phone(userTango.getPhone())
+            .email(userTango.getEmail())
+            .tshirtSize(userTango.getTshirtSize())
+            .healthCardNumber(userTango.getHealthCardNumber())
+            .intolerances(userTango.getIntolerances())
+            .chronicDiseases(userTango.getChronicDiseases())
+            .imageAuthorization(userTango.getImageAuthorization())
+            .birthDate(userTango.getBirthDate())
+            .groups(groupDtos)
+            .rol(mainRole)
+            .gender(userTango.getGender())
+            .address(userTango.getAddress())
+            .city(userTango.getCity())
+            .motherFullName(userTango.getMotherFullName())
+            .fatherFullName(userTango.getFatherFullName())
+            .motherEmail(userTango.getMotherEmail())
+            .fatherEmail(userTango.getFatherEmail())
+            .fatherPhone(userTango.getFatherPhone())
+            .motherPhone(userTango.getMotherPhone())
+            .build();
+    }
+
     public UserSelfDto userToDto(UserSalle userSalle) {
 
         return UserSelfDto.builder()

@@ -100,9 +100,9 @@ public class EventService {
     }
 
     @Transactional
-    public Event editEvent(Long eventId, String name, String description, @DateTimeFormat(pattern = "dd/MM/yyyy") Date eventDate, List<Integer> stages, String place, MultipartFile file) {
+    public Event editEvent(Long eventId, String name, String description, @DateTimeFormat(pattern = "dd/MM/yyyy") Date eventDate, List<Integer> stages, String place, MultipartFile file) throws IOException {
         Event existingEvent = eventRepository.findById(eventId)
-                .orElseThrow(() -> new RuntimeException("Evento no encontrado con ID: " + eventId));
+            .orElseThrow(() -> new RuntimeException("Evento no encontrado con ID: " + eventId));
 
         List<Integer> currentStages = List.of(existingEvent.getStages());
 
@@ -111,7 +111,12 @@ public class EventService {
         existingEvent.setEventDate(eventDate);
         existingEvent.setStages(stages.toArray(new Integer[0]));
         existingEvent.setPlace(place);
-        existingEvent.setFileName(null); // Imagen aún no se guarda
+
+        if (file != null && !file.isEmpty()) {
+            String folderPath = "events/event_" + existingEvent.getId();
+            String uploadedUrl = s3Service.uploadFile(file, folderPath);
+            existingEvent.setFileName(uploadedUrl);
+        }
 
         Event updatedEvent = eventRepository.save(existingEvent);
 

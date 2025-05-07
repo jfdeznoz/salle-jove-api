@@ -5,6 +5,7 @@ import com.sallejoven.backend.model.dto.UserSelfDto;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
+import com.sallejoven.backend.model.requestDto.UserSalleRequestOptional;
 import com.sallejoven.backend.service.AuthService;
 import com.sallejoven.backend.service.GroupService;
 import com.sallejoven.backend.service.UserImporterService;
@@ -79,18 +80,14 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<UserSalle> updateUser(@PathVariable Long id, @RequestBody UserSalle userDetails) {
-        Optional<UserSalle> user = userService.findById(id);
-        if (user.isPresent()) {
-            UserSalle existingUser = user.get();
-            existingUser.setName(userDetails.getName());
-            existingUser.setLastName(userDetails.getLastName());
-            existingUser.setEmail(userDetails.getEmail());
-            existingUser.setDni(userDetails.getDni());
-            existingUser.setPhone(userDetails.getPhone());
-            return ResponseEntity.ok(userService.saveUser(existingUser));
+    public ResponseEntity<UserSelfDto> updateUser(@PathVariable Long id, @RequestBody UserSalleRequestOptional dto) {
+        try {
+            UserSalle updatedUser = userService.updateUserFromDto(id, dto);
+            UserSelfDto userDto = salleConverters.buildSelfUserInfo(updatedUser);
+            return ResponseEntity.ok(userDto);
+        } catch (SalleException e) {
+            return ResponseEntity.notFound().build();
         }
-        return ResponseEntity.notFound().build();
     }
 
     @DeleteMapping("/{id}")

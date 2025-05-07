@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import java.util.Date;
 import java.util.List;
 
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.multipart.MultipartFile;
 
 @Data
@@ -25,7 +26,7 @@ public class RequestEvent {
     private String description;
 
     @NotNull
-    @JsonFormat(pattern = "dd/MM/yyyy", timezone = "UTC")
+    @DateTimeFormat(pattern = "dd/MM/yyyy")
     private Date eventDate;
 
     private List<Integer> stages;
