@@ -1,5 +1,8 @@
 package com.sallejoven.backend.model.entity;
 
+import java.time.LocalDateTime;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.sallejoven.backend.model.ids.EventUserId;
 
 import jakarta.persistence.Column;
@@ -39,4 +42,8 @@ public class EventUser {
 
     @Column(nullable = false)
     private int status;
+
+    @Column(name = "deleted_at")
+    @JsonFormat(pattern="yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime deletedAt;
 }

@@ -5,6 +5,8 @@ import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.repository.EventGroupRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -37,6 +39,10 @@ public class EventGroupService {
             .toList();
 
         eventGroupRepository.deleteByEventIdAndGroupSalleIdIn(eventId, groupIds);
+    }
+
+    public void softDeleteByEventId(Long eventId) {
+        eventGroupRepository.softDeleteByEventId(eventId);
     }
 
 }

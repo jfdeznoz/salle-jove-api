@@ -1,7 +1,11 @@
 package com.sallejoven.backend.model.entity;
 
+import java.time.LocalDateTime;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.sallejoven.backend.model.ids.EventGroupId;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
 import jakarta.persistence.JoinColumn;
@@ -33,4 +37,8 @@ public class EventGroup {
     @MapsId("groupSalle")
     @JoinColumn(name = "group_salle", nullable = false)
     private GroupSalle groupSalle;
+
+    @Column(name = "deleted_at")
+    @JsonFormat(pattern="yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime deletedAt;
 }
