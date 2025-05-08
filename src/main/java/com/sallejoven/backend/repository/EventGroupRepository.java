@@ -11,7 +11,9 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface EventGroupRepository extends JpaRepository<EventGroup, Long> {
 
-    List<EventGroup> findByEventId(Long eventId);
+    @Query("SELECT eg FROM EventGroup eg WHERE eg.id.event = :eventId AND eg.deletedAt IS NULL")
+    List<EventGroup> findByEventId(@Param("eventId") Long eventId);
+
     List<EventGroup> findByEventIdAndGroupSalleIdIn(Long eventId, List<Long> groupIds);
     void deleteByEventIdAndGroupSalleIdIn(Long eventId, List<Long> groupSalleIds);
 
