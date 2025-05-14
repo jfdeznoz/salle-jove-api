@@ -12,6 +12,8 @@ import lombok.NoArgsConstructor;
 public class GroupDto {
     private Integer groupId;
 
+    private Integer centerId;
+
     private Integer stage;
 
     private String centerName;

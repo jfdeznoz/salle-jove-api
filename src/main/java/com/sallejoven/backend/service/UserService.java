@@ -3,6 +3,7 @@ package com.sallejoven.backend.service;
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserSalle;
+import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.model.requestDto.UserSalleRequestOptional;
 import com.sallejoven.backend.model.types.ErrorCodes;
@@ -12,6 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -70,6 +72,29 @@ public class UserService {
         return userRepository.save(user);
     }
 
+    public UserSalle saveUser(UserSalleRequest userRequest) {
+        UserSalle user = UserSalle.builder()
+                .name(userRequest.getName())
+                .lastName(userRequest.getLastName())
+                .dni(userRequest.getDni())
+                .phone(userRequest.getPhone())
+                .email(userRequest.getEmail())
+                .tshirtSize(userRequest.getTshirtSize())
+                .healthCardNumber(userRequest.getHealthCardNumber())
+                .intolerances(userRequest.getIntolerances())
+                .chronicDiseases(userRequest.getChronicDiseases())
+                .imageAuthorization(userRequest.getImageAuthorization())
+                .birthDate(userRequest.getBirthDate())
+                .password(passwordEncoder.encode("password"))
+                .roles("ROLE_" + userRequest.getRol())
+                .gender(userRequest.getGender())
+                .address(userRequest.getAddress())
+                .city(userRequest.getCity())
+                .build();
+
+        return userRepository.save(user);
+    }
+
     public UserSalle saveUser(UserSalleRequest userRequest, Set<GroupSalle> userGroups) {
         UserSalle user = UserSalle.builder()
                 .name(userRequest.getName())
@@ -83,8 +108,8 @@ public class UserService {
                 .chronicDiseases(userRequest.getChronicDiseases())
                 .imageAuthorization(userRequest.getImageAuthorization())
                 .birthDate(userRequest.getBirthDate())
-                .password("fdsrew")
-                .roles("ROLE_PARTICIPANT")
+                .password(passwordEncoder.encode("password"))
+                .roles("ROLE_" + userRequest.getRol())
                 .gender(userRequest.getGender())
                 .address(userRequest.getAddress())
                 .city(userRequest.getCity())
@@ -93,6 +118,11 @@ public class UserService {
         user.setGroups(userGroups);        
         return userRepository.save(user);
     }
+
+    public void addUserToGroup(UserSalle user, GroupSalle group) {
+        user.getGroups().add(group);
+        saveUser(user);
+    }       
 
     public List<UserSalle> findAllUsers() {
         return userRepository.findAll();
@@ -124,6 +154,28 @@ public class UserService {
     public List<UserSalle> getUsersByGroupId(Long groupId) {
         return userRepository.findUsersByGroupId(groupId);
     }
+
+    public List<UserSalle> getUsersByCenterId(Long centerId, String role) {
+        if (role == null || role.isBlank()) {
+            return userRepository.findUsersByCenterId(centerId);
+        } else {
+            return userRepository.findUsersByCenterIdAndRole(centerId, role);
+        }
+    }
+     
+
+    public List<Role> getUserRoles(UserSalle userSalle) throws SalleException {
+        return Arrays.stream(userSalle.getRoles().split(","))
+                .map(String::trim)
+                .map(role -> role.replace("ROLE_", ""))
+                .map(String::toUpperCase)
+                .map(Role::valueOf)
+                .toList();
+    }  
+
+    public List<UserSalle> findAllByRoles() {
+        return userRepository.findAllByRoles("ROLE_PARTICIPANT", "ROLE_ANIMATOR");
+    }    
 
     /*@Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {

@@ -1,8 +1,7 @@
 package com.sallejoven.backend.model.requestDto;
 
 import java.util.Date;
-
-import jakarta.persistence.Column;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -53,4 +52,7 @@ public class UserSalleRequest {
 
     private String motherPhone;
 
+    private List<Long> groups;
+
+    private String rol;
 }

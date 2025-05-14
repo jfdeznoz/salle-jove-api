@@ -26,4 +26,16 @@ public interface UserRepository extends JpaRepository<UserSalle, Long> {
     @Query("SELECT u FROM UserSalle u JOIN u.groups g WHERE g.id = :groupId AND u.deletedAt IS NULL")
     List<UserSalle> findUsersByGroupId(@Param("groupId") Long groupId);
 
+    @Query("SELECT DISTINCT u FROM UserSalle u " +
+        "JOIN u.groups g " +
+        "WHERE g.center.id = :centerId AND u.deletedAt IS NULL")
+    List<UserSalle> findUsersByCenterId(@Param("centerId") Long centerId);
+
+    @Query("SELECT DISTINCT u FROM UserSalle u " +
+        "JOIN u.groups g " +
+        "WHERE g.center.id = :centerId AND u.roles LIKE %:role% AND u.deletedAt IS NULL")
+    List<UserSalle> findUsersByCenterIdAndRole(@Param("centerId") Long centerId, @Param("role") String role);
+
+    @Query("SELECT u FROM UserSalle u WHERE u.roles LIKE %:role1% OR u.roles LIKE %:role2% AND u.deletedAt IS NULL")
+    List<UserSalle> findAllByRoles(@Param("role1") String role1, @Param("role2") String role2);
 }

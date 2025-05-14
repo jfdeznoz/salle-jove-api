@@ -106,8 +106,13 @@ public class EventController {
         public ResponseEntity<List<ParticipantDto>> getParticipantsByGroupAndEvent(@RequestParam Integer eventId,
                                                                     @RequestParam Integer groupId) {
         List<EventUser> eventUsers = eventService.getUsersByEventAndGroup(eventId, groupId);
-        return ResponseEntity.ok(eventUsers.stream().map(salleConverters::participantDto)
-                                            .collect(Collectors.toList()));
+        return ResponseEntity.ok(eventUsers.stream().map(t -> {
+            try {
+                return salleConverters.participantDto(t);
+            } catch (SalleException e) {
+                throw new RuntimeException("Error al convertir EventUser a ParticipantDto", e);
+            }
+        }).collect(Collectors.toList()));
     }
 
     @PostMapping("/{eventId}/participants")

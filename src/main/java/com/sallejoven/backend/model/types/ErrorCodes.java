@@ -4,7 +4,8 @@ public enum ErrorCodes {
 
     USER_NOT_FOUND("Usuario no encontrado", "E001"),
     EVENT_NOT_FOUND("Evento no encontrado", "E002"),
-    STATUS_PARTICIPANT_ERROR("El estado del participante no es correcto", "E003");
+    STATUS_PARTICIPANT_ERROR("El estado del participante no es correcto", "E003"),
+    GROUP_NOT_FOUND("Grupo no encontrado", "E004");
 
 
     private final String message;

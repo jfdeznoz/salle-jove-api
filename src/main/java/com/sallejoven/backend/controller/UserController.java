@@ -6,8 +6,11 @@ import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.model.requestDto.UserSalleRequestOptional;
+import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.service.AuthService;
+import com.sallejoven.backend.service.GroupLeaderImporterService;
 import com.sallejoven.backend.service.GroupService;
+import com.sallejoven.backend.service.PastoralDelegateImporterService;
 import com.sallejoven.backend.service.UserImporterService;
 import com.sallejoven.backend.service.UserService;
 import com.sallejoven.backend.utils.SalleConverters;
@@ -20,10 +23,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -38,6 +41,8 @@ public class UserController {
     private final SalleConverters salleConverters;
     private final GroupService groupService;
     private final UserImporterService userImporterService;
+    private final PastoralDelegateImporterService pastoralDelegateImporterService;
+    private final GroupLeaderImporterService groupLeaderImporterService;
 
     @GetMapping
     public ResponseEntity<List<UserSalle>> getAllUsers() {
@@ -52,9 +57,30 @@ public class UserController {
     }
 
     @GetMapping("/group/{groupId}")
-    public List<UserSelfDto> getUserByGroupId(@PathVariable Long groupId) {
+    public ResponseEntity<List<UserSelfDto>> getUserByGroupId(@PathVariable Long groupId) {
         List<UserSalle> users = userService.getUsersByGroupId(groupId);
-        return users.stream().map(salleConverters::userToDto).collect(Collectors.toList());
+        List<UserSelfDto> result = users.stream().map(user -> {
+            try {
+                return salleConverters.buildSelfUserInfo(user);
+            } catch (SalleException e) {
+                throw new RuntimeException(e);
+            }
+        }).collect(Collectors.toList());
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/catechist/center/{centerId}")
+    public ResponseEntity<List<UserSelfDto>> getUserByCenterId(@PathVariable Long centerId, @RequestParam(required = false) String role) {
+        List<UserSalle> users = userService.getUsersByCenterId(centerId, role);
+        List<UserSelfDto> result = users.stream().map(user -> {
+            try {
+                return salleConverters.buildSelfUserInfo(user);
+            } catch (SalleException e) {
+                throw new RuntimeException(e);
+            }
+        }).collect(Collectors.toList());
+
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/self")
@@ -64,19 +90,30 @@ public class UserController {
     }
 
     @PostMapping("/")
-    public ResponseEntity<UserSalle> createUser(@RequestBody UserSalle user) {
-        return ResponseEntity.ok(userService.saveUser(user));
+    public ResponseEntity<UserSalle> createUser(@RequestBody UserSalleRequest userRequest) {
+        return ResponseEntity.ok(userService.saveUser(userRequest));
     }
 
-    @PostMapping("/group/{id}")
-    public ResponseEntity<UserSalle> createUser(@PathVariable Long id, @RequestBody UserSalleRequest user) {
-        Optional<GroupSalle> group = groupService.findById(id);
-        Set<GroupSalle> userGroups = new HashSet<>();
-        if (group.isPresent()) {
-            userGroups.add(group.get());
-        }
+    @PostMapping("/{groupId}")
+    public ResponseEntity<UserSalle> createUser(@PathVariable Long groupId, @RequestBody UserSalleRequest userRequest) throws SalleException {
+        GroupSalle group = groupService.findById(groupId)
+                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
 
-        return ResponseEntity.ok(userService.saveUser(user, userGroups));
+        Set<GroupSalle> userGroups = Set.of(group);
+        UserSalle savedUser = userService.saveUser(userRequest, userGroups);
+        return ResponseEntity.ok(savedUser);
+    }
+
+    @PostMapping("/{groupId}/add-existing")
+    public ResponseEntity<Void> addExistingUserToGroup( @PathVariable Long groupId, @RequestBody Map<String, Long> body) throws SalleException {
+        Long userId = body.get("userId");
+        GroupSalle group = groupService.findById(groupId)
+                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+
+        UserSalle user = userService.findByUserId(userId);
+        userService.addUserToGroup(user, group);
+
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/{id}")
@@ -104,6 +141,20 @@ public class UserController {
         String filePath = "C:\\Users\\jfmun\\OneDrive\\Escritorio\\usuarios.csv";
         userImporterService.importUsersFromCsv(filePath);
         return ResponseEntity.ok("Import done");
+    }
+
+    @PostMapping("/import-group-leaders")
+    public ResponseEntity<String> importGroupLeaders() throws Exception {
+        String filePath = "C:\\Users\\jfmun\\OneDrive\\Escritorio\\coordinadores.csv";
+        groupLeaderImporterService.importGroupLeaders(filePath);
+        return ResponseEntity.ok("Importación completada");
+    }
+
+    @PostMapping("/import-pastoral-delegates")
+    public ResponseEntity<String> importPastoralDelegates() throws Exception {
+        String filePath = "C:\\Users\\jfmun\\OneDrive\\Escritorio\\archivo.csv";
+        pastoralDelegateImporterService.importPastoralDelegatesByCenterId(filePath);
+        return ResponseEntity.ok("Importación completada");
     }
 
 }
