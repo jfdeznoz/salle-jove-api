@@ -30,7 +30,7 @@ public class PastoralDelegateImporterService {
     public void importPastoralDelegatesByCenterId(String filePath) throws Exception {
         try (CSVReader reader = new CSVReader(new InputStreamReader(new FileInputStream(filePath), StandardCharsets.UTF_8))) {
             List<String[]> rows = reader.readAll();
-            rows.remove(0); // Remove header
+            rows.remove(0); // Remove headerrrr
 
             for (String[] row : rows) {
                 if (row.length < 5) {
