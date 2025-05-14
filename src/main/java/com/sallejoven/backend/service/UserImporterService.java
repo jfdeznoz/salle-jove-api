@@ -118,8 +118,20 @@ public class UserImporterService {
                     centerCityTemp = "Córdoba";
                 }
 
+                // ⚠️ Casos especiales
+                if (centerNameClean.equalsIgnoreCase("San José")) {
+                    centerNameClean = "Chiclana"; // Tanto Chiclana como Jerez -> Chiclana
+                } else if (centerNameClean.equalsIgnoreCase("El Carmen")) {
+                    if (centerCityTemp != null && centerCityTemp.equalsIgnoreCase("Melilla")) {
+                        centerNameClean = "Melilla";
+                    } else {
+                        centerNameClean = "San Fernando";
+                    }
+                }
+
                 // 👉 Ponemos la coletilla "Salle Joven"
                 String centerFullName = "Salle Joven " + centerNameClean;
+
 
                 // ✅ Hacemos una copia final
                 final String finalCenterCity = centerCityTemp;

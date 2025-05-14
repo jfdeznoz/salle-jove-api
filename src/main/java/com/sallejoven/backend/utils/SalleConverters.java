@@ -149,13 +149,13 @@ public class SalleConverters {
         Center center = group.getCenter();
         
         return GroupDto.builder()
-        .groupId(group.getId().intValue())
-                .stage(group.getStage())
-                .centerName(center.getName())
-                .cityName(center.getCity())
-                .centerId(center.getId().intValue())
-                .build();
-    }
+            .groupId(group.getId().intValue())
+            .stage(group.getStage())
+            .centerName(center.getName() + " (" + center.getCity() + ")")
+            .cityName(center.getCity())
+            .centerId(center.getId().intValue())
+            .build();
+    }    
 
     public EventDto eventToDto(Event event){
 

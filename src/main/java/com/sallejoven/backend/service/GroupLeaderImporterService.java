@@ -64,7 +64,20 @@ public class GroupLeaderImporterService {
                     extractedCity = "Córdoba";
                 }
 
+                // ⚠️ Casos especiales
+                if (centerClean.equalsIgnoreCase("San José")) {
+                    centerClean = "Chiclana"; // Tanto Chiclana como Jerez -> Chiclana
+                } else if (centerClean.equalsIgnoreCase("El Carmen")) {
+                    if (extractedCity != null && extractedCity.equalsIgnoreCase("Melilla")) {
+                        centerClean = "Melilla";
+                    } else {
+                        centerClean = "San Fernando";
+                    }
+                }
+
+                // 👉 Ponemos la coletilla "Salle Joven"
                 String centerFullName = "Salle Joven " + centerClean;
+
                 final String finalCenterCity = extractedCity;
 
                 // Buscar o crear centro

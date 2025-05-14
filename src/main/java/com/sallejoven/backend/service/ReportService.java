@@ -111,7 +111,8 @@ public class ReportService {
         for (EventUser eu : participants) {
             String school = getSchool(eu.getUser());
             String role = getRoleForReport(eu.getUser());
-            int tshirt = eu.getUser().getTshirtSize();
+            Integer tshirt = eu.getUser().getTshirtSize();
+            if (tshirt == null) continue;
             int index = "CATEQUISTAS".equals(role) ? 7 + tshirt : tshirt;
             countsBySchool.putIfAbsent(school, new int[14]);
             countsBySchool.get(school)[index]++;
@@ -152,7 +153,8 @@ public class ReportService {
             row.createCell(2).setCellValue(getGroup(u));
             row.createCell(3).setCellValue(u.getFatherPhone() + " / " + u.getMotherPhone());
             row.createCell(4).setCellValue(u.getIntolerances() != null ? u.getIntolerances() : "");
-            row.createCell(5).setCellValue(getSizeString(u.getTshirtSize()));
+            Integer tshirtSize = u.getTshirtSize();
+            row.createCell(5).setCellValue(tshirtSize != null ? getSizeString(tshirtSize) : "");
             row.createCell(6).setCellValue(u.getEmail());
         }
 
