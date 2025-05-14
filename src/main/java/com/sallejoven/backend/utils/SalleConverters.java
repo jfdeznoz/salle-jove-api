@@ -1,5 +1,6 @@
 package com.sallejoven.backend.utils;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -39,7 +40,7 @@ public class SalleConverters {
         UserSalle userTango = userService.findByEmail(userEmail);
 
         List<Role> roles = authService.getCurrentUserRoles();
-        Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : roles.get(0);
+        Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : Collections.min(roles);
 
         List<GroupDto> groupDtos;
 
