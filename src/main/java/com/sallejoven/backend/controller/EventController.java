@@ -11,7 +11,6 @@ import com.sallejoven.backend.service.EventService;
 import com.sallejoven.backend.utils.SalleConverters;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -23,12 +22,8 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
-
 import java.io.IOException;
-import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -111,8 +106,13 @@ public class EventController {
         public ResponseEntity<List<ParticipantDto>> getParticipantsByGroupAndEvent(@RequestParam Integer eventId,
                                                                     @RequestParam Integer groupId) {
         List<EventUser> eventUsers = eventService.getUsersByEventAndGroup(eventId, groupId);
-        return ResponseEntity.ok(eventUsers.stream().map(salleConverters::participantDto)
-                                            .collect(Collectors.toList()));
+        return ResponseEntity.ok(eventUsers.stream().map(t -> {
+            try {
+                return salleConverters.participantDto(t);
+            } catch (SalleException e) {
+                throw new RuntimeException("Error al convertir EventUser a ParticipantDto", e);
+            }
+        }).collect(Collectors.toList()));
     }
 
     @PostMapping("/{eventId}/participants")

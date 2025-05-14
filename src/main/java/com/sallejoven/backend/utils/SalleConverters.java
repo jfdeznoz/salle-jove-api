@@ -10,6 +10,7 @@ import com.sallejoven.backend.model.dto.EventDto;
 import com.sallejoven.backend.model.dto.GroupDto;
 import com.sallejoven.backend.model.dto.ParticipantDto;
 import com.sallejoven.backend.model.dto.UserSelfDto;
+import com.sallejoven.backend.model.entity.Center;
 import com.sallejoven.backend.model.entity.Event;
 import com.sallejoven.backend.model.entity.EventUser;
 import com.sallejoven.backend.model.entity.GroupSalle;
@@ -82,7 +83,7 @@ public class SalleConverters {
     }
 
     public UserSelfDto buildSelfUserInfo(UserSalle userTango) throws SalleException {
-        List<Role> roles = authService.getCurrentUserRoles();
+        List<Role> roles = userService.getUserRoles(userTango);
         Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : roles.get(0);
 
         List<GroupDto> groupDtos;
@@ -145,12 +146,14 @@ public class SalleConverters {
     }
     
     public GroupDto groupToDto(GroupSalle group){
-
+        Center center = group.getCenter();
+        
         return GroupDto.builder()
         .groupId(group.getId().intValue())
                 .stage(group.getStage())
-                .centerName(group.getCenter().getName())
-                .cityName(group.getCenter().getCity())
+                .centerName(center.getName())
+                .cityName(center.getCity())
+                .centerId(center.getId().intValue())
                 .build();
     }
 
@@ -167,13 +170,17 @@ public class SalleConverters {
                 .build();
     }
 
-    public ParticipantDto participantDto(EventUser eventUser){
+    public ParticipantDto participantDto(EventUser eventUser) throws SalleException{
         UserSalle userSalle = eventUser.getUser();
+        List<Role> roles = userService.getUserRoles(userSalle);
+        Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : roles.get(0);
+
         return ParticipantDto.builder()
                 .userId(userSalle.getId())
                 .name(userSalle.getName())
                 .lastName(userSalle.getLastName())
                 .attends(eventUser.getStatus())
+                .rol(mainRole)
                 .build();
     }
 }

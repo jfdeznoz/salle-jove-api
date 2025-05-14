@@ -1,25 +1,18 @@
 package com.sallejoven.backend.model.dto;
 
-import com.sallejoven.backend.model.enums.Role;
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Data
 @Builder
-@AllArgsConstructor
 @NoArgsConstructor
-public class ParticipantDto {
-
-    private Long userId;
-
+@AllArgsConstructor
+public class CenterDto {
+    private Long id;
     private String name;
-
-    private String lastName;
-
-    private Integer attends;
-
-    private Role rol;
+    private List<GroupDto> groups;
 }

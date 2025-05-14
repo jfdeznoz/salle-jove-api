@@ -14,4 +14,5 @@ public interface GroupRepository extends JpaRepository<GroupSalle, Long> {
 
     Optional<GroupSalle> findByCenterAndStage(Center center, Integer stage);
     List<GroupSalle> findByStageIn(List<Integer> stages);
+    List<GroupSalle> findByCenter(Center center);
 }

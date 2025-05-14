@@ -1,6 +1,7 @@
 package com.sallejoven.backend.service;
 
 import com.sallejoven.backend.errors.SalleException;
+import com.sallejoven.backend.model.entity.Center;
 import com.sallejoven.backend.model.entity.Event;
 import com.sallejoven.backend.model.entity.EventGroup;
 import com.sallejoven.backend.model.entity.GroupSalle;
@@ -12,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -36,6 +38,14 @@ public class GroupService {
 
     public List<GroupSalle> findAll() {
         return groupRepository.findAll();
+    }
+
+    public Set<GroupSalle> findAllByIds(List<Long> ids) {
+        return new HashSet<>(groupRepository.findAllById(ids));
+    }
+
+    public List<GroupSalle> findByCenter(Center center) {
+        return groupRepository.findByCenter(center);
     }
 
     public List<GroupSalle> findAllByEvent(Long eventId) throws SalleException {

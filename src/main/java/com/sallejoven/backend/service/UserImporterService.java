@@ -33,6 +33,7 @@ public class UserImporterService {
     private final GroupRepository groupSalleRepository;
     private final CenterRepository centerRepository;
     private final PasswordEncoder passwordEncoder;
+    
 
     @Transactional
     public void importUsersFromCsv(String filePath) throws IOException, CsvException {
@@ -117,8 +118,8 @@ public class UserImporterService {
                     centerCityTemp = "Córdoba";
                 }
 
-                // 👉 Ponemos la coletilla "La Salle"
-                String centerFullName = "La Salle " + centerNameClean;
+                // 👉 Ponemos la coletilla "Salle Joven"
+                String centerFullName = "Salle Joven " + centerNameClean;
 
                 // ✅ Hacemos una copia final
                 final String finalCenterCity = centerCityTemp;
@@ -275,5 +276,11 @@ public class UserImporterService {
         System.out.println("⚠️ Fecha inválida: " + dateStr);
         return null;
     }
+
+    public void importGroupLeaders(String filePath) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'importGroupLeaders'");
+    }
+    
     
 }
