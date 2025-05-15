@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -57,15 +59,8 @@ public class EventController {
     }
 
     @PostMapping(value = "/", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<EventDto> createEvent(@ModelAttribute RequestEvent requestEvent) throws IOException {
-        Event eventCreated = eventService.saveEvent(
-            requestEvent.getName(),
-            requestEvent.getDescription(),
-            requestEvent.getEventDate(),
-            requestEvent.getStages(),
-            requestEvent.getPlace(),
-            requestEvent.getFile()
-        );
+    public ResponseEntity<EventDto> createEvent(@ModelAttribute RequestEvent requestEvent) throws IOException, SalleException {
+        Event eventCreated = eventService.saveEvent(requestEvent);
         return ResponseEntity.ok(salleConverters.eventToDto(eventCreated));
     }
 
@@ -76,22 +71,6 @@ public class EventController {
         
         return ResponseEntity.ok(salleConverters.eventToDto(eventCreated));
     }
-
-    /*
-     * @PutMapping("/{id}")
-     * public ResponseEntity<Event> updateEvent(@PathVariable Long id, @RequestBody
-     * Event eventDetails) {
-     * Optional<Event> event = eventService.findById(id);
-     * if (event.isPresent()) {
-     * Event existingEvent = event.get();
-     * existingEvent.setName(eventDetails.getName());
-     * existingEvent.setEventDate(eventDetails.getEventDate());
-     * existingEvent.setDivided(eventDetails.getDivided());
-     * return ResponseEntity.ok(eventService.saveEvent(existingEvent));
-     * }
-     * return ResponseEntity.notFound().build();
-     * }
-     */
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteEvent(@PathVariable Long id) {
@@ -104,7 +83,7 @@ public class EventController {
 
     @GetMapping("/participants")
         public ResponseEntity<List<ParticipantDto>> getParticipantsByGroupAndEvent(@RequestParam Integer eventId,
-                                                                    @RequestParam Integer groupId) {
+                                                                                   @RequestParam Integer groupId) {
         List<EventUser> eventUsers = eventService.getUsersByEventAndGroup(eventId, groupId);
         return ResponseEntity.ok(eventUsers.stream().map(t -> {
             try {
@@ -120,6 +99,14 @@ public class EventController {
                                                  @RequestBody AttendanceUpdateRequest request) throws SalleException {
         eventService.updateParticipantsAttendance(eventId, request.getParticipants());
         return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/{eventId}/block")
+    public ResponseEntity<EventDto> toggleEventBlocked(@PathVariable Long eventId,
+                                                       @RequestBody Map<String, Boolean> body) throws SalleException {
+        boolean blocked = body.getOrDefault("blocked", false);
+        Event updated = eventService.setBlockedStatus(eventId, blocked);
+        return ResponseEntity.ok(salleConverters.eventToDto(updated));
     }
 
 }

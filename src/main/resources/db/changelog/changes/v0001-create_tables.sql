@@ -70,6 +70,8 @@ CREATE TABLE event (
     place VARCHAR(255),
     divided BOOLEAN DEFAULT FALSE,
     stages INT[] NOT NULL,
+    is_general BOOLEAN,
+    is_blocked BOOLEAN,
     deleted_at TIMESTAMP
 );
 

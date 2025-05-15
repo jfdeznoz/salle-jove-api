@@ -53,4 +53,10 @@ public class Event {
     @Column(name = "deleted_at")
     @JsonFormat(pattern="yyyy-MM-dd HH:mm:ss")
     private LocalDateTime deletedAt;
+
+    @Column(name = "is_general")
+    private Boolean isGeneral;
+
+    @Column(name = "is_blocked")
+    private Boolean isBlocked;
 }

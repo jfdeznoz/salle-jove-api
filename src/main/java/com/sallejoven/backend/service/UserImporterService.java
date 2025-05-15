@@ -118,26 +118,14 @@ public class UserImporterService {
                     centerCityTemp = "Córdoba";
                 }
 
-                // ⚠️ Casos especiales
-                if (centerNameClean.equalsIgnoreCase("San José")) {
-                    centerNameClean = "Chiclana"; // Tanto Chiclana como Jerez -> Chiclana
-                } else if (centerNameClean.equalsIgnoreCase("El Carmen")) {
-                    if (centerCityTemp != null && centerCityTemp.equalsIgnoreCase("Melilla")) {
-                        centerNameClean = "Melilla";
-                    } else {
-                        centerNameClean = "San Fernando";
-                    }
-                }
-
                 // 👉 Ponemos la coletilla "Salle Joven"
                 String centerFullName = "Salle Joven " + centerNameClean;
 
-
-                // ✅ Hacemos una copia final
+                // ✅ Hacemos una copia final de la ciudad
                 final String finalCenterCity = centerCityTemp;
 
-                // 🔥 BUSCAR o CREAR el centro
-                Center center = centerRepository.findByName(centerFullName)
+                // 🔥 BUSCAR o CREAR el centro teniendo en cuenta nombre Y ciudad
+                Center center = centerRepository.findByNameAndCity(centerFullName, finalCenterCity)
                         .orElseGet(() -> {
                             Center newCenter = Center.builder()
                                     .name(centerFullName)

@@ -79,8 +79,12 @@ public class GroupService {
                 .toList();
     }
 
-    public List<GroupSalle> findAllByStage(List<Integer> stages) {
+    public List<GroupSalle> findAllByStages(List<Integer> stages) {
         return groupRepository.findByStageIn(stages);
+    }
+
+    public List<GroupSalle> findAllByStageAndCenter(List<Integer> stages, Long centerId) {
+        return groupRepository.findAllByStagesAndCenterId(stages, centerId);
     }
 
     public GroupSalle saveGroup(GroupSalle group) {

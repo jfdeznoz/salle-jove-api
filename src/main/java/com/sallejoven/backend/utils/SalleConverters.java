@@ -168,6 +168,8 @@ public class SalleConverters {
                 .fileName(event.getFileName())
                 .stages(event.getStages())
                 .place(event.getPlace())
+                .isGeneral(event.getIsGeneral())
+                .isBlocked(event.getIsBlocked())
                 .build();
     }
 

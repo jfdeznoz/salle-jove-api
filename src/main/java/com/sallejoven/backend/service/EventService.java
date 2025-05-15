@@ -5,13 +5,19 @@ import com.sallejoven.backend.model.entity.*;
 import com.sallejoven.backend.model.ids.EventGroupId;
 import com.sallejoven.backend.model.ids.EventUserId;
 import com.sallejoven.backend.model.requestDto.AttendanceUpdateDto;
+import com.sallejoven.backend.model.requestDto.RequestEvent;
+import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.repository.EventRepository;
 import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.User;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -20,6 +26,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class EventService {
 
     private final EventRepository eventRepository;
@@ -28,21 +35,7 @@ public class EventService {
     private final GroupService groupService;
     private final UserService userService;
     private final S3Service s3Service;
-
-    @Autowired
-    public EventService(EventRepository eventRepository,
-                        GroupService groupService,
-                        EventGroupService eventGroupService,
-                        EventUserService eventUserService,
-                        UserService userService,
-                        S3Service s3Service) {
-        this.eventRepository = eventRepository;
-        this.groupService = groupService;
-        this.eventGroupService = eventGroupService;
-        this.eventUserService = eventUserService;
-        this.userService = userService;
-        this.s3Service = s3Service;
-    }
+    private final AuthService authService;
 
     public Optional<Event> findById(Long id) {
         return eventRepository.findById(id);
@@ -54,42 +47,71 @@ public class EventService {
     }
 
     @Transactional
-    public Event saveEvent(String name, String description, Date eventDate, List<Integer> stages, String place, MultipartFile file) throws IOException {
-        List<GroupSalle> groups = groupService.findAllByStage(stages);
+    public Event saveEvent(RequestEvent requestEvent) throws IOException, SalleException {
+        List<Integer> stages = requestEvent.getStages();
+        List<GroupSalle> groups = getTargetGroups(requestEvent, stages);
 
-        Event event = Event.builder()
-                .name(name)
-                .description(description)
-                .eventDate(eventDate)
-                .stages(stages.toArray(new Integer[0]))
-                .place(place)
-                .build();
-
+        Event event = buildEventEntity(requestEvent, stages);
         event = eventRepository.save(event);
 
+        handleFileUpload(requestEvent.getFile(), event);
+
+        saveEventGroups(event, groups);
+
+        List<UserSalle> users = userService.getUsersByStages(stages);
+        assignEventToUsers(event, users);
+
+        return event;
+    }
+
+    private List<GroupSalle> getTargetGroups(RequestEvent requestEvent, List<Integer> stages) throws SalleException {
+        if (Boolean.TRUE.equals(requestEvent.getIsGeneral())) {
+            return groupService.findAllByStages(stages);
+        } else {
+            UserSalle user = authService.getCurrentUser();
+            Set<GroupSalle> userGroups = user.getGroups();
+            if (userGroups == null || userGroups.isEmpty()) {
+                throw new SalleException(ErrorCodes.USER_GROUP_NOT_FOUND);
+            }
+    
+            GroupSalle firstGroup = userGroups.iterator().next();
+            Long centerId = firstGroup.getCenter().getId();
+    
+            return groupService.findAllByStageAndCenter(stages, centerId);
+        }
+    }    
+
+    private Event buildEventEntity(RequestEvent requestEvent, List<Integer> stages) {
+        return Event.builder()
+                .name(requestEvent.getName())
+                .description(requestEvent.getDescription())
+                .eventDate(requestEvent.getEventDate())
+                .stages(stages != null ? stages.toArray(new Integer[0]) : null)
+                .place(requestEvent.getPlace())
+                .isGeneral(requestEvent.getIsGeneral())
+                .isBlocked(false)
+                .build();
+    }
+    
+    private void handleFileUpload(MultipartFile file, Event event) throws IOException {
         if (file != null && !file.isEmpty()) {
             String folderPath = "events/event_" + event.getId();
             String uploadedUrl = s3Service.uploadFile(file, folderPath);
             event.setFileName(uploadedUrl);
         }
-
-        final Event savedEvent = event;
-
+    }
+    
+    private void saveEventGroups(Event event, List<GroupSalle> groups) {
         List<EventGroup> eventGroups = groups.stream()
                 .map(group -> EventGroup.builder()
-                        .id(new EventGroupId(savedEvent.getId(), group.getId()))
-                        .event(savedEvent)
+                        .id(new EventGroupId(event.getId(), group.getId()))
+                        .event(event)
                         .groupSalle(group)
                         .build())
                 .collect(Collectors.toList());
-
+    
         eventGroupService.saveAllEventGroup(eventGroups);
-
-        List<UserSalle> users = userService.getUsersByStages(stages);
-        assignEventToUsers(savedEvent, users);
-
-        return savedEvent;
-    }
+    }    
 
     @Transactional
     public Event editEvent(Long eventId, String name, String description, @DateTimeFormat(pattern = "dd/MM/yyyy") Date eventDate, List<Integer> stages, String place, MultipartFile file) throws IOException {
@@ -131,10 +153,10 @@ public class EventService {
                 .filter(stage -> !currentSet.contains(stage))
                 .toList();
 
-        List<GroupSalle> groupsToRemove = groupService.findAllByStage(toRemove);
+        List<GroupSalle> groupsToRemove = groupService.findAllByStages(toRemove);
         eventGroupService.deleteEventGroupsByEventAndGroups(event.getId(), groupsToRemove);
 
-        List<GroupSalle> groupsToAdd = groupService.findAllByStage(toAdd);
+        List<GroupSalle> groupsToAdd = groupService.findAllByStages(toAdd);
         List<EventGroup> newEventGroups = groupsToAdd.stream()
                 .map(group -> EventGroup.builder()
                         .id(new EventGroupId(event.getId(), group.getId()))
@@ -187,5 +209,33 @@ public class EventService {
                 eventUserService.save(eventUser);
             }
         }
+    }
+
+    @Transactional
+    public Event setBlockedStatus(Long eventId, boolean blocked) throws SalleException {
+        Optional<Event> optionalEvent = findById(eventId);
+
+        if(optionalEvent.isPresent()){
+            Event event = optionalEvent.get();
+            
+            UserSalle currentUser = authService.getCurrentUser();
+            String roles = currentUser.getRoles();
+    
+            if (event.getIsGeneral()) {
+                if (!roles.contains("ROLE_ADMIN")) {
+                    throw new SalleException(ErrorCodes.BLOCK_EVENT_ERROR_ADMIN);
+                }
+            } else {
+                if (!roles.contains("ROLE_ADMIN") && !roles.contains("ROLE_PASTORAL_DELEGATE")) {
+                    throw new SalleException(ErrorCodes.BLOCK_EVENT_ERROR);
+                }
+            }
+    
+            event.setIsBlocked(blocked);
+            return eventRepository.save(event);
+        }else{
+            throw new SalleException(ErrorCodes.EVENT_NOT_FOUND);
+        }
+        
     }
 }

@@ -27,4 +27,8 @@ public class EventDto {
     private String place;
 
     private Integer[] stages;
+
+    private Boolean isGeneral;
+
+    private Boolean isBlocked;
 }

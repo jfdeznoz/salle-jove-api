@@ -34,4 +34,6 @@ public class RequestEvent {
     private MultipartFile file;
 
     private String place;
+
+    private Boolean isGeneral;
 }
