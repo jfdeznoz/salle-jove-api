@@ -5,7 +5,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import com.fasterxml.jackson.annotation.JsonFormat;
 import java.util.Date;
 import java.util.List;
 
@@ -28,6 +27,10 @@ public class RequestEvent {
     @NotNull
     @DateTimeFormat(pattern = "dd/MM/yyyy")
     private Date eventDate;
+
+    @NotNull
+    @DateTimeFormat(pattern = "dd/MM/yyyy")
+    private Date endDate;
 
     private List<Integer> stages;
 

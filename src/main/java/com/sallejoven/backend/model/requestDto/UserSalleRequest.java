@@ -55,4 +55,6 @@ public class UserSalleRequest {
     private List<Long> groups;
 
     private String rol;
+
+    private Integer eventId;
 }

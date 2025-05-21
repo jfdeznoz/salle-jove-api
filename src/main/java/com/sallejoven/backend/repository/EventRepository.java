@@ -1,6 +1,10 @@
 package com.sallejoven.backend.repository;
 
 import com.sallejoven.backend.model.entity.Event;
+import com.sallejoven.backend.model.entity.GroupSalle;
+
+import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -12,6 +16,86 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface EventRepository extends JpaRepository<Event, Long> {
+
+    @Query("""
+        SELECT e
+          FROM Event e
+         WHERE e.deletedAt IS NULL
+           AND e.isGeneral = true
+           AND (
+                (:isPast = true  AND e.endDate <  :today)
+             OR (:isPast = false AND (e.endDate IS NULL OR e.endDate >= :today))
+           )
+    """)
+    Page<Event> findGeneralEvents(@Param("isPast") boolean isPast,
+                                  @Param("today")  Date today,
+                                  Pageable pageable);
+
+    /**
+     * 2) Sólo locales de los grupos dados
+     */
+    @Query("""
+        SELECT eg.event
+          FROM EventGroup eg
+         WHERE eg.deletedAt    IS NULL
+           AND eg.groupSalle  IN :groups
+           AND eg.event.deletedAt IS NULL
+           AND eg.event.isGeneral = false
+           AND (
+                (:isPast = true  AND eg.event.endDate <  :today)
+             OR (:isPast = false AND (eg.event.endDate IS NULL OR eg.event.endDate >= :today))
+           )
+    """)
+    Page<Event> findEventsByGroupsAndPastStatus(@Param("groups") List<GroupSalle> groups,
+                                                @Param("isPast")  boolean isPast,
+                                                @Param("today")   Date today,
+                                                Pageable pageable);
+
+    /**
+     * 3) Unión de generales + locales (para isGeneral == null en NO-admin)
+     */
+    @Query("""
+        SELECT DISTINCT e
+          FROM Event e
+          LEFT JOIN EventGroup eg
+            ON eg.event = e
+           AND eg.deletedAt    IS NULL
+         WHERE e.deletedAt IS NULL
+           AND (
+                e.isGeneral = true
+             OR eg.groupSalle IN :groups
+           )
+           AND (
+                (:isPast = true  AND e.endDate <  :today)
+             OR (:isPast = false AND (e.endDate IS NULL OR e.endDate >= :today))
+           )
+    """)
+    Page<Event> findGeneralOrUserLocalEvents(@Param("groups") List<GroupSalle> groups,
+                                             @Param("isPast")  boolean isPast,
+                                             @Param("today")   Date today,
+                                             Pageable pageable);
+
+    @Query("""
+        SELECT e FROM Event e
+        WHERE e.deletedAt IS NULL
+        AND (:isGeneral IS NULL OR e.isGeneral = :isGeneral)
+        AND (
+            (:isPast = true AND e.endDate IS NOT NULL AND e.endDate < :now)
+            OR (:isPast = false AND (e.endDate IS NULL OR e.endDate >= :now))
+        )
+        """)
+    Page<Event> findAdminFilteredEvents(
+        @Param("isGeneral") Boolean isGeneral,
+        @Param("isPast") boolean isPast,
+        @Param("now") Date now,
+        Pageable pageable);                
+
+    @Query("SELECT e FROM Event e WHERE e.endDate IS NOT NULL AND e.endDate < :now AND e.deletedAt IS NULL")
+    Page<Event> findPastEvents(@Param("now") Date now, Pageable pageable);
+
+    @Query("SELECT e FROM Event e WHERE (e.endDate IS NULL OR e.endDate >= :now) AND e.deletedAt IS NULL")
+    Page<Event> findFutureEvents(@Param("now") Date now, Pageable pageable);
+
     @Query("SELECT e FROM Event e WHERE e.id = :id AND e.deletedAt IS NULL")
     Optional<Event> findById(@Param("id") Long id);
 

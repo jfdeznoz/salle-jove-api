@@ -22,6 +22,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -41,10 +44,31 @@ public class EventService {
         return eventRepository.findById(id);
     }
 
-    public Page<Event> findAll(int page, int size) {
+    public Page<Event> findAll(int page, int size, boolean isPast, Boolean isGeneral) throws SalleException {
+        UserSalle user = authService.getCurrentUser();
+        boolean isAdmin = user.getRoles().contains("ROLE_ADMIN");
+    
+        Date today = java.sql.Date.valueOf(
+                        ZonedDateTime.now(ZoneId.of("Europe/Madrid"))
+                                     .toLocalDate());
         Pageable pageable = PageRequest.of(page, size);
-        return eventRepository.findAll(pageable);
-    }
+    
+        if (isAdmin) {
+            return eventRepository.findAdminFilteredEvents(isGeneral, isPast, today, pageable);
+        }
+    
+        List<GroupSalle> groups = new ArrayList<>(user.getGroups());
+    
+        if (Boolean.TRUE.equals(isGeneral)) {
+            return eventRepository.findGeneralEvents(isPast, today, pageable);
+        }
+        
+        if (Boolean.FALSE.equals(isGeneral)) {
+            return eventRepository.findEventsByGroupsAndPastStatus(groups, isPast, today, pageable);
+        }
+
+        return eventRepository.findGeneralOrUserLocalEvents(groups, isPast, today, pageable);
+    }            
 
     @Transactional
     public Event saveEvent(RequestEvent requestEvent) throws IOException, SalleException {
@@ -59,7 +83,7 @@ public class EventService {
         saveEventGroups(event, groups);
 
         List<UserSalle> users = userService.getUsersByStages(stages);
-        assignEventToUsers(event, users);
+        eventUserService.assignEventToUsers(event, users);
 
         return event;
     }
@@ -86,6 +110,7 @@ public class EventService {
                 .name(requestEvent.getName())
                 .description(requestEvent.getDescription())
                 .eventDate(requestEvent.getEventDate())
+                .endDate(requestEvent.getEndDate())
                 .stages(stages != null ? stages.toArray(new Integer[0]) : null)
                 .place(requestEvent.getPlace())
                 .isGeneral(requestEvent.getIsGeneral())
@@ -114,18 +139,20 @@ public class EventService {
     }    
 
     @Transactional
-    public Event editEvent(Long eventId, String name, String description, @DateTimeFormat(pattern = "dd/MM/yyyy") Date eventDate, List<Integer> stages, String place, MultipartFile file) throws IOException {
-        Event existingEvent = eventRepository.findById(eventId)
-                .orElseThrow(() -> new RuntimeException("Evento no encontrado con ID: " + eventId));
+    public Event editEvent(RequestEvent requestEvent) throws IOException {
+        Event existingEvent = eventRepository.findById(requestEvent.getId())
+                .orElseThrow(() -> new RuntimeException("Evento no encontrado con ID: " + requestEvent.getId()));
 
         List<Integer> currentStages = List.of(existingEvent.getStages());
 
-        existingEvent.setName(name);
-        existingEvent.setDescription(description);
-        existingEvent.setEventDate(eventDate);
-        existingEvent.setStages(stages.toArray(new Integer[0]));
-        existingEvent.setPlace(place);
+        existingEvent.setName(requestEvent.getName());
+        existingEvent.setDescription(requestEvent.getDescription());
+        existingEvent.setEventDate(requestEvent.getEventDate());
+        existingEvent.setEndDate(requestEvent.getEndDate());
+        existingEvent.setStages(requestEvent.getStages().toArray(new Integer[0]));
+        existingEvent.setPlace(requestEvent.getPlace());
 
+        MultipartFile file = requestEvent.getFile();
         if (file != null && !file.isEmpty()) {
             String folderPath = "events/event_" + existingEvent.getId();
             String uploadedUrl = s3Service.uploadFile(file, folderPath);
@@ -166,19 +193,6 @@ public class EventService {
                 .toList();
 
         eventGroupService.saveAllEventGroup(newEventGroups);
-    }
-
-    public void assignEventToUsers(Event event, List<UserSalle> users) {
-        List<EventUser> eventUsers = users.stream()
-                .map(user -> EventUser.builder()
-                        .id(new EventUserId(event.getId(), user.getId()))
-                        .event(event)
-                        .user(user)
-                        .status(0)
-                        .build())
-                .toList();
-
-        eventUserService.saveAll(eventUsers);
     }
 
     @Transactional

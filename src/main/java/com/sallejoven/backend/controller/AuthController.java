@@ -6,6 +6,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.security.access.prepost.PreAuthorize;
 import java.util.List;
+
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.support.DefaultMessageSourceResolvable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -25,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class AuthController {
 
+    @Lazy
     private final AuthService authService;
 
     @PostMapping("/sign-in")

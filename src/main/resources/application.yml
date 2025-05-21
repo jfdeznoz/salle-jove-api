@@ -1,8 +1,9 @@
 spring:
   application:
     name: salle-joven
+
 #  profiles:
-#    active: local  
+#    active: local
 
 server:
   port: ${PORT:8080}

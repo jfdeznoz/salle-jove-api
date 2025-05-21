@@ -22,6 +22,9 @@ public class EventDto {
     @Temporal(TemporalType.DATE)
     private Date eventDate;
 
+    @Temporal(TemporalType.DATE)
+    private Date endDate;
+
     private String fileName;
 
     private String place;

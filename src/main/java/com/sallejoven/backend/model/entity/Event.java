@@ -40,6 +40,10 @@ public class Event {
     @Temporal(TemporalType.DATE)
     private Date eventDate;
 
+    @Column(name = "end_date")
+    @Temporal(TemporalType.DATE)
+    private Date endDate;
+
     private Boolean divided;
 
     @Column(name = "file_name")
