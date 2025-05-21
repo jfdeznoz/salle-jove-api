@@ -1,0 +1,1 @@
+ALTER TABLE event ADD COLUMN end_date DATE;

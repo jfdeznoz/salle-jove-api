@@ -165,6 +165,7 @@ public class SalleConverters {
                 .name(event.getName())
                 .description(event.getDescription())
                 .eventDate(event.getEventDate())
+                .endDate(event.getEndDate())
                 .fileName(event.getFileName())
                 .stages(event.getStages())
                 .place(event.getPlace())

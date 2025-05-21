@@ -13,7 +13,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -30,7 +29,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-// @RequestMapping(value = "/api/events", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
 @RequestMapping(value = "/api/events")
 @RestController
 public class EventController {
@@ -46,8 +44,10 @@ public class EventController {
 
     @GetMapping("/paged")
     public ResponseEntity<Page<EventDto>> getAllEvents(@RequestParam(defaultValue = "0") int page,
-                                                       @RequestParam(defaultValue = "10") int size) {
-        Page<Event> eventPage = eventService.findAll(page, size);
+                                                    @RequestParam(defaultValue = "10") int size,
+                                                    @RequestParam(defaultValue = "false") Boolean isPast,
+                                                    @RequestParam(required = false) Boolean isGeneral) throws SalleException {
+        Page<Event> eventPage = eventService.findAll(page, size, isPast, isGeneral);
         Page<EventDto> eventDtoPage = eventPage.map(salleConverters::eventToDto);
         return ResponseEntity.ok(eventDtoPage);
     }
@@ -66,8 +66,7 @@ public class EventController {
 
     @PutMapping(value = "/{eventId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<EventDto> editEvent(@ModelAttribute RequestEvent requestEvent) throws IOException {
-        Event eventCreated = eventService.editEvent(requestEvent.getId(), requestEvent.getName(), requestEvent.getDescription(), 
-        requestEvent.getEventDate(), requestEvent.getStages(), requestEvent.getPlace(), requestEvent.getFile());
+        Event eventCreated = eventService.editEvent(requestEvent);
         
         return ResponseEntity.ok(salleConverters.eventToDto(eventCreated));
     }

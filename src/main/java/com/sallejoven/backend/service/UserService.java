@@ -1,13 +1,20 @@
 package com.sallejoven.backend.service;
 
 import com.sallejoven.backend.errors.SalleException;
+import com.sallejoven.backend.model.entity.Event;
+import com.sallejoven.backend.model.entity.EventUser;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.model.requestDto.UserSalleRequestOptional;
 import com.sallejoven.backend.model.types.ErrorCodes;
+import com.sallejoven.backend.repository.EventUserRepository;
 import com.sallejoven.backend.repository.UserRepository;
+
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -19,16 +26,12 @@ import java.util.Optional;
 import java.util.Set;
 
 @Service
+@RequiredArgsConstructor
 public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-
-    @Autowired
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-    }
+    private final EventUserService eventUserService;
 
     public UserSalle findByEmail(String email) throws SalleException {
         return userRepository.findByEmail(email).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
@@ -95,28 +98,38 @@ public class UserService {
         return userRepository.save(user);
     }
 
+    @Transactional
     public UserSalle saveUser(UserSalleRequest userRequest, Set<GroupSalle> userGroups) {
+        // 1) Guardamos el usuario
         UserSalle user = UserSalle.builder()
-                .name(userRequest.getName())
-                .lastName(userRequest.getLastName())
-                .dni(userRequest.getDni())
-                .phone(userRequest.getPhone())
-                .email(userRequest.getEmail())
-                .tshirtSize(userRequest.getTshirtSize())
-                .healthCardNumber(userRequest.getHealthCardNumber())
-                .intolerances(userRequest.getIntolerances())
-                .chronicDiseases(userRequest.getChronicDiseases())
-                .imageAuthorization(userRequest.getImageAuthorization())
-                .birthDate(userRequest.getBirthDate())
-                .password(passwordEncoder.encode("password"))
-                .roles("ROLE_" + userRequest.getRol())
-                .gender(userRequest.getGender())
-                .address(userRequest.getAddress())
-                .city(userRequest.getCity())
-                .build();
+            .name(userRequest.getName())
+            .lastName(userRequest.getLastName())
+            .dni(userRequest.getDni())
+            .phone(userRequest.getPhone())
+            .email(userRequest.getEmail())
+            .tshirtSize(userRequest.getTshirtSize())
+            .healthCardNumber(userRequest.getHealthCardNumber())
+            .intolerances(userRequest.getIntolerances())
+            .chronicDiseases(userRequest.getChronicDiseases())
+            .imageAuthorization(userRequest.getImageAuthorization())
+            .birthDate(userRequest.getBirthDate())
+            .password(passwordEncoder.encode("password"))
+            .roles("ROLE_" + userRequest.getRol())
+            .gender(userRequest.getGender())
+            .address(userRequest.getAddress())
+            .city(userRequest.getCity())
+            .build();
 
-        user.setGroups(userGroups);        
-        return userRepository.save(user);
+            user.setGroups(userGroups);
+            UserSalle savedUser = userRepository.save(user);
+
+        Integer eventId = userRequest.getEventId();
+
+        if (eventId != null) {
+            eventUserService.assignEventToUsers(eventId, List.of(savedUser));
+        }
+
+        return savedUser;
     }
 
     public void addUserToGroup(UserSalle user, GroupSalle group) {
