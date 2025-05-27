@@ -190,6 +190,34 @@ public class UserService {
         return userRepository.findAllByRoles("ROLE_PARTICIPANT", "ROLE_ANIMATOR");
     }    
 
+    @Transactional
+    public void removeUserFromGroup(UserSalle user, GroupSalle group) {
+        if (user.getGroups().remove(group)) {
+            userRepository.save(user);
+            System.out.println("✅ Grupo eliminado de usuario: " 
+                + user.getName() + " " + user.getLastName());
+        } else {
+            System.out.println("ℹ️ El usuario no pertenecía a ese grupo: " 
+                + user.getName() + " " + user.getLastName());
+        }
+    }
+
+    @Transactional
+    public void moveUserBetweenGroups(UserSalle user, GroupSalle from, GroupSalle to) {
+        boolean removed = user.getGroups().remove(from);
+        if (removed) {
+            user.getGroups().add(to);
+            userRepository.save(user);
+            System.out.println("🔄 Usuario " 
+                + user.getName() + " " + user.getLastName() 
+                + " movido de grupo " + from.getStage() 
+                + " a " + to.getStage());
+        } else {
+            throw new IllegalStateException(
+                "El usuario no pertenece al grupo origen: " + from.getStage());
+        }
+    }
+
     /*@Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         UserSalle user = userRepository.findByEmail(username)

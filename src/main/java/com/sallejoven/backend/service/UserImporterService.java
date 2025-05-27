@@ -24,6 +24,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -68,6 +69,20 @@ public class UserImporterService {
                 String fatherPhone = row[21];
                 String fatherEmail = row[22];
                 String imageAuthorizationStr = row[23];
+
+                String fullNameCsvNorm = Normalizer.normalize((name + lastName), Normalizer.Form.NFD)
+                .replaceAll("[\\p{InCombiningDiacriticalMarks}\\s-]", "")
+                .toLowerCase();
+
+                if (email == null || email.trim().isEmpty() || email.trim().equals(".") || email.contains("-")) {
+                    // Normalizamos nombre+apellidos a ascii y sin espacios
+                    String localPart = Normalizer.normalize(name + lastName, Normalizer.Form.NFD)
+                        .replaceAll("[\\p{InCombiningDiacriticalMarks}]", "")
+                        .replaceAll("[^A-Za-z0-9]", "")
+                        .toLowerCase();
+                    email = localPart + "@salle.com";
+                    System.out.println("🔄 Email generado para " + name + " " + lastName + ": " + email);
+                }
 
                 // Determine role
                 String role;
@@ -155,11 +170,37 @@ public class UserImporterService {
                             return newGroup;
                         });
 
-                // 🔥 Buscar usuario por email
                 Optional<UserSalle> existingUserOpt = userSalleRepository.findByEmail(email);
-                UserSalle user;
-
+                UserSalle user = null;
+        
+                if (existingUserOpt.isPresent()) {
+                    UserSalle existing = existingUserOpt.get();
+        
+                    // Normalizamos nombre del DB para comparar
+                    String dbNameNorm = Normalizer.normalize((existing.getName() + existing.getLastName()), Normalizer.Form.NFD)
+                        .replaceAll("[\\p{InCombiningDiacriticalMarks}\\s-]", "")
+                        .toLowerCase();
+        
+                    if (dbNameNorm.equals(fullNameCsvNorm)) {
+                        // 3a) Mismo usuario: lo reutilizamos
+                        user = existing;
+                        System.out.println("ℹ️ Usuario existente emparejado por email+nombre: " + name + " " + lastName);
+                    } else {
+                        // 3b) Email duplicado pero distinto nombre -> generamos variante
+                        String localPart = Normalizer.normalize(name + lastName, Normalizer.Form.NFD)
+                            .replaceAll("[\\p{InCombiningDiacriticalMarks}]", "")
+                            .replaceAll("[^A-Za-z0-9]", "")
+                            .toLowerCase();
+                        String randomSuffix = UUID.randomUUID().toString().substring(0, 2);
+                        email = localPart + "_" + randomSuffix + "@salle.com";
+                        System.out.println("⚠️ Email colisión para " + name + " " + lastName
+                            + "; usando variante: " + email);
+                        existingUserOpt = Optional.empty();  // forzamos creación
+                    }
+                }
+        
                 if (existingUserOpt.isEmpty()) {
+                    // 4) Creamos nuevo
                     user = UserSalle.builder()
                             .name(name)
                             .lastName(lastName)
@@ -184,29 +225,18 @@ public class UserImporterService {
                             .motherPhone(motherPhone)
                             .fatherPhone(fatherPhone)
                             .build();
-
-                    Set<GroupSalle> groups = new HashSet<>();
-                    groups.add(group);
-                    user.setGroups(groups);
-
                     userSalleRepository.save(user);
-                    System.out.println("✅ Usuario creado: " + name + " " + lastName + " con grupo añadido.");
+                    System.out.println("✅ Usuario creado: " + name + " " + lastName);
+                }
+        
+                // 5) Añadimos grupo si faltaba
+                Set<GroupSalle> groups = Optional.ofNullable(user.getGroups()).orElse(new HashSet<>());
+                if (groups.add(group)) {
+                    user.setGroups(groups);
+                    userSalleRepository.save(user);
+                    System.out.println("✅ Grupo añadido a: " + name + " " + lastName);
                 } else {
-                    user = existingUserOpt.get();
-
-                    Set<GroupSalle> userGroups = user.getGroups();
-                    if (userGroups == null) {
-                        userGroups = new HashSet<>();
-                        user.setGroups(userGroups);
-                    }
-
-                    if (!userGroups.contains(group)) {
-                        userGroups.add(group);
-                        userSalleRepository.save(user);
-                        System.out.println("✅ Grupo añadido a usuario existente: " + name + " " + lastName);
-                    } else {
-                        System.out.println("ℹ️ El usuario ya tiene este grupo: " + name + " " + lastName);
-                    }
+                    System.out.println("ℹ️ Ya tenía este grupo: " + name + " " + lastName);
                 }
             }
         }

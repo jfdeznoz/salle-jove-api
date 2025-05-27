@@ -116,6 +116,34 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
+    @DeleteMapping("/{id}/group/{groupId}")
+    public ResponseEntity<Void> deleteUserToGroup( @PathVariable Long groupId, @PathVariable Long userId) throws SalleException {
+        GroupSalle group = groupService.findById(groupId)
+                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+
+        UserSalle user = userService.findByUserId(userId);
+        userService.removeUserFromGroup(user, group);
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{userId}/group/{fromGroupId}/to/{toGroupId}")
+    public ResponseEntity<Void> moveUserBetweenGroups(@PathVariable Long userId,
+                                                        @PathVariable Long fromGroupId,
+                                                        @PathVariable Long toGroupId) throws SalleException {
+
+        UserSalle user = userService.findByUserId(userId);
+
+        GroupSalle from = groupService.findById(fromGroupId)
+                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+        GroupSalle to = groupService.findById(toGroupId)
+                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+
+        userService.moveUserBetweenGroups(user, from, to);
+
+        return ResponseEntity.noContent().build();
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<UserSelfDto> updateUser(@PathVariable Long id, @RequestBody UserSalleRequestOptional dto) {
         try {
