@@ -8,8 +8,9 @@ import com.sallejoven.backend.model.entity.EventUser;
 import com.sallejoven.backend.model.requestDto.AttendanceUpdateRequest;
 import com.sallejoven.backend.model.requestDto.RequestEvent;
 import com.sallejoven.backend.service.EventService;
+import com.sallejoven.backend.service.EventUserService;
 import com.sallejoven.backend.utils.SalleConverters;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -31,16 +32,12 @@ import java.util.stream.Collectors;
 
 @RequestMapping(value = "/api/events")
 @RestController
+@RequiredArgsConstructor
 public class EventController {
 
     private final EventService eventService;
+    private final EventUserService eventUserService;
     private final SalleConverters salleConverters;
-
-    @Autowired
-    public EventController(EventService eventService, SalleConverters salleConverters) {
-        this.eventService = eventService;
-        this.salleConverters = salleConverters;
-    }
 
     @GetMapping("/paged")
     public ResponseEntity<Page<EventDto>> getAllEvents(@RequestParam(defaultValue = "0") int page,
@@ -83,7 +80,7 @@ public class EventController {
     @GetMapping("/participants")
         public ResponseEntity<List<ParticipantDto>> getParticipantsByGroupAndEvent(@RequestParam Integer eventId,
                                                                                    @RequestParam Integer groupId) {
-        List<EventUser> eventUsers = eventService.getUsersByEventAndGroup(eventId, groupId);
+        List<EventUser> eventUsers = eventUserService.findByEventIdAndGroupId(eventId, groupId);
         return ResponseEntity.ok(eventUsers.stream().map(t -> {
             try {
                 return salleConverters.participantDto(t);

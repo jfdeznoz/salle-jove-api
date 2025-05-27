@@ -28,7 +28,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
@@ -99,8 +98,7 @@ public class UserController {
         GroupSalle group = groupService.findById(groupId)
                 .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
 
-        Set<GroupSalle> userGroups = Set.of(group);
-        UserSalle savedUser = userService.saveUser(userRequest, userGroups);
+        UserSalle savedUser = userService.saveUser(userRequest, group);
         return ResponseEntity.ok(savedUser);
     }
 

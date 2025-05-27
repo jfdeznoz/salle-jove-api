@@ -8,10 +8,7 @@ import com.sallejoven.backend.repository.EventRepository;
 import com.sallejoven.backend.repository.EventUserRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-
 import java.util.List;
 import java.util.Optional;
 
@@ -74,6 +71,20 @@ public class EventUserService {
                 .build())
             .toList();
 
+        eventUserRepository.saveAll(eventUsers);
+    }
+
+    @Transactional
+    public void assignEventsToUser(List<Event> events, UserSalle user) {
+        List<EventUser> eventUsers = events.stream()
+            .map(evt -> EventUser.builder()
+                .id(new EventUserId(evt.getId(), user.getId()))
+                .event(evt)
+                .user(user)
+                .status(0)
+                .build()
+            )
+            .toList();
         eventUserRepository.saveAll(eventUsers);
     }
 }

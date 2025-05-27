@@ -7,8 +7,9 @@ import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.enums.Stage;
 import com.sallejoven.backend.model.enums.TshirtSizeEnum;
 import com.sallejoven.backend.model.types.ReportType;
+import com.sallejoven.backend.utils.ExcelReportUtils;
+
 import lombok.RequiredArgsConstructor;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -24,6 +25,7 @@ import java.util.stream.Collectors;
 public class ReportService {
 
     private final EventService eventService;
+    private final EventUserService eventUserService;
     private final UserService userService;
     private final S3Service s3Service;
     private final EmailService emailService;
@@ -38,9 +40,9 @@ public class ReportService {
     }
 
     public List<String> generateEventReports(Long eventId, List<ReportType> types, boolean overwrite) throws Exception {
-        Event event = eventService.findById(eventId)
-                .orElseThrow(() -> new IllegalArgumentException("Evento no encontrado ID: " + eventId));
-        List<EventUser> participants = eventService.getUsersByEventOrdered(eventId);
+        Event event = eventService.findById(eventId).orElseThrow(() -> new IllegalArgumentException("Evento no encontrado ID: " + eventId));
+        
+        List<EventUser> participants = eventUserService.findByEventIdOrdered(eventId);
         String folder = "reports/event_" + eventId;
 
         Map<String, byte[]> attachments = new LinkedHashMap<>();
@@ -48,11 +50,16 @@ public class ReportService {
         String            email       = authService.getCurrentUserEmail();
 
         for (ReportType type : types) {
-            String filename = String.format("informe_%s_%d.xlsx",
-                    type.name().toLowerCase(), eventId);
+            String filename = String.format("informe_%s_%d_%s.xlsx",
+                                type.name().toLowerCase(),
+                                event.getId(),
+                                event.getName()
+                                    .trim()
+                                    .toLowerCase()
+                                    .replaceAll("\\s+", "_")
+                                    .replaceAll("[^a-z0-9_\\-]", ""));
             String fullPath = folder + "/" + filename;
 
-            // Si existe y no pedimos overwrite, lo descargamos y seguimos
             if (!overwrite && s3Service.exists(fullPath)) {
                 String  url       = s3Service.getFileUrl(fullPath);
                 byte[]  fileBytes = s3Service.downloadFile(fullPath);
@@ -61,7 +68,6 @@ public class ReportService {
                 continue;
             }
 
-            // Si no existe (o overwrite=true), lo generamos
             ByteArrayOutputStream baos;
             switch (type) {
                 case CAMISETAS:
@@ -76,6 +82,9 @@ public class ReportService {
                 case ASISTENCIA:
                     baos = generateAsistenciaReport(participants);
                     break;
+                case AUTORIZACION_IMAGEN:
+                    baos = generateAutorizacionImagenReport(participants);
+                    break;    
                 default:
                     throw new IllegalArgumentException("Tipo no soportado: " + type);
             }
@@ -129,8 +138,6 @@ public class ReportService {
         Sheet    sheet = wb.createSheet("Camisetas");
         String[] sizes = {"XS","S","M","L","XL","XXL","XXXL"};
 
-        // --- Filas de título y encabezados ---
-        // Fila 0: nombre del encuentro
         Row row0 = sheet.createRow(0);
         Cell c0  = row0.createCell(0);
         c0.setCellValue(event.getName());
@@ -139,13 +146,11 @@ public class ReportService {
         c0.setCellStyle(center);
         sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 16));
 
-        // Fila 1: Colegio:
         Row row1 = sheet.createRow(1);
         Cell c1  = row1.createCell(0);
         c1.setCellValue("Colegio:");
         c1.setCellStyle(center);
 
-        // Fila 2: CATECÚMENOS / separador / CATEQUISTAS
         Row row2 = sheet.createRow(2);
         Cell cat = row2.createCell(2);
         cat.setCellValue("CATECÚMENOS");
@@ -210,105 +215,115 @@ public class ReportService {
         }
 
         for (int c = 0; c <= 16; c++) sheet.autoSizeColumn(c);
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        wb.write(out);
-        wb.close();
-        return out;
+        return ExcelReportUtils.toByteArray(wb);
     }
 
     private ByteArrayOutputStream generateIntoleranciasReport(List<EventUser> participants) throws IOException {
-        Workbook wb    = new XSSFWorkbook();
-        Sheet    sheet = wb.createSheet("Intolerancias");
+        Workbook wb = ExcelReportUtils.buildTwoSheetWorkbook("Intolerancias", participants, (sheet, list) -> {
+            Row h = sheet.createRow(0);
+            h.createCell(0).setCellValue("Nombre");
+            h.createCell(1).setCellValue("Colegio");
+            h.createCell(2).setCellValue("Etapa");
+            h.createCell(3).setCellValue("Intolerancias");
 
-        // Header: Nombre, Colegio, Etapa, Intolerancias
-        Row h = sheet.createRow(0);
-        h.createCell(0).setCellValue("Nombre");
-        h.createCell(1).setCellValue("Colegio");
-        h.createCell(2).setCellValue("Etapa");
-        h.createCell(3).setCellValue("Intolerancias");
-
-        int r = 1;
-        for (EventUser eu : participants) {
-            if (eu.getStatus() != 1) continue;
-            UserSalle u = eu.getUser();
-            if (u.getIntolerances() == null || u.getIntolerances().isBlank()) continue;
-
-            Row row = sheet.createRow(r++);
-            row.createCell(0).setCellValue(u.getName() + " " + u.getLastName());
-            row.createCell(1).setCellValue(getSchool(u));
-            row.createCell(2).setCellValue(getGroup(u));
-            row.createCell(3).setCellValue(u.getIntolerances());
-        }
-
-        for (int c = 0; c < 4; c++) sheet.autoSizeColumn(c);
-        return writeClose(wb);
+            int r = 1;
+            for (EventUser eu : list) {
+                UserSalle u = eu.getUser();
+                if (u.getIntolerances() == null || u.getIntolerances().isBlank()) continue;
+                Row row = sheet.createRow(r++);
+                row.createCell(0).setCellValue(u.getName() + " " + u.getLastName());
+                row.createCell(1).setCellValue(getSchool(u));
+                row.createCell(2).setCellValue(getGroup(u));
+                row.createCell(3).setCellValue(u.getIntolerances());
+            }
+        });
+        for (Sheet s : wb) for (int c = 0; c < 4; c++) s.autoSizeColumn(c);
+        return ExcelReportUtils.toByteArray(wb);
     }
 
     private ByteArrayOutputStream generateEnfermedadesReport(List<EventUser> participants) throws IOException {
-        Workbook wb    = new XSSFWorkbook();
-        Sheet    sheet = wb.createSheet("Enfermedades");
-
-        // Header: Nombre, Colegio, Etapa, Enfermedades
-        Row h = sheet.createRow(0);
-        h.createCell(0).setCellValue("Nombre");
-        h.createCell(1).setCellValue("Colegio");
-        h.createCell(2).setCellValue("Etapa");
-        h.createCell(3).setCellValue("Enfermedades");
-
-        int r = 1;
-        for (EventUser eu : participants) {
-            if (eu.getStatus() != 1) continue;
-            UserSalle u = eu.getUser();
-            if (u.getChronicDiseases() == null || u.getChronicDiseases().isBlank()) continue;
-
-            Row row = sheet.createRow(r++);
-            row.createCell(0).setCellValue(u.getName() + " " + u.getLastName());
-            row.createCell(1).setCellValue(getSchool(u));
-            row.createCell(2).setCellValue(getGroup(u));
-            row.createCell(3).setCellValue(u.getChronicDiseases());
-        }
-
-        for (int c = 0; c < 4; c++) sheet.autoSizeColumn(c);
-        return writeClose(wb);
+        Workbook wb = ExcelReportUtils.buildTwoSheetWorkbook("Enfermedades", participants, (sheet, list) -> {
+            Row h = sheet.createRow(0);
+            h.createCell(0).setCellValue("Nombre");
+            h.createCell(1).setCellValue("Colegio");
+            h.createCell(2).setCellValue("Etapa");
+            h.createCell(3).setCellValue("Enfermedades");
+    
+            int r = 1;
+            for (EventUser eu : list) {
+                UserSalle u = eu.getUser();
+                if (u.getChronicDiseases() == null || u.getChronicDiseases().isBlank()) continue;
+                Row row = sheet.createRow(r++);
+                row.createCell(0).setCellValue(u.getName() + " " + u.getLastName());
+                row.createCell(1).setCellValue(getSchool(u));
+                row.createCell(2).setCellValue(getGroup(u));
+                row.createCell(3).setCellValue(u.getChronicDiseases());
+            }
+        });
+        for (Sheet s : wb) for (int c = 0; c < 4; c++) s.autoSizeColumn(c);
+        return ExcelReportUtils.toByteArray(wb);
     }
 
     private ByteArrayOutputStream generateAsistenciaReport(List<EventUser> participants) throws IOException {
-        Workbook wb    = new XSSFWorkbook();
-        Sheet    sheet = wb.createSheet("Asistencia");
-
-        // Header sin columna “Asistió”
-        String[] cols = {"Nombre","Correo","Colegio","Etapa","Tel. Padre","Tel. Madre","Intolerancias","Enfermedades"};
-        Row h = sheet.createRow(0);
-        for (int i = 0; i < cols.length; i++) {
-            h.createCell(i).setCellValue(cols[i]);
-        }
-
-        int rowNum = 1;
-        for (EventUser eu : participants) {
-            if (eu.getStatus() != 1) continue;
-            UserSalle u = eu.getUser();
-
-            Row row = sheet.createRow(rowNum++);
-            row.createCell(0).setCellValue(u.getName() + " " + u.getLastName());
-            row.createCell(1).setCellValue(u.getEmail());
-            row.createCell(2).setCellValue(getSchool(u));
-            row.createCell(3).setCellValue(getGroup(u));
-            row.createCell(4).setCellValue(Optional.ofNullable(u.getFatherPhone()).orElse(""));
-            row.createCell(5).setCellValue(Optional.ofNullable(u.getMotherPhone()).orElse(""));
-            row.createCell(6).setCellValue(Optional.ofNullable(u.getIntolerances()).orElse(""));
-            row.createCell(7).setCellValue(Optional.ofNullable(u.getChronicDiseases()).orElse(""));
-        }
-
-        for (int c = 0; c < cols.length; c++) sheet.autoSizeColumn(c);
-        return writeClose(wb);
+        Workbook wb = ExcelReportUtils.buildTwoSheetWorkbook("Asistencia", participants, (sheet, list) -> {
+            String[] cols = {
+                "Nombre", "Correo", "Colegio", "Etapa",
+                "Tel. Padre", "Tel. Madre",
+                "Intolerancias", "Enfermedades",
+                "Talla Camiseta", "Autorizacion Imagen"
+            };
+            Row h = sheet.createRow(0);
+            for (int i = 0; i < cols.length; i++) {
+                h.createCell(i).setCellValue(cols[i]);
+            }
+    
+            int rowNum = 1;
+            for (EventUser eu : list) {
+                UserSalle u = eu.getUser();
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(u.getName() + " " + u.getLastName());
+                row.createCell(1).setCellValue(Optional.ofNullable(u.getEmail()).orElse(""));
+                row.createCell(2).setCellValue(getSchool(u));
+                row.createCell(3).setCellValue(getGroup(u));
+                row.createCell(4).setCellValue(Optional.ofNullable(u.getFatherPhone()).orElse(""));
+                row.createCell(5).setCellValue(Optional.ofNullable(u.getMotherPhone()).orElse(""));
+                row.createCell(6).setCellValue(Optional.ofNullable(u.getIntolerances()).orElse(""));
+                row.createCell(7).setCellValue(Optional.ofNullable(u.getChronicDiseases()).orElse(""));
+                Cell cellTalla = row.createCell(8);
+                if (u.getTshirtSize() != null) {
+                    TshirtSizeEnum ts = TshirtSizeEnum.fromIndex(u.getTshirtSize());
+                    cellTalla.setCellValue(ts != null ? ts.name() : "");
+                } else {
+                    cellTalla.setCellValue("");
+                }
+                row.createCell(9).setCellValue(u.getImageAuthorization() ? "Sí" : "No");
+            }
+        });
+        for (Sheet s : wb) for (int c = 0; c < 10; c++) s.autoSizeColumn(c);
+        return ExcelReportUtils.toByteArray(wb);
     }
-
-    private ByteArrayOutputStream writeClose(Workbook wb) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        wb.write(out);
-        wb.close();
-        return out;
-    }
+    
+    private ByteArrayOutputStream generateAutorizacionImagenReport(List<EventUser> participants) throws IOException {
+        Workbook wb = ExcelReportUtils.buildTwoSheetWorkbook("Autorizacion Imagen", participants, (sheet, list) -> {
+            String[] cols = {"Nombre", "Colegio", "Etapa", "Autorizacion Imagen"};
+            Row h = sheet.createRow(0);
+            for (int i = 0; i < cols.length; i++) {
+                h.createCell(i).setCellValue(cols[i]);
+            }
+    
+            int r = 1;
+            for (EventUser eu : list) {
+                UserSalle u = eu.getUser();
+                Row row = sheet.createRow(r++);
+                row.createCell(0).setCellValue(u.getName() + " " + u.getLastName());
+                row.createCell(1).setCellValue(getSchool(u));
+                row.createCell(2).setCellValue(getGroup(u));
+                row.createCell(3).setCellValue(u.getImageAuthorization() ? "Sí" : "No");
+            }
+        });
+        for (Sheet s : wb) for (int c = 0; c < 4; c++) s.autoSizeColumn(c);
+        return ExcelReportUtils.toByteArray(wb);
+    }    
 
     private String getSchool(UserSalle u) {
         return u.getGroups().stream()

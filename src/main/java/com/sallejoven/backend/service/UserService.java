@@ -2,23 +2,19 @@ package com.sallejoven.backend.service;
 
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.Event;
-import com.sallejoven.backend.model.entity.EventUser;
+import com.sallejoven.backend.model.entity.EventGroup;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.model.requestDto.UserSalleRequestOptional;
 import com.sallejoven.backend.model.types.ErrorCodes;
-import com.sallejoven.backend.repository.EventUserRepository;
 import com.sallejoven.backend.repository.UserRepository;
-
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
@@ -32,6 +28,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EventUserService eventUserService;
+    private final EventGroupService eventGroupService;
 
     public UserSalle findByEmail(String email) throws SalleException {
         return userRepository.findByEmail(email).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
@@ -99,8 +96,10 @@ public class UserService {
     }
 
     @Transactional
-    public UserSalle saveUser(UserSalleRequest userRequest, Set<GroupSalle> userGroups) {
-        // 1) Guardamos el usuario
+    public UserSalle saveUser(UserSalleRequest userRequest, GroupSalle group) {
+
+        Set<GroupSalle> userGroups = Set.of(group);
+
         UserSalle user = UserSalle.builder()
             .name(userRequest.getName())
             .lastName(userRequest.getLastName())
@@ -127,8 +126,10 @@ public class UserService {
 
         if (eventId != null) {
             eventUserService.assignEventToUsers(eventId, List.of(savedUser));
+        }else{
+            assignFutureGroupEventsToUser(savedUser, group);
         }
-
+        
         return savedUser;
     }
 
@@ -203,20 +204,40 @@ public class UserService {
     }
 
     @Transactional
-    public void moveUserBetweenGroups(UserSalle user, GroupSalle from, GroupSalle to) {
+    public void moveUserBetweenGroups(UserSalle user, GroupSalle from, GroupSalle to) throws SalleException {
         boolean removed = user.getGroups().remove(from);
-        if (removed) {
-            user.getGroups().add(to);
-            userRepository.save(user);
-            System.out.println("🔄 Usuario " 
-                + user.getName() + " " + user.getLastName() 
-                + " movido de grupo " + from.getStage() 
-                + " a " + to.getStage());
-        } else {
-            throw new IllegalStateException(
-                "El usuario no pertenece al grupo origen: " + from.getStage());
+        if (!removed) {
+            throw new SalleException(ErrorCodes.USER_GROUP_NOT_ASSIGNED);
+        }
+
+        user.getGroups().add(to);
+        UserSalle updated = userRepository.save(user);
+
+        assignFutureGroupEventsToUser(updated, to);
+
+        System.out.println("🔄 Usuario " 
+            + user.getName() + " " + user.getLastName() 
+            + " movido de grupo " + from.getStage() 
+            + " a " + to.getStage());
+    }
+
+    private void assignFutureGroupEventsToUser(UserSalle user, GroupSalle group) {
+        List<EventGroup> egList = eventGroupService.getEventGroupsByGroupId(group.getId());
+        LocalDate today = LocalDate.now();
+
+        List<Event> upcoming = egList.stream()
+            .map(EventGroup::getEvent)
+            .filter(evt -> {
+                LocalDate end = evt.getEndDate();
+                return end != null && !end.isBefore(today);
+            })
+            .toList();
+
+        if (!upcoming.isEmpty()) {
+            eventUserService.assignEventsToUser(upcoming, user);
         }
     }
+
 
     /*@Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {

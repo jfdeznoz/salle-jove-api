@@ -14,5 +14,6 @@ import java.util.List;
 public class CenterDto {
     private Long id;
     private String name;
+    private String city;
     private List<GroupDto> groups;
 }

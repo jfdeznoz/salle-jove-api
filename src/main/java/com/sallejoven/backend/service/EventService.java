@@ -10,17 +10,11 @@ import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.repository.EventRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.User;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-
 import java.io.IOException;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -48,9 +42,7 @@ public class EventService {
         UserSalle user = authService.getCurrentUser();
         boolean isAdmin = user.getRoles().contains("ROLE_ADMIN");
     
-        Date today = java.sql.Date.valueOf(
-                        ZonedDateTime.now(ZoneId.of("Europe/Madrid"))
-                                     .toLocalDate());
+        LocalDate today = ZonedDateTime.now(ZoneId.of("Europe/Madrid")).toLocalDate();
         Pageable pageable = PageRequest.of(page, size);
     
         if (isAdmin) {
@@ -200,14 +192,6 @@ public class EventService {
         eventUserService.softDeleteByEventId(eventId);
         eventGroupService.softDeleteByEventId(eventId);
         eventRepository.softDeleteEvent(eventId);
-    }
-
-    public List<EventUser> getUsersByEventAndGroup(Integer eventId, Integer groupId) {
-        return eventUserService.findByEventIdAndGroupId(eventId, groupId);
-    }
-
-    public List<EventUser> getUsersByEventOrdered(Long eventId) {
-        return eventUserService.findByEventIdOrdered(eventId);
     }
 
     @Transactional

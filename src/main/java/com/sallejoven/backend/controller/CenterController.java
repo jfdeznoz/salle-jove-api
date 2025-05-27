@@ -42,6 +42,7 @@ public class CenterController {
             ).collect(Collectors.toList());
             return CenterDto.builder()
                     .id(center.getId())
+                    .city(center.getCity())
                     .name(center.getName())
                     .groups(groupDtos)
                     .build();
