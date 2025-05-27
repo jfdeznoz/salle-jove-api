@@ -9,9 +9,8 @@ public enum ErrorCodes {
     USER_GROUP_NOT_FOUND("El usuario no está asignado a ningún grupo", "E005"),
     BLOCK_EVENT_ERROR_ADMIN("Solo un admin puede bloquear eventos generales", "E006"),
     BLOCK_EVENT_ERROR("No tienes permiso para bloquear este evento local", "E007"),
-    CENTER_NOT_FOUND("Centro no encontrado", "E008");
-
-
+    CENTER_NOT_FOUND("Centro no encontrado", "E008"),
+    USER_GROUP_NOT_ASSIGNED("El usuario no pertenece al grupo origen", "009");
 
     private final String message;
     private final String errorCode;

@@ -17,6 +17,8 @@ public interface EventGroupRepository extends JpaRepository<EventGroup, Long> {
     List<EventGroup> findByEventIdAndGroupSalleIdIn(Long eventId, List<Long> groupIds);
     void deleteByEventIdAndGroupSalleIdIn(Long eventId, List<Long> groupSalleIds);
 
+    List<EventGroup> findByGroupSalleId(Long groupSalleId);
+
     @Modifying
     @Query("UPDATE EventGroup eg SET eg.deletedAt = CURRENT_TIMESTAMP WHERE eg.event.id = :eventId")
     void softDeleteByEventId(@Param("eventId") Long eventId);

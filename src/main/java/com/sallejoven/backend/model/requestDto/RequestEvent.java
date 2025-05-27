@@ -5,6 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.time.LocalDate;
 import java.util.Date;
 import java.util.List;
 
@@ -26,11 +28,11 @@ public class RequestEvent {
 
     @NotNull
     @DateTimeFormat(pattern = "dd/MM/yyyy")
-    private Date eventDate;
+    private LocalDate eventDate;
 
     @NotNull
     @DateTimeFormat(pattern = "dd/MM/yyyy")
-    private Date endDate;
+    private LocalDate endDate;
 
     private List<Integer> stages;
 

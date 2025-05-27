@@ -1,8 +1,8 @@
 package com.sallejoven.backend.model.dto;
 
+import java.time.LocalDate;
 import java.util.Date;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,11 +19,11 @@ public class EventDto {
 
     private String description;
 
-    @Temporal(TemporalType.DATE)
-    private Date eventDate;
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private LocalDate eventDate;
 
-    @Temporal(TemporalType.DATE)
-    private Date endDate;
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private LocalDate endDate;
 
     private String fileName;
 

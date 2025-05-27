@@ -172,6 +172,5 @@ public class AuthService {
             log.error("[AuthService:registerUser]Exception while registering the user due to :"+e.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,e.getMessage());
         }
-
     }
 }

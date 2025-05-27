@@ -31,6 +31,10 @@ public class EventGroupService {
         return eventGroupRepository.findByEventIdAndGroupSalleIdIn(eventId, groupIds);
     }
 
+    public List<EventGroup> getEventGroupsByGroupId(Long groupId) {
+        return eventGroupRepository.findByGroupSalleId(groupId);
+    }
+
     public void deleteEventGroupsByEventAndGroups(Long eventId, List<GroupSalle> groups) {
         if (groups == null || groups.isEmpty()) return;
 
