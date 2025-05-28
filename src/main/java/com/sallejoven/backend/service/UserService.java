@@ -136,6 +136,7 @@ public class UserService {
     public void addUserToGroup(UserSalle user, GroupSalle group) {
         user.getGroups().add(group);
         saveUser(user);
+        assignFutureGroupEventsToUser(user, group);
     }       
 
     public List<UserSalle> findAllUsers() {
