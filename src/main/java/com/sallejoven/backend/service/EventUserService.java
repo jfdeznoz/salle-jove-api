@@ -31,6 +31,10 @@ public class EventUserService {
         return eventUserRepository.findById(id);
     }
 
+    public List<EventUser> findConfirmedByEventIdOrdered(Long eventId) {
+        return eventUserRepository.findConfirmedByEventIdOrdered(eventId);
+    }    
+
     @Transactional
     public void softDeleteByEventId(Long eventId) {
         eventUserRepository.softDeleteByEventId(eventId);

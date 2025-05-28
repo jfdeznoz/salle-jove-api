@@ -42,7 +42,7 @@ public class ReportService {
     public List<String> generateEventReports(Long eventId, List<ReportType> types, boolean overwrite) throws Exception {
         Event event = eventService.findById(eventId).orElseThrow(() -> new IllegalArgumentException("Evento no encontrado ID: " + eventId));
         
-        List<EventUser> participants = eventUserService.findByEventIdOrdered(eventId);
+        List<EventUser> participants = eventUserService.findConfirmedByEventIdOrdered(eventId);
         String folder = "reports/event_" + eventId;
 
         Map<String, byte[]> attachments = new LinkedHashMap<>();

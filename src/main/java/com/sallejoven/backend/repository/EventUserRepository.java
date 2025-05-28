@@ -26,6 +26,17 @@ public interface EventUserRepository extends JpaRepository<EventUser, EventUserI
     """)
     List<EventUser> findByEventIdAndGroupId(@Param("eventId") Integer eventId, @Param("groupId") Integer groupId);
 
+    @Query("""
+        SELECT eu FROM EventUser eu
+        JOIN FETCH eu.user u
+        JOIN u.groups g
+        WHERE eu.event.id    = :eventId
+        AND eu.deletedAt   IS NULL
+        AND u.deletedAt    IS NULL
+        AND eu.status      = 1
+        ORDER BY g.center.name ASC, g.stage ASC
+    """)
+    List<EventUser> findConfirmedByEventIdOrdered(@Param("eventId") Long eventId);
 
     @Query("""
         SELECT eu FROM EventUser eu
