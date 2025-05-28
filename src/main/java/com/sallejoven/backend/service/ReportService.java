@@ -314,16 +314,23 @@ public class ReportService {
             int r = 1;
             for (EventUser eu : list) {
                 UserSalle u = eu.getUser();
+                if (Boolean.TRUE.equals(u.getImageAuthorization())) {
+                    continue;
+                }
                 Row row = sheet.createRow(r++);
                 row.createCell(0).setCellValue(u.getName() + " " + u.getLastName());
                 row.createCell(1).setCellValue(getSchool(u));
                 row.createCell(2).setCellValue(getGroup(u));
-                row.createCell(3).setCellValue(u.getImageAuthorization() ? "Sí" : "No");
+                row.createCell(3).setCellValue("No");
             }
         });
-        for (Sheet s : wb) for (int c = 0; c < 4; c++) s.autoSizeColumn(c);
+        for (Sheet s : wb) {
+            for (int c = 0; c < 4; c++) {
+                s.autoSizeColumn(c);
+            }
+        }
         return ExcelReportUtils.toByteArray(wb);
-    }    
+    }        
 
     private String getSchool(UserSalle u) {
         return u.getGroups().stream()
