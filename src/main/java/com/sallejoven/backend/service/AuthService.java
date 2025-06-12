@@ -33,7 +33,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 @Slf4j
 public class AuthService {
-
+    //test
     private final UserRepository userInfoRepo;
     private final UserInfoMapper userInfoMapper;
     private final JwtTokenGenerator jwtTokenGenerator;
