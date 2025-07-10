@@ -50,8 +50,8 @@ jwt:
 
 salle:
   aws:
-    access-key: AKIAZTJUYOCXO7PYZSUY
-    secret-key: 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
+    access-key: AKIAZTJUYOCXGIOQCX6Q
+    secret-key: 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
     bucket-name: sallejoven-events
     bucket-url: https://sallejoven-events.s3.eu-north-1.amazonaws.com/
   image-extensions-allowed: jpg,png,jpeg,webp
