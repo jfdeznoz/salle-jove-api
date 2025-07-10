@@ -12,8 +12,8 @@ jobs:
     env:
       AWS_REGION: eu-north-1
       S3_BUCKET: salle-joven-bucket
-      EB_APP_NAME: salle-joven
-      EB_ENV_NAME: salle-joven-prod
+      EB_APP_NAME: salle-joven-prod-env
+      EB_ENV_NAME: salle-joven-prod-env-env
 
     steps:
       - name: Checkout code
