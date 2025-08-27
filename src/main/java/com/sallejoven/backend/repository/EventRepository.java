@@ -19,15 +19,16 @@ import org.springframework.stereotype.Repository;
 public interface EventRepository extends JpaRepository<Event, Long> {
 
     @Query("""
-        SELECT e
-          FROM Event e
-         WHERE e.deletedAt IS NULL
-           AND e.isGeneral = true
-           AND (
-                (:isPast = true  AND e.endDate <  :today)
-             OR (:isPast = false AND (e.endDate IS NULL OR e.endDate >= :today))
-           )
-    """)
+    SELECT e
+      FROM Event e
+     WHERE e.deletedAt IS NULL
+       AND e.isGeneral = true
+       AND (
+            (:isPast = true  AND e.endDate <  :today)
+         OR (:isPast = false AND (e.endDate IS NULL OR e.endDate >= :today))
+       )
+     ORDER BY e.eventDate ASC
+""")
     Page<Event> findGeneralEvents(@Param("isPast") boolean isPast,
                                   @Param("today")  LocalDate today,
                                   Pageable pageable);
@@ -36,17 +37,18 @@ public interface EventRepository extends JpaRepository<Event, Long> {
      * 2) Sólo locales de los grupos dados
      */
     @Query("""
-        SELECT eg.event
-          FROM EventGroup eg
-         WHERE eg.deletedAt    IS NULL
-           AND eg.groupSalle  IN :groups
-           AND eg.event.deletedAt IS NULL
-           AND eg.event.isGeneral = false
-           AND (
-                (:isPast = true  AND eg.event.endDate <  :today)
-             OR (:isPast = false AND (eg.event.endDate IS NULL OR eg.event.endDate >= :today))
-           )
-    """)
+    SELECT eg.event
+      FROM EventGroup eg
+     WHERE eg.deletedAt        IS NULL
+       AND eg.groupSalle      IN :groups
+       AND eg.event.deletedAt IS NULL
+       AND eg.event.isGeneral = false
+       AND (
+            (:isPast = true  AND eg.event.endDate <  :today)
+         OR (:isPast = false AND (eg.event.endDate IS NULL OR eg.event.endDate >= :today))
+       )
+     ORDER BY eg.event.eventDate ASC
+""")
     Page<Event> findEventsByGroupsAndPastStatus(@Param("groups") List<GroupSalle> groups,
                                                 @Param("isPast")  boolean isPast,
                                                 @Param("today")   LocalDate today,
@@ -56,39 +58,38 @@ public interface EventRepository extends JpaRepository<Event, Long> {
      * 3) Unión de generales + locales (para isGeneral == null en NO-admin)
      */
     @Query("""
-        SELECT DISTINCT e
-          FROM Event e
-          LEFT JOIN EventGroup eg
-            ON eg.event = e
-           AND eg.deletedAt    IS NULL
-         WHERE e.deletedAt IS NULL
-           AND (
-                e.isGeneral = true
-             OR eg.groupSalle IN :groups
-           )
-           AND (
-                (:isPast = true  AND e.endDate <  :today)
-             OR (:isPast = false AND (e.endDate IS NULL OR e.endDate >= :today))
-           )
-    """)
+    SELECT DISTINCT e
+      FROM Event e
+      LEFT JOIN EventGroup eg
+        ON eg.event = e
+       AND eg.deletedAt IS NULL
+     WHERE e.deletedAt IS NULL
+       AND ( e.isGeneral = true OR eg.groupSalle IN :groups )
+       AND (
+            (:isPast = true  AND e.endDate <  :today)
+         OR (:isPast = false AND (e.endDate IS NULL OR e.endDate >= :today))
+       )
+     ORDER BY e.eventDate ASC
+""")
     Page<Event> findGeneralOrUserLocalEvents(@Param("groups") List<GroupSalle> groups,
                                              @Param("isPast")  boolean isPast,
                                              @Param("today")   LocalDate today,
                                              Pageable pageable);
 
-      @Query("""
-          SELECT e FROM Event e
-          WHERE e.deletedAt IS NULL
-          AND (:isGeneral IS NULL OR e.isGeneral = :isGeneral)
-          AND (
-              (:isPast = true AND e.endDate IS NOT NULL AND e.endDate < :now)
-              OR (:isPast = false AND (e.endDate IS NULL OR e.endDate >= :now))
-          )
-          """)
+    @Query("""
+    SELECT e FROM Event e
+     WHERE e.deletedAt IS NULL
+       AND (:isGeneral IS NULL OR e.isGeneral = :isGeneral)
+       AND (
+           (:isPast = true  AND e.endDate IS NOT NULL AND e.endDate < :now)
+        OR (:isPast = false AND (e.endDate IS NULL OR e.endDate >= :now))
+       )
+     ORDER BY e.eventDate ASC
+""")
     Page<Event> findAdminFilteredEvents(@Param("isGeneral") Boolean isGeneral,
                                         @Param("isPast") boolean isPast,
                                         @Param("now") LocalDate now,
-                                        Pageable pageable);                
+                                        Pageable pageable);
 
     @Query("SELECT e FROM Event e WHERE e.endDate IS NOT NULL AND e.endDate < :now AND e.deletedAt IS NULL")
     Page<Event> findPastEvents(@Param("now") Date now, Pageable pageable);
