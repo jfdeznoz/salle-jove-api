@@ -330,11 +330,15 @@ public class ReportService {
             }
         }
         return ExcelReportUtils.toByteArray(wb);
-    }        
+    }
 
     private String getSchool(UserSalle u) {
         return u.getGroups().stream()
-                .map(g -> g.getCenter().getName())
+                .map(g -> {
+                    String centerName = g.getCenter().getName();
+                    String cityName = g.getCenter().getCity();
+                    return centerName + " (" + cityName + ")";
+                })
                 .findFirst()
                 .orElse("");
     }

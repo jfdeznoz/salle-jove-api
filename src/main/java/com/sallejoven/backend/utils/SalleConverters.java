@@ -174,7 +174,7 @@ public class SalleConverters {
                 .build();
     }
 
-    public ParticipantDto participantDto(EventUser eventUser) throws SalleException{
+    public ParticipantDto participantDto(EventUser eventUser) throws SalleException {
         UserSalle userSalle = eventUser.getUser();
         List<Role> roles = userService.getUserRoles(userSalle);
         Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : roles.get(0);
@@ -183,6 +183,26 @@ public class SalleConverters {
                 .userId(userSalle.getId())
                 .name(userSalle.getName())
                 .lastName(userSalle.getLastName())
+
+                .dni(userSalle.getDni())
+                .phone(userSalle.getPhone())
+                .email(userSalle.getEmail())
+                .tshirtSize(userSalle.getTshirtSize())
+                .healthCardNumber(userSalle.getHealthCardNumber())
+                .intolerances(userSalle.getIntolerances())
+                .chronicDiseases(userSalle.getChronicDiseases())
+                .city(userSalle.getCity())
+                .address(userSalle.getAddress())
+                .motherFullName(userSalle.getMotherFullName())
+                .fatherFullName(userSalle.getFatherFullName())
+                .motherEmail(userSalle.getMotherEmail())
+                .fatherEmail(userSalle.getFatherEmail())
+                .fatherPhone(userSalle.getFatherPhone())
+                .motherPhone(userSalle.getMotherPhone())
+                .birthDate(userSalle.getBirthDate())
+                .gender(userSalle.getGender())
+                .imageAuthorization(userSalle.getImageAuthorization())
+
                 .attends(eventUser.getStatus())
                 .rol(mainRole)
                 .build();
