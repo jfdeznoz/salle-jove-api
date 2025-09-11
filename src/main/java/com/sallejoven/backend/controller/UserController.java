@@ -47,7 +47,7 @@ public class UserController {
     public ResponseEntity<List<UserSalle>> getAllUsers() {
         List<UserSalle> users = userService.findAllUsers();
         return ResponseEntity.ok(users);
-    }    
+    }
 
     @GetMapping("/{id}")
     public ResponseEntity<UserSalle> getUserById(@PathVariable Long id) {
@@ -88,28 +88,19 @@ public class UserController {
         return salleConverters.buildSelfUserInfo(userEmail);
     }
 
-    @PostMapping("/")
-    public ResponseEntity<UserSalle> createUser(@RequestBody UserSalleRequest userRequest) {
-        return ResponseEntity.ok(userService.saveUser(userRequest));
-    }
-
-    @PostMapping("/{groupId}")
-    public ResponseEntity<UserSalle> createUser(@PathVariable Long groupId, @RequestBody UserSalleRequest userRequest) throws SalleException {
-        GroupSalle group = groupService.findById(groupId)
-                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
-
-        UserSalle savedUser = userService.saveUser(userRequest, group);
-        return ResponseEntity.ok(savedUser);
+    @PostMapping
+    public ResponseEntity<UserSelfDto> createUser(@RequestBody UserSalleRequest userRequest) throws SalleException {
+        UserSalle savedUser = userService.saveUser(userRequest);
+        UserSelfDto dto = salleConverters.buildSelfUserInfo(savedUser);
+        return ResponseEntity.ok(dto);
     }
 
     @PostMapping("/{groupId}/add-existing")
     public ResponseEntity<Void> addExistingUserToGroup( @PathVariable Long groupId, @RequestBody Map<String, Long> body) throws SalleException {
         Long userId = body.get("userId");
-        GroupSalle group = groupService.findById(groupId)
-                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+        Long userType = body.get("userType");
 
-        UserSalle user = userService.findByUserId(userId);
-        userService.addUserToGroup(user, group);
+        userService.addUserToGroup(userId, groupId, userType);
 
         return ResponseEntity.noContent().build();
     }
@@ -130,14 +121,7 @@ public class UserController {
                                                         @PathVariable Long fromGroupId,
                                                         @PathVariable Long toGroupId) throws SalleException {
 
-        UserSalle user = userService.findByUserId(userId);
-
-        GroupSalle from = groupService.findById(fromGroupId)
-                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
-        GroupSalle to = groupService.findById(toGroupId)
-                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
-
-        userService.moveUserBetweenGroups(user, from, to);
+        userService.moveUserBetweenGroups(userId, fromGroupId, toGroupId);
 
         return ResponseEntity.noContent().build();
     }
@@ -164,15 +148,15 @@ public class UserController {
 
     @PostMapping("/import-users")
     public ResponseEntity<String> importUsers() throws Exception {
-        String filePath = "C:\\Users\\jfmun\\OneDrive\\Escritorio\\usuarios.csv";
-        userImporterService.importUsersFromCsv(filePath);
+       /* String filePath = "C:\\Users\\jfmun\\OneDrive\\Escritorio\\usuarios.csv";
+        userImporterService.importUsersFromCsv(filePath);*/
         return ResponseEntity.ok("Import done");
     }
 
     @PostMapping("/import-group-leaders")
     public ResponseEntity<String> importGroupLeaders() throws Exception {
-        String filePath = "C:\\Users\\jfmun\\OneDrive\\Escritorio\\coordinadores.csv";
-        groupLeaderImporterService.importGroupLeaders(filePath);
+        /*String filePath = "C:\\Users\\jfmun\\OneDrive\\Escritorio\\coordinadores.csv";
+        groupLeaderImporterService.importGroupLeaders(filePath);*/
         return ResponseEntity.ok("Importación completada");
     }
 

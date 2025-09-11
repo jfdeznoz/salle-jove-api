@@ -28,7 +28,7 @@ public class PastoralDelegateImporterService {
 
     @Transactional
     public void importPastoralDelegatesByCenterId(String filePath) throws Exception {
-        try (CSVReader reader = new CSVReader(new InputStreamReader(new FileInputStream(filePath), StandardCharsets.UTF_8))) {
+        /*try (CSVReader reader = new CSVReader(new InputStreamReader(new FileInputStream(filePath), StandardCharsets.UTF_8))) {
             List<String[]> rows = reader.readAll();
             rows.remove(0); // Remove headerrrr
 
@@ -123,6 +123,6 @@ public class PastoralDelegateImporterService {
                     System.out.println("✅ Usuario creado: " + fullName);
                 }
             }
-        }
+        }*/
     }
 }

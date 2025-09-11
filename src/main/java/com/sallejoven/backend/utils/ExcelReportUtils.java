@@ -23,10 +23,10 @@ public class ExcelReportUtils {
         Workbook wb = new XSSFWorkbook();
         // Filtrar participantes por rol
         List<EventUser> catecumenos = participants.stream()
-            .filter(eu -> isCatecumeno(eu.getUser()))
+            .filter(eu -> isCatecumeno(eu.getUserGroup().getUser()))
             .collect(Collectors.toList());
         List<EventUser> catequistas = participants.stream()
-            .filter(eu -> !isCatecumeno(eu.getUser()))
+            .filter(eu -> !isCatecumeno(eu.getUserGroup().getUser()))
             .collect(Collectors.toList());
 
         // Crear y rellenar hoja de catecúmenos

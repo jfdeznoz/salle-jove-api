@@ -1,7 +1,10 @@
 package com.sallejoven.backend.service;
 
+import com.sallejoven.backend.model.entity.Center;
 import com.sallejoven.backend.model.entity.Event;
 import com.sallejoven.backend.model.entity.EventUser;
+import com.sallejoven.backend.model.entity.GroupSalle;
+import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.enums.Stage;
@@ -115,6 +118,14 @@ public class ReportService {
 
         int rowNum = 1;
         for (UserSalle u : participants) {
+            GroupSalle group = Optional.ofNullable(u.getGroups())
+                    .flatMap(set -> set.stream()
+                            .map(UserGroup::getGroup) // me quedo con los GroupSalle
+                            .filter(Objects::nonNull)
+                            .max(Comparator.comparingInt(g ->
+                                    g.getStage() != null ? g.getStage() : Integer.MIN_VALUE)))
+                    .orElse(null);
+
             Row row = sheet.createRow(rowNum++);
             row.createCell(0).setCellValue(u.getName() + " " + u.getLastName());
             row.createCell(1).setCellValue(
@@ -123,7 +134,7 @@ public class ReportService {
                             : "");
             row.createCell(2).setCellValue(u.getDni());
             row.createCell(3).setCellValue(getSchool(u));
-            row.createCell(4).setCellValue(getGroup(u));
+            row.createCell(4).setCellValue(getStageName(group));
         }
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -181,7 +192,7 @@ public class ReportService {
         Map<String, int[][]> bySchool = new LinkedHashMap<>();
         for (EventUser eu : participants) {
             if (eu.getStatus() != 1) continue;
-            UserSalle u = eu.getUser();
+            UserSalle u = eu.getUserGroup().getUser();
             String   school = getSchool(u);
             bySchool.putIfAbsent(school, new int[sizes.length][2]);
 
@@ -228,12 +239,13 @@ public class ReportService {
 
             int r = 1;
             for (EventUser eu : list) {
-                UserSalle u = eu.getUser();
+                UserSalle u = eu.getUserGroup().getUser();
+                GroupSalle group = eu.getUserGroup().getGroup();
                 if (u.getIntolerances() == null || u.getIntolerances().isBlank()) continue;
                 Row row = sheet.createRow(r++);
                 row.createCell(0).setCellValue(u.getName() + " " + u.getLastName());
                 row.createCell(1).setCellValue(getSchool(u));
-                row.createCell(2).setCellValue(getGroup(u));
+                row.createCell(2).setCellValue(getStageName(group));
                 row.createCell(3).setCellValue(u.getIntolerances());
             }
         });
@@ -251,12 +263,13 @@ public class ReportService {
     
             int r = 1;
             for (EventUser eu : list) {
-                UserSalle u = eu.getUser();
+                UserSalle u = eu.getUserGroup().getUser();
+                GroupSalle group = eu.getUserGroup().getGroup();
                 if (u.getChronicDiseases() == null || u.getChronicDiseases().isBlank()) continue;
                 Row row = sheet.createRow(r++);
                 row.createCell(0).setCellValue(u.getName() + " " + u.getLastName());
                 row.createCell(1).setCellValue(getSchool(u));
-                row.createCell(2).setCellValue(getGroup(u));
+                row.createCell(2).setCellValue(getStageName(group));
                 row.createCell(3).setCellValue(u.getChronicDiseases());
             }
         });
@@ -279,12 +292,13 @@ public class ReportService {
     
             int rowNum = 1;
             for (EventUser eu : list) {
-                UserSalle u = eu.getUser();
+                UserSalle u = eu.getUserGroup().getUser();
+                GroupSalle group = eu.getUserGroup().getGroup();
                 Row row = sheet.createRow(rowNum++);
                 row.createCell(0).setCellValue(u.getName() + " " + u.getLastName());
                 row.createCell(1).setCellValue(Optional.ofNullable(u.getEmail()).orElse(""));
                 row.createCell(2).setCellValue(getSchool(u));
-                row.createCell(3).setCellValue(getGroup(u));
+                row.createCell(2).setCellValue(getStageName(group));
                 row.createCell(4).setCellValue(Optional.ofNullable(u.getFatherPhone()).orElse(""));
                 row.createCell(5).setCellValue(Optional.ofNullable(u.getMotherPhone()).orElse(""));
                 row.createCell(6).setCellValue(Optional.ofNullable(u.getIntolerances()).orElse(""));
@@ -313,14 +327,15 @@ public class ReportService {
     
             int r = 1;
             for (EventUser eu : list) {
-                UserSalle u = eu.getUser();
+                UserSalle u = eu.getUserGroup().getUser();
+                GroupSalle group = eu.getUserGroup().getGroup();
                 if (Boolean.TRUE.equals(u.getImageAuthorization())) {
                     continue;
                 }
                 Row row = sheet.createRow(r++);
                 row.createCell(0).setCellValue(u.getName() + " " + u.getLastName());
                 row.createCell(1).setCellValue(getSchool(u));
-                row.createCell(2).setCellValue(getGroup(u));
+                row.createCell(2).setCellValue(getStageName(group));
                 row.createCell(3).setCellValue("No");
             }
         });
@@ -335,24 +350,16 @@ public class ReportService {
     private String getSchool(UserSalle u) {
         return u.getGroups().stream()
                 .map(g -> {
-                    String centerName = g.getCenter().getName();
-                    String cityName = g.getCenter().getCity();
+                    Center center = g.getGroup().getCenter();
+                    String centerName = center.getName();
+                    String cityName = center.getCity();
                     return centerName + " (" + cityName + ")";
                 })
                 .findFirst()
                 .orElse("");
     }
 
-    private String getGroup(UserSalle u) {
-        return u.getGroups().stream()
-                .map(g -> {
-                    try {
-                        return Stage.values()[g.getStage()].name().replace("_", " ");
-                    } catch (Exception e) {
-                        return "Desconocido";
-                    }
-                })
-                .findFirst()
-                .orElse("");
+    private String getStageName(GroupSalle group) {
+        return Stage.values()[group.getStage()].name().replace("_", " ");
     }
 }

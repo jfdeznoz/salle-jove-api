@@ -29,7 +29,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class UserImporterService {
-
+    /*
     private final UserRepository userSalleRepository;
     private final GroupRepository groupSalleRepository;
     private final CenterRepository centerRepository;
@@ -312,5 +312,5 @@ public class UserImporterService {
         throw new UnsupportedOperationException("Unimplemented method 'importGroupLeaders'");
     }
     
-    
+  */
 }

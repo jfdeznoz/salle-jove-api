@@ -4,6 +4,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import com.sallejoven.backend.model.dto.UserGroupDto;
+import com.sallejoven.backend.model.entity.UserGroup;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.sallejoven.backend.errors.SalleException;
@@ -42,17 +44,17 @@ public class SalleConverters {
         List<Role> roles = authService.getCurrentUserRoles();
         Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : Collections.min(roles);
 
-        List<GroupDto> groupDtos;
+        List<UserGroupDto> groupDtos;
 
         if (mainRole == Role.ADMIN) {
             groupDtos = groupRepository.findAll()
                     .stream()
-                    .map(this::groupToDto)
+                    .map(this::userGroupAdminToDto)
                     .collect(Collectors.toList());
         } else {
             groupDtos = userTango.getGroups()
                     .stream()
-                    .map(this::groupToDto)
+                    .map(this::userGroupToDto)
                     .collect(Collectors.toList());
         }
 
@@ -87,17 +89,17 @@ public class SalleConverters {
         List<Role> roles = userService.getUserRoles(userTango);
         Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : roles.get(0);
 
-        List<GroupDto> groupDtos;
+        List<UserGroupDto> groupDtos;
 
         if (mainRole == Role.ADMIN) {
             groupDtos = groupRepository.findAll()
                     .stream()
-                    .map(this::groupToDto)
+                    .map(this::userGroupAdminToDto)
                     .collect(Collectors.toList());
         } else {
             groupDtos = userTango.getGroups()
                     .stream()
-                    .map(this::groupToDto)
+                    .map(this::userGroupToDto)
                     .collect(Collectors.toList());
         }
 
@@ -145,7 +147,34 @@ public class SalleConverters {
             .birthDate(userSalle.getBirthDate())
             .build();
     }
-    
+
+    public UserGroupDto userGroupToDto(UserGroup userGroup){
+        GroupSalle group = userGroup.getGroup();
+        Center center = group.getCenter();
+
+        return UserGroupDto.builder()
+                .groupId(group.getId().intValue())
+                .stage(group.getStage())
+                .centerName(center.getName() + " (" + center.getCity() + ")")
+                .user_type(userGroup.getUserType())
+                .cityName(center.getCity())
+                .centerId(center.getId().intValue())
+                .build();
+    }
+
+    public UserGroupDto userGroupAdminToDto(GroupSalle group){
+        Center center = group.getCenter();
+
+        return UserGroupDto.builder()
+                .groupId(group.getId().intValue())
+                .stage(group.getStage())
+                .centerName(center.getName() + " (" + center.getCity() + ")")
+                .user_type(-1)
+                .cityName(center.getCity())
+                .centerId(center.getId().intValue())
+                .build();
+    }
+
     public GroupDto groupToDto(GroupSalle group){
         Center center = group.getCenter();
         
@@ -175,9 +204,9 @@ public class SalleConverters {
     }
 
     public ParticipantDto participantDto(EventUser eventUser) throws SalleException {
-        UserSalle userSalle = eventUser.getUser();
-        List<Role> roles = userService.getUserRoles(userSalle);
-        Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : roles.get(0);
+        UserGroup userGroup = eventUser.getUserGroup();
+        UserSalle userSalle = userGroup.getUser();
+        Integer userType = userGroup.getUserType();
 
         return ParticipantDto.builder()
                 .userId(userSalle.getId())
@@ -202,9 +231,8 @@ public class SalleConverters {
                 .birthDate(userSalle.getBirthDate())
                 .gender(userSalle.getGender())
                 .imageAuthorization(userSalle.getImageAuthorization())
-
                 .attends(eventUser.getStatus())
-                .rol(mainRole)
+                .userType(userType)
                 .build();
     }
 }
