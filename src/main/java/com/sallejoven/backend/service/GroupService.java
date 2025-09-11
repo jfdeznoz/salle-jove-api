@@ -17,6 +17,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class GroupService {
@@ -48,6 +49,10 @@ public class GroupService {
         return groupRepository.findByCenter(center);
     }
 
+    public List<GroupSalle> findGroupsByCenterId(Long centerId) {
+        return groupRepository.findByCenterId(centerId);
+    }
+
     public List<GroupSalle> findAllByEvent(Long eventId) throws SalleException {
         List<Role> roles = authService.getCurrentUserRoles();
         List<EventGroup> eventGroups = new ArrayList<>();
@@ -56,20 +61,10 @@ public class GroupService {
             eventGroups = eventGroupService.getEventGroupsByEventId(eventId);
         }else if(roles.contains(Role.PASTORAL_DELEGATE) || roles.contains(Role.GROUP_LEADER)){
             UserSalle userSalle = authService.getCurrentUser();
-            Set<GroupSalle> userGroups = userSalle.getGroups();
 
-            List<Long> userGroupIds = userGroups.stream()
-                .map(GroupSalle::getId)
-                .toList();
-
-            eventGroups = eventGroupService.getEventGroupsByEventIdAndGroupIds(eventId, userGroupIds);
-        }else  if(roles.contains(Role.ANIMATOR)){
-            UserSalle userSalle = authService.getCurrentUser();
-            Set<GroupSalle> userGroups = userSalle.getGroups();
-
-            List<Long> userGroupIds = userGroups.stream()
-                .map(GroupSalle::getId)
-                .toList();
+            List<Long> userGroupIds = userSalle.getGroups().stream()
+                    .map(ug -> ug.getGroup().getId())
+                    .collect(Collectors.toList());
 
             eventGroups = eventGroupService.getEventGroupsByEventIdAndGroupIds(eventId, userGroupIds);
         }

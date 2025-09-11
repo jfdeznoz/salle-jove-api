@@ -3,15 +3,16 @@ package com.sallejoven.backend.model.entity;
 import java.time.LocalDateTime;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
-import com.sallejoven.backend.model.ids.EventGroupId;
-
 import jakarta.persistence.Column;
-import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.MapsId;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -22,19 +23,21 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "event_group")
+@Table(
+        name = "event_group",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"event", "group_salle"})
+)
 public class EventGroup {
 
-    @EmbeddedId
-    private EventGroupId id;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @ManyToOne
-    @MapsId("event")
     @JoinColumn(name = "event", nullable = false)
     private Event event;
 
     @ManyToOne
-    @MapsId("groupSalle")
     @JoinColumn(name = "group_salle", nullable = false)
     private GroupSalle groupSalle;
 

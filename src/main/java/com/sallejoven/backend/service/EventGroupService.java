@@ -28,11 +28,11 @@ public class EventGroupService {
     }    
 
     public List<EventGroup> getEventGroupsByEventIdAndGroupIds(Long eventId, List<Long> groupIds) {
-        return eventGroupRepository.findByEventIdAndGroupSalleIdIn(eventId, groupIds);
+        return eventGroupRepository.findByEvent_IdAndGroupSalle_IdIn(eventId, groupIds);
     }
 
     public List<EventGroup> getEventGroupsByGroupId(Long groupId) {
-        return eventGroupRepository.findByGroupSalleId(groupId);
+        return eventGroupRepository.findByGroupSalle_Id(groupId);
     }
 
     public void deleteEventGroupsByEventAndGroups(Long eventId, List<GroupSalle> groups) {
@@ -42,7 +42,7 @@ public class EventGroupService {
             .map(GroupSalle::getId)
             .toList();
 
-        eventGroupRepository.deleteByEventIdAndGroupSalleIdIn(eventId, groupIds);
+        eventGroupRepository.deleteByEvent_IdAndGroupSalle_IdIn(eventId, groupIds);
     }
 
     public void softDeleteByEventId(Long eventId) {

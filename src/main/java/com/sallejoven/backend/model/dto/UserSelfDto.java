@@ -45,7 +45,7 @@ public class UserSelfDto {
 
     private Date birthDate;
 
-    private List<GroupDto> groups;
+    private List<UserGroupDto> groups;
 
     private Role rol;
 

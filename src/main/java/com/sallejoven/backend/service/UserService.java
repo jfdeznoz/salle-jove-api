@@ -4,6 +4,7 @@ import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.Event;
 import com.sallejoven.backend.model.entity.EventGroup;
 import com.sallejoven.backend.model.entity.GroupSalle;
+import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -29,6 +31,7 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final EventUserService eventUserService;
     private final EventGroupService eventGroupService;
+    private final GroupService groupService;
 
     public UserSalle findByEmail(String email) throws SalleException {
         return userRepository.findByEmail(email).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
@@ -72,69 +75,149 @@ public class UserService {
         return userRepository.save(user);
     }
 
-    public UserSalle saveUser(UserSalleRequest userRequest) {
+    @Transactional
+    public UserSalle saveUser(UserSalleRequest req) throws SalleException {
+        // 1) Construir y persistir usuario base
         UserSalle user = UserSalle.builder()
-                .name(userRequest.getName())
-                .lastName(userRequest.getLastName())
-                .dni(userRequest.getDni())
-                .phone(userRequest.getPhone())
-                .email(userRequest.getEmail())
-                .tshirtSize(userRequest.getTshirtSize())
-                .healthCardNumber(userRequest.getHealthCardNumber())
-                .intolerances(userRequest.getIntolerances())
-                .chronicDiseases(userRequest.getChronicDiseases())
-                .imageAuthorization(userRequest.getImageAuthorization())
-                .birthDate(userRequest.getBirthDate())
+                .name(req.getName())
+                .lastName(req.getLastName())
+                .dni(req.getDni())
+                .phone(req.getPhone())
+                .email(req.getEmail())
+                .tshirtSize(req.getTshirtSize())
+                .healthCardNumber(req.getHealthCardNumber())
+                .intolerances(req.getIntolerances())
+                .chronicDiseases(req.getChronicDiseases())
+                .imageAuthorization(req.getImageAuthorization())
+                .birthDate(req.getBirthDate())
                 .password(passwordEncoder.encode("password"))
-                .roles("ROLE_" + userRequest.getRol())
-                .gender(userRequest.getGender())
-                .address(userRequest.getAddress())
-                .city(userRequest.getCity())
+                .roles(req.getRol() != null ? "ROLE_" + req.getRol() : null)
+                .gender(req.getGender())
+                .address(req.getAddress())
+                .city(req.getCity())
                 .build();
 
-        return userRepository.save(user);
-    }
-
-    @Transactional
-    public UserSalle saveUser(UserSalleRequest userRequest, GroupSalle group) {
-
-        Set<GroupSalle> userGroups = Set.of(group);
-
-        UserSalle user = UserSalle.builder()
-            .name(userRequest.getName())
-            .lastName(userRequest.getLastName())
-            .dni(userRequest.getDni())
-            .phone(userRequest.getPhone())
-            .email(userRequest.getEmail())
-            .tshirtSize(userRequest.getTshirtSize())
-            .healthCardNumber(userRequest.getHealthCardNumber())
-            .intolerances(userRequest.getIntolerances())
-            .chronicDiseases(userRequest.getChronicDiseases())
-            .imageAuthorization(userRequest.getImageAuthorization())
-            .birthDate(userRequest.getBirthDate())
-            .password(passwordEncoder.encode("password"))
-            .roles("ROLE_" + userRequest.getRol())
-            .gender(userRequest.getGender())
-            .address(userRequest.getAddress())
-            .city(userRequest.getCity())
-            .build();
-
-            user.setGroups(userGroups);
-            UserSalle savedUser = userRepository.save(user);
-
-        Integer eventId = userRequest.getEventId();
-
-        if (eventId != null) {
-            eventUserService.assignEventToUsers(eventId, List.of(savedUser));
-        }else{
-            assignFutureGroupEventsToUser(savedUser, group);
+        if (user.getGroups() == null) {
+            user.setGroups(new HashSet<>());
         }
-        
-        return savedUser;
+
+        UserSalle saved = userRepository.save(user);
+
+        // 2) Orquestación
+        final Integer centerId = req.getCenterId();
+        final Integer eventId  = req.getEventId();
+        final Integer groupId  = req.getGroupId();
+        int userType = mapUserTypeFromRequest(req.getRol());
+
+        // Validación: eventId sin groupId
+        if (eventId != null && groupId == null) {
+            throw new SalleException(ErrorCodes.GROUP_NOT_FOUND, "Se requiere groupId para inscribir en un evento.");
+        }
+
+        if (centerId != null && eventId == null) {
+            List<GroupSalle> centerGroups = groupService.findGroupsByCenterId(centerId.longValue());
+            if (centerGroups != null) {
+                for (GroupSalle g : centerGroups) {
+                    ensureMembership(saved, g, userType);
+                    saved = userRepository.save(saved);
+                    assignFutureGroupEventsToUser(saved, g);
+                }
+            }
+            return saved;
+        }
+
+        if (eventId != null && groupId != null) {
+            GroupSalle group = groupService.findById(groupId.longValue())
+                    .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+
+            if (isAnimator(req.getRol())) {
+                userType = 5;
+            }
+
+            UserGroup ug = ensureMembership(saved, group, userType);
+            saved = userRepository.save(saved); // asegurar ug.id
+
+            Long ugId = ug.getId();
+            if (ugId == null) {
+                saved = userRepository.save(saved);
+                ugId = ug.getId();
+            }
+            eventUserService.assignEventToUserGroups(eventId.longValue(), List.of(ugId));
+            return saved;
+        }
+
+        // (C) groupId SIN evento => membership + eventos futuros
+        if (groupId != null) {
+            GroupSalle group = groupService.findById(groupId.longValue())
+                    .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+            ensureMembership(saved, group, userType);
+            saved = userRepository.save(saved);
+            assignFutureGroupEventsToUser(saved, group);
+            return saved;
+        }
+
+        // (D) sin centro/grupo/evento => solo usuario
+        return saved;
     }
 
-    public void addUserToGroup(UserSalle user, GroupSalle group) {
-        user.getGroups().add(group);
+    private boolean isAnimator(String rolText) {
+        if (rolText == null) return false;
+        String r = rolText.trim().toUpperCase();
+        if (r.startsWith("ROLE_")) r = r.substring(5);
+        return "ANIMATOR".equals(r);
+    }
+
+    private UserGroup ensureMembership(UserSalle user, GroupSalle group, int userType) {
+        UserGroup existing = user.getGroups().stream()
+                .filter(ug -> ug.getGroup() != null
+                        && ug.getGroup().getId().equals(group.getId())
+                        && ug.getDeletedAt() == null)
+                .findFirst()
+                .orElse(null);
+
+        if (existing != null) {
+            existing.setUserType(userType);
+            return existing;
+        }
+
+        UserGroup membership = UserGroup.builder()
+                .user(user)
+                .group(group)
+                .userType(userType)
+                .build();
+
+        user.getGroups().add(membership);
+        return membership;
+    }
+
+    /** Mapea el rol textual del request al código user_type (0..3). */
+    private int mapUserTypeFromRequest(String rolText) {
+        if (rolText == null) return 0; // PARTICIPANT por defecto
+        String r = rolText.trim().toUpperCase();
+        if (r.startsWith("ROLE_")) r = r.substring(5);
+
+        return switch (r) {
+            case "GROUP_LEADER"      -> 2;
+            case "ANIMATOR"          -> 1;
+            case "PASTORAL_DELEGATE" -> 3; // por si lo usas en grupos
+            default                  -> 0; // PARTICIPANT
+        };
+    }
+
+    public void addUserToGroup(Long userId, Long groupId, Long userType) throws SalleException {
+        GroupSalle group = groupService.findById(groupId)
+                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+
+        UserSalle user = findByUserId(userId);
+
+
+        UserGroup membership = UserGroup.builder()
+                .user(user)
+                .group(group)
+                .userType(userType.intValue())
+                .build();
+
+        user.getGroups().add(membership);
         saveUser(user);
         assignFutureGroupEventsToUser(user, group);
     }       
@@ -155,11 +238,25 @@ public class UserService {
         return userRepository.findById(id);
     }
 
+    @Transactional
     public void deleteUser(Long id) throws SalleException {
-        UserSalle userSalle = findByUserId(id);
+        UserSalle user = findByUserId(id);
+        LocalDateTime now = LocalDateTime.now();
 
-        userSalle.setDeletedAt(LocalDateTime.now());
-        userRepository.save(userSalle);
+        if (user.getGroups() != null && !user.getGroups().isEmpty()) {
+            List<Long> ugIds = user.getGroups().stream()
+                    .map(UserGroup::getId)
+                    .filter(java.util.Objects::nonNull)
+                    .toList();
+
+            user.getGroups().forEach(ug -> ug.setDeletedAt(now));
+
+            if (!ugIds.isEmpty()) {
+                eventUserService.softDeleteByUserGroupIds(ugIds, now);
+            }
+        }
+        user.setDeletedAt(now);
+        userRepository.save(user);
     }
 
     public List<UserSalle> getUsersByStages(List<Integer> stages) {
@@ -205,40 +302,82 @@ public class UserService {
     }
 
     @Transactional
-    public void moveUserBetweenGroups(UserSalle user, GroupSalle from, GroupSalle to) throws SalleException {
-        boolean removed = user.getGroups().remove(from);
-        if (!removed) {
-            throw new SalleException(ErrorCodes.USER_GROUP_NOT_ASSIGNED);
-        }
+    public void moveUserBetweenGroups(Long userId, Long fromGroupId, Long toGroupId) throws SalleException {
 
-        user.getGroups().add(to);
+        if (fromGroupId.equals(toGroupId)) return;
+
+        UserSalle user = findByUserId(userId);
+
+        GroupSalle from = groupService.findById(fromGroupId)
+                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+        GroupSalle to = groupService.findById(toGroupId)
+                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+
+        // 1) localizar membership origen (user + fromGroup)
+        UserGroup source = user.getGroups().stream()
+                .filter(m -> m.getGroup().getId().equals(fromGroupId))
+                .findFirst()
+                .orElseThrow(() -> new SalleException(ErrorCodes.USER_GROUP_NOT_ASSIGNED));
+
+        // 2) conservar tipo
+        Integer type = source.getUserType();
+
+        // 3) quitar membership origen (orphanRemoval=true la borrará en BD si tu mapeo lo tiene)
+        user.getGroups().remove(source);
+
+        // 4) crear/actualizar membership destino con mismo tipo
+        UserGroup dest = user.getGroups().stream()
+                .filter(m -> m.getGroup().getId().equals(toGroupId))
+                .findFirst()
+                .orElseGet(() -> {
+                    UserGroup ug = UserGroup.builder()
+                            .user(user)
+                            .group(to)
+                            .userType(type)
+                            .build();
+                    user.getGroups().add(ug);
+                    return ug;
+                });
+
+        dest.setUserType(type);
+
+        // 5) persistir cambios en memberships
         UserSalle updated = userRepository.save(user);
 
+        // 6) inscribir al usuario (vía su UserGroup destino) en los eventos futuros del nuevo grupo
         assignFutureGroupEventsToUser(updated, to);
-
-        System.out.println("🔄 Usuario " 
-            + user.getName() + " " + user.getLastName() 
-            + " movido de grupo " + from.getStage() 
-            + " a " + to.getStage());
     }
 
     private void assignFutureGroupEventsToUser(UserSalle user, GroupSalle group) {
+        // 0) buscar la membership (UserGroup) de este usuario en este grupo
+        UserGroup membership = user.getGroups().stream()
+                .filter(m -> m.getGroup().getId().equals(group.getId()))
+                .findFirst()
+                .orElse(null);
+
+        if (membership == null) {
+            // el usuario ya no pertenece a este grupo; no inscribir
+            return;
+        }
+
+        // 1) eventos del grupo
         List<EventGroup> egList = eventGroupService.getEventGroupsByGroupId(group.getId());
+
+        // 2) filtrar eventos futuros (si endDate es null, usamos eventDate)
         LocalDate today = LocalDate.now();
-
         List<Event> upcoming = egList.stream()
-            .map(EventGroup::getEvent)
-            .filter(evt -> {
-                LocalDate end = evt.getEndDate();
-                return end != null && !end.isBefore(today);
-            })
-            .toList();
+                .map(EventGroup::getEvent)
+                .filter(evt -> {
+                    LocalDate end = evt.getEndDate() != null ? evt.getEndDate() : evt.getEventDate();
+                    return end != null && !end.isBefore(today);
+                })
+                .toList();
 
-        if (!upcoming.isEmpty()) {
-            eventUserService.assignEventsToUser(upcoming, user);
+        // 3) inscribir el UserGroup en esos eventos (evita duplicados por UNIQUE(event,user_group_id))
+        for (Event e : upcoming) {
+            eventUserService.assignEventToUserGroups(e, java.util.List.of(membership));
         }
     }
-
 
     /*@Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {

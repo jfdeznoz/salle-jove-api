@@ -45,6 +45,5 @@ public class ParticipantDto {
     private Boolean imageAuthorization;
 
     private Integer attends;
-
-    private Role rol;
+    private Integer userType;
 }

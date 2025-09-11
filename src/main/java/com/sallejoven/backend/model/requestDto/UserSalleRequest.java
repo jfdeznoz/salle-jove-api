@@ -57,4 +57,8 @@ public class UserSalleRequest {
     private String rol;
 
     private Integer eventId;
+
+    private Integer groupId;
+
+    private Integer centerId;
 }

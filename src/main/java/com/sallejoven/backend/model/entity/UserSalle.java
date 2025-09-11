@@ -1,5 +1,6 @@
 package com.sallejoven.backend.model.entity;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -8,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -81,14 +83,9 @@ public class UserSalle {
     @ToString.Exclude
     private String password;
 
-    @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(
-        name = "user_group",
-        joinColumns = @JoinColumn(name = "user_salle"),
-        inverseJoinColumns = @JoinColumn(name = "group_salle")
-    )
-    
-    private Set<GroupSalle> groups = new HashSet<>();
+    @OneToMany(mappedBy = "user", fetch = FetchType.LAZY,
+            cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<UserGroup> groups = new HashSet<>();
 
     @Column(name = "deleted_at")
     @JsonFormat(pattern="yyyy-MM-dd HH:mm:ss")

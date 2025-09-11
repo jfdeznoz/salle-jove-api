@@ -20,4 +20,6 @@ public interface GroupRepository extends JpaRepository<GroupSalle, Long> {
 
     @Query("SELECT g FROM GroupSalle g WHERE g.stage IN :stages AND g.center.id = :centerId")
     List<GroupSalle> findAllByStagesAndCenterId(@Param("stages") List<Integer> stages, @Param("centerId") Long centerId);
+
+    List<GroupSalle> findByCenterId(Long centerId);
 }

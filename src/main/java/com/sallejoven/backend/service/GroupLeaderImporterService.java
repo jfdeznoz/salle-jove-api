@@ -22,7 +22,7 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class GroupLeaderImporterService {
-
+/*
     private final UserRepository userRepository;
     private final CenterRepository centerRepository;
     private final GroupRepository groupRepository;
@@ -137,5 +137,5 @@ public class GroupLeaderImporterService {
         }
         System.out.println("⚠️ Fecha inválida: " + dateStr);
         return null;
-    }
+    }*/
 }

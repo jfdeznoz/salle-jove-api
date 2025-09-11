@@ -90,10 +90,11 @@ public class EventController {
         }).collect(Collectors.toList()));
     }
 
-    @PostMapping("/{eventId}/participants")
+    @PostMapping("/{eventId}/groups/{groupId}/participants")
     public ResponseEntity<Void> updateAttendance(@PathVariable Long eventId,
+                                                 @PathVariable Integer groupId,
                                                  @RequestBody AttendanceUpdateRequest request) throws SalleException {
-        eventService.updateParticipantsAttendance(eventId, request.getParticipants());
+        eventUserService.updateParticipantsAttendance(eventId, request.getParticipants(), groupId);
         return ResponseEntity.ok().build();
     }
 

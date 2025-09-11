@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
+import com.sallejoven.backend.model.types.ErrorCodes;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -38,8 +39,7 @@ public class AuthService {
     private final UserInfoMapper userInfoMapper;
     private final JwtTokenGenerator jwtTokenGenerator;
     private final RefreshTokenRepository refreshTokenRepo;
-    @Lazy
-    private final UserService userService;
+    private final UserRepository userRepository;
 
     public String getCurrentUserEmail(){
         var context = SecurityContextHolder.getContext();
@@ -48,7 +48,7 @@ public class AuthService {
     }
 
     public UserSalle getCurrentUser() throws SalleException {
-        return userService.findByEmail(getCurrentUserEmail());
+        return userRepository.findByEmail(getCurrentUserEmail()).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
     }
 
     public List<Role> getCurrentUserRoles() throws SalleException {
