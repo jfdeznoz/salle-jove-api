@@ -55,45 +55,41 @@ public class SecurityConfig {
 
     @Order(1)
     @Bean
-    public SecurityFilterChain signInSecurityFilterChain(HttpSecurity httpSecurity) throws Exception{
-        return httpSecurity
+    public SecurityFilterChain signInSecurityFilterChain(HttpSecurity http) throws Exception {
+        return http
                 .securityMatcher(new AntPathRequestMatcher("/sign-in/**"))
                 .cors(withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // <- preflight libre
-                        .anyRequest().authenticated()
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers("/sign-in", "/sign-in/**").permitAll()
+                        .anyRequest().denyAll()
                 )
-                .userDetailsService(userInfoManagerConfig)
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .exceptionHandling(ex -> {
-                    ex.authenticationEntryPoint((request, response, authException) ->
-                            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, authException.getMessage()));
-                })
-                .httpBasic(withDefaults())
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // No agregues filtros JWT ni Basic en sign-in:
+                .httpBasic(AbstractHttpConfigurer::disable)
                 .build();
     }
 
     @Order(2)
     @Bean
-    public SecurityFilterChain apiSecurityFilterChain(HttpSecurity httpSecurity) throws Exception{
-        return httpSecurity
+    public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http) throws Exception {
+        return http
                 .securityMatcher(new AntPathRequestMatcher("/api/**"))
                 .cors(withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // <- preflight libre
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(withDefaults()))
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(new JwtAccessTokenFilter(rsaKeyRecord, jwtTokenUtils), UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(ex -> {
-                    log.error("[SecurityConfig:apiSecurityFilterChain] Exception due to :{}",ex);
+                    log.error("[SecurityConfig:apiSecurityFilterChain] Exception due to :{}", ex);
                     ex.authenticationEntryPoint(new BearerTokenAuthenticationEntryPoint());
                     ex.accessDeniedHandler(new BearerTokenAccessDeniedHandler());
                 })
-                .httpBasic(withDefaults())
                 .build();
     }
 
@@ -176,19 +172,20 @@ public class SecurityConfig {
 
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration cfg = new CorsConfiguration();
-
-        cfg.setAllowedOriginPatterns(List.of("*"));
-
-        cfg.setAllowedMethods(java.util.List.of("GET","POST","PUT","DELETE","OPTIONS"));
-        cfg.setAllowedHeaders(java.util.List.of("Authorization","Content-Type","RequiresBasicAuth","X-Requested-With"));
-        cfg.setExposedHeaders(java.util.List.of("WWW-Authenticate","Location")); // opcional
+        var cfg = new CorsConfiguration();
+        cfg.setAllowedOriginPatterns(List.of(
+                "https://starchecksallejoven.com",
+                "https://*.starchecksallejoven.com",
+                "http://localhost:*"
+        ));
+        cfg.setAllowedMethods(List.of("GET","POST","PUT","DELETE","OPTIONS"));
+        cfg.setAllowedHeaders(List.of("Authorization","Content-Type","RequiresBasicAuth","X-Requested-With"));
+        cfg.setExposedHeaders(List.of("WWW-Authenticate","Location"));
         cfg.setAllowCredentials(true);
         cfg.setMaxAge(3600L);
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        var source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", cfg);
         return source;
     }
-   
+
 }
