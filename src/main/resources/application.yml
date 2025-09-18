@@ -3,7 +3,7 @@ spring:
     name: salle-joven
 
   profiles:
-    active: local
+    active: prod
 
 server:
   port: ${PORT:8080}
