@@ -59,6 +59,8 @@ salle:
 app:
   email:
     notifications: true
+  reset:
+    base-url: "http://localhost:50605/#/reset-password"
 
 server:
   port: 8080

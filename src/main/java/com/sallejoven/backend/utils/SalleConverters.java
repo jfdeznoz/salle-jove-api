@@ -1,11 +1,16 @@
 package com.sallejoven.backend.utils;
 
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
+import com.sallejoven.backend.model.dto.UserCenterDto;
+import com.sallejoven.backend.model.dto.UserDto;
 import com.sallejoven.backend.model.dto.UserGroupDto;
 import com.sallejoven.backend.model.entity.UserGroup;
+import com.sallejoven.backend.model.enums.UserType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.sallejoven.backend.errors.SalleException;
@@ -44,20 +49,6 @@ public class SalleConverters {
         List<Role> roles = authService.getCurrentUserRoles();
         Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : Collections.min(roles);
 
-        List<UserGroupDto> groupDtos;
-
-        if (mainRole == Role.ADMIN) {
-            groupDtos = groupRepository.findAll()
-                    .stream()
-                    .map(this::userGroupAdminToDto)
-                    .collect(Collectors.toList());
-        } else {
-            groupDtos = userTango.getGroups()
-                    .stream()
-                    .map(this::userGroupToDto)
-                    .collect(Collectors.toList());
-        }
-
         return UserSelfDto.builder()
             .id(userTango.getId())
             .name(userTango.getName())
@@ -71,7 +62,6 @@ public class SalleConverters {
             .chronicDiseases(userTango.getChronicDiseases())
             .imageAuthorization(userTango.getImageAuthorization())
             .birthDate(userTango.getBirthDate())
-            .groups(groupDtos)
             .rol(mainRole)
             .gender(userTango.getGender())
             .address(userTango.getAddress())
@@ -89,20 +79,6 @@ public class SalleConverters {
         List<Role> roles = userService.getUserRoles(userTango);
         Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : roles.get(0);
 
-        List<UserGroupDto> groupDtos;
-
-        if (mainRole == Role.ADMIN) {
-            groupDtos = groupRepository.findAll()
-                    .stream()
-                    .map(this::userGroupAdminToDto)
-                    .collect(Collectors.toList());
-        } else {
-            groupDtos = userTango.getGroups()
-                    .stream()
-                    .map(this::userGroupToDto)
-                    .collect(Collectors.toList());
-        }
-
         return UserSelfDto.builder()
             .id(userTango.getId())
             .name(userTango.getName())
@@ -116,7 +92,6 @@ public class SalleConverters {
             .chronicDiseases(userTango.getChronicDiseases())
             .imageAuthorization(userTango.getImageAuthorization())
             .birthDate(userTango.getBirthDate())
-            .groups(groupDtos)
             .rol(mainRole)
             .gender(userTango.getGender())
             .address(userTango.getAddress())
@@ -130,48 +105,42 @@ public class SalleConverters {
             .build();
     }
 
-    public UserSelfDto userToDto(UserSalle userSalle) {
+    public UserDto buildSelfUserInfo(UserGroup userGroup) throws SalleException {
+        UserSalle userTango = userGroup.getUser();
 
-        return UserSelfDto.builder()
-            .id(userSalle.getId())
-            .name(userSalle.getName())
-            .lastName(userSalle.getLastName())
-            .dni(userSalle.getDni())
-            .phone(userSalle.getPhone())
-            .email(userSalle.getEmail())
-            .tshirtSize(userSalle.getTshirtSize())
-            .healthCardNumber(userSalle.getHealthCardNumber())
-            .intolerances(userSalle.getIntolerances())
-            .chronicDiseases(userSalle.getChronicDiseases())
-            .imageAuthorization(userSalle.getImageAuthorization())
-            .birthDate(userSalle.getBirthDate())
-            .build();
+        return UserDto.builder()
+                .id(userTango.getId())
+                .name(userTango.getName())
+                .lastName(userTango.getLastName())
+                .dni(userTango.getDni())
+                .phone(userTango.getPhone())
+                .email(userTango.getEmail())
+                .tshirtSize(userTango.getTshirtSize())
+                .healthCardNumber(userTango.getHealthCardNumber())
+                .intolerances(userTango.getIntolerances())
+                .chronicDiseases(userTango.getChronicDiseases())
+                .imageAuthorization(userTango.getImageAuthorization())
+                .birthDate(userTango.getBirthDate())
+                .gender(userTango.getGender())
+                .address(userTango.getAddress())
+                .city(userTango.getCity())
+                .motherFullName(userTango.getMotherFullName())
+                .fatherFullName(userTango.getFatherFullName())
+                .motherEmail(userTango.getMotherEmail())
+                .fatherEmail(userTango.getFatherEmail())
+                .fatherPhone(userTango.getFatherPhone())
+                .motherPhone(userTango.getMotherPhone())
+                .userType(userGroup.getUserType())
+                .build();
     }
 
     public UserGroupDto userGroupToDto(UserGroup userGroup){
         GroupSalle group = userGroup.getGroup();
-        Center center = group.getCenter();
 
         return UserGroupDto.builder()
                 .groupId(group.getId().intValue())
                 .stage(group.getStage())
-                .centerName(center.getName() + " (" + center.getCity() + ")")
                 .user_type(userGroup.getUserType())
-                .cityName(center.getCity())
-                .centerId(center.getId().intValue())
-                .build();
-    }
-
-    public UserGroupDto userGroupAdminToDto(GroupSalle group){
-        Center center = group.getCenter();
-
-        return UserGroupDto.builder()
-                .groupId(group.getId().intValue())
-                .stage(group.getStage())
-                .centerName(center.getName() + " (" + center.getCity() + ")")
-                .user_type(-1)
-                .cityName(center.getCity())
-                .centerId(center.getId().intValue())
                 .build();
     }
 
@@ -185,7 +154,15 @@ public class SalleConverters {
             .cityName(center.getCity())
             .centerId(center.getId().intValue())
             .build();
-    }    
+    }
+
+    public UserGroupDto groupToUserGroupDto(GroupSalle group){
+        return UserGroupDto.builder()
+                .groupId(group.getId().intValue())
+                .stage(group.getStage())
+                .user_type(UserType.ADMIN.toInt())
+                .build();
+    }
 
     public EventDto eventToDto(Event event){
 
@@ -234,5 +211,38 @@ public class SalleConverters {
                 .attends(eventUser.getStatus())
                 .userType(userType)
                 .build();
+    }
+
+    public UserCenterDto centerToUserCenterNoGroups(Center center) {
+        return UserCenterDto.builder()
+                .centerId(center.getId().intValue())
+                .centerName(center.getName())
+                .cityName(center.getCity())
+                .groups(Collections.emptyList())
+                .build();
+    }
+
+    /** NO-ADMIN: agrupa UserGroup por centro y crea UserCenterDto con sus grupos. */
+    public List<UserCenterDto> userGroupsToUserCenters(List<UserGroup> userGroups) {
+        Map<Center, List<UserGroup>> byCenter = userGroups.stream()
+                .collect(Collectors.groupingBy(ug -> ug.getGroup().getCenter()));
+
+        return byCenter.entrySet().stream()
+                .map(entry -> {
+                    Center c = entry.getKey();
+                    List<UserGroupDto> groupDtos = entry.getValue().stream()
+                            .map(this::userGroupToDto)
+                            .sorted(Comparator.comparing(UserGroupDto::getStage)) // opcional
+                            .collect(Collectors.toList());
+
+                    return UserCenterDto.builder()
+                            .centerId(c.getId().intValue())
+                            .centerName(c.getName())
+                            .cityName(c.getCity())
+                            .groups(groupDtos)
+                            .build();
+                })
+                .sorted(Comparator.comparing(UserCenterDto::getCenterName, String.CASE_INSENSITIVE_ORDER))
+                .collect(Collectors.toList());
     }
 }

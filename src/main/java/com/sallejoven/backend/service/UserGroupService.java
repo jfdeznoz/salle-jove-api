@@ -20,6 +20,10 @@ public class UserGroupService {
         return userGroupRepository.findByGroupIds(groupIds);
     }
 
+    public List<UserGroup> findByGroupId(Long groupId) {
+        return userGroupRepository.findByGroupId(groupId);
+    }
+
     public List<UserGroup> findByStages(Collection<Integer> stages) {
         return userGroupRepository.findByGroupStages(stages);
     }

@@ -2,6 +2,7 @@ package com.sallejoven.backend.controller;
 
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.dto.GroupDto;
+import com.sallejoven.backend.model.dto.UserGroupDto;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.service.GroupService;
 import com.sallejoven.backend.utils.SalleConverters;
@@ -49,6 +50,15 @@ public class GroupController {
         List<GroupDto> groupDtos = groupList.stream()
                                             .map(salleConverters::groupToDto)
                                             .collect(Collectors.toList());
+        return ResponseEntity.ok(groupDtos);
+    }
+
+    @GetMapping("/center/{centerId}")
+    public ResponseEntity<List<UserGroupDto>> getAllGroupsByCenter(@PathVariable Long centerId) throws SalleException {
+        List<GroupSalle> groupList = groupService.findGroupsByCenterId(centerId);
+        List<UserGroupDto> groupDtos = groupList.stream()
+                .map(salleConverters::groupToUserGroupDto)
+                .collect(Collectors.toList());
         return ResponseEntity.ok(groupDtos);
     }
 

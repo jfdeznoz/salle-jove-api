@@ -1,3 +1,4 @@
+// UserDto.java
 package com.sallejoven.backend.model.dto;
 
 import com.sallejoven.backend.model.dto.abstractDto.BaseUserDto;
@@ -5,7 +6,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import com.sallejoven.backend.model.enums.Role;
 import lombok.experimental.SuperBuilder;
 
 @Data
@@ -13,6 +13,6 @@ import lombok.experimental.SuperBuilder;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-public class UserSelfDto extends BaseUserDto {
-    private Role rol;
+public class UserDto extends BaseUserDto {
+    private int userType;
 }

@@ -16,6 +16,13 @@ public interface UserGroupRepository extends JpaRepository<UserGroup, Long> {
     """)
     List<UserGroup> findByGroupIds(@Param("groupIds") Collection<Long> groupIds);
 
+    @Query("""
+        select ug
+        from UserGroup ug
+        where ug.group.id = :groupId
+    """)
+    List<UserGroup> findByGroupId(@Param("groupId") Long groupId);
+
 
     /** Todos los user_groups cuyos grupos están en esos stages (cualquier centro). */
     @Query("""

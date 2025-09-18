@@ -3,15 +3,25 @@ package com.sallejoven.backend.controller;
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.dto.CenterDto;
 import com.sallejoven.backend.model.dto.GroupDto;
+import com.sallejoven.backend.model.dto.UserCenterDto;
 import com.sallejoven.backend.model.entity.Center;
 import com.sallejoven.backend.model.entity.GroupSalle;
+import com.sallejoven.backend.model.entity.UserGroup;
+import com.sallejoven.backend.model.entity.UserSalle;
+import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.types.ErrorCodes;
+import com.sallejoven.backend.service.AuthService;
 import com.sallejoven.backend.service.CenterService;
 import com.sallejoven.backend.service.GroupService;
+import com.sallejoven.backend.service.UserService;
+import com.sallejoven.backend.utils.SalleConverters;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -22,6 +32,9 @@ public class CenterController {
 
     private final CenterService centerService;
     private final GroupService groupService;
+    private final UserService userService;
+    private final AuthService authService;
+    private final SalleConverters salleConverters;
 
     /**
      * Devuelve todos los centros con sus grupos
@@ -74,6 +87,32 @@ public class CenterController {
                     .build()
         ).toList();
 
+        return ResponseEntity.ok(dtos);
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<List<UserCenterDto>> myCenters(Principal principal) throws SalleException {
+        UserSalle me = userService.findByEmail(principal.getName());
+
+        List<Role> roles = authService.getCurrentUserRoles();
+        Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : Collections.min(roles);
+
+        if (mainRole == Role.ADMIN) {
+            List<Center> centers = centerService.getAllCentersWithGroups(); // o getAllCentersWithGroups(); da igual, convertimos a []
+            List<UserCenterDto> dtos = centers.stream()
+                    .map(salleConverters::centerToUserCenterNoGroups)
+                    .sorted(Comparator.comparing(UserCenterDto::getCenterName, String.CASE_INSENSITIVE_ORDER))
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(dtos);
+        }
+
+        // NO-ADMIN -> agrupar sus UserGroup por centro
+        List<UserGroup> userGroups = me.getGroups().stream()
+                .filter(ug -> ug.getDeletedAt() == null
+                        && ug.getGroup() != null)
+                .collect(Collectors.toList());
+
+        List<UserCenterDto> dtos = salleConverters.userGroupsToUserCenters(userGroups);
         return ResponseEntity.ok(dtos);
     }
 }
