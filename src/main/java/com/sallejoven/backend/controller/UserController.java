@@ -1,8 +1,10 @@
 package com.sallejoven.backend.controller;
 
 import com.sallejoven.backend.errors.SalleException;
+import com.sallejoven.backend.model.dto.UserDto;
 import com.sallejoven.backend.model.dto.UserSelfDto;
 import com.sallejoven.backend.model.entity.GroupSalle;
+import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.model.requestDto.UserSalleRequestOptional;
@@ -11,6 +13,7 @@ import com.sallejoven.backend.service.AuthService;
 import com.sallejoven.backend.service.GroupLeaderImporterService;
 import com.sallejoven.backend.service.GroupService;
 import com.sallejoven.backend.service.PastoralDelegateImporterService;
+import com.sallejoven.backend.service.UserGroupService;
 import com.sallejoven.backend.service.UserImporterService;
 import com.sallejoven.backend.service.UserService;
 import com.sallejoven.backend.utils.SalleConverters;
@@ -39,9 +42,8 @@ public class UserController {
     private final AuthService authService;
     private final SalleConverters salleConverters;
     private final GroupService groupService;
-    private final UserImporterService userImporterService;
+    private final UserGroupService userGroupService;
     private final PastoralDelegateImporterService pastoralDelegateImporterService;
-    private final GroupLeaderImporterService groupLeaderImporterService;
 
     @GetMapping
     public ResponseEntity<List<UserSalle>> getAllUsers() {
@@ -56,9 +58,9 @@ public class UserController {
     }
 
     @GetMapping("/group/{groupId}")
-    public ResponseEntity<List<UserSelfDto>> getUserByGroupId(@PathVariable Long groupId) {
-        List<UserSalle> users = userService.getUsersByGroupId(groupId);
-        List<UserSelfDto> result = users.stream().map(user -> {
+    public ResponseEntity<List<UserDto>> getUserByGroupId(@PathVariable Long groupId) {
+        List<UserGroup> users = userGroupService.findByGroupId(groupId);
+        List<UserDto> result = users.stream().map(user -> {
             try {
                 return salleConverters.buildSelfUserInfo(user);
             } catch (SalleException e) {

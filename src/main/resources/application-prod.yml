@@ -59,6 +59,8 @@ salle:
 app:
   email:
     notifications: true
+  reset:
+    base-url: "https://starchecksallejoven.com/#/reset-password"
 
 server:
   port: 8080

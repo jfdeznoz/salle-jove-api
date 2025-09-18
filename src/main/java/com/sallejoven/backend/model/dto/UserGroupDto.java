@@ -12,13 +12,7 @@ import lombok.NoArgsConstructor;
 public class UserGroupDto {
     private Integer groupId;
 
-    private Integer centerId;
-
     private Integer stage;
 
     private Integer user_type;
-
-    private String centerName;
-
-    private String cityName;
 }

@@ -149,11 +149,16 @@ public class SecurityConfig {
 
     @Order(5)
     @Bean
-    public SecurityFilterChain publicEndpointSecurityFilterChain(HttpSecurity httpSecurity) throws Exception {
-        return httpSecurity
+    public SecurityFilterChain publicEndpointSecurityFilterChain(HttpSecurity http) throws Exception {
+        return http
                 .securityMatcher(new AntPathRequestMatcher("/public/**"))
-                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                .cors(withDefaults()) // << habilita filtro CORS
                 .csrf(AbstractHttpConfigurer::disable)
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // << preflight
+                        .anyRequest().permitAll()
+                )
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .build();
     }
 
@@ -179,7 +184,7 @@ public class SecurityConfig {
         CorsConfiguration cfg = new CorsConfiguration();
 
         cfg.setAllowedOriginPatterns(List.of("*"));
-
+        cfg.setAllowedHeaders(List.of("*"));
         cfg.setAllowedMethods(java.util.List.of("GET","POST","PUT","DELETE","OPTIONS"));
         cfg.setAllowedHeaders(java.util.List.of("Authorization","Content-Type","RequiresBasicAuth","X-Requested-With"));
         cfg.setExposedHeaders(java.util.List.of("WWW-Authenticate","Location")); // opcional
