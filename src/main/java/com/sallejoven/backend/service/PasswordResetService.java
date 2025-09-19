@@ -59,7 +59,7 @@ public class PasswordResetService {
         prt.setCreatedAt(now);
         prt.setExpiresAt(exp);
         prt.setUsed(false);
-        tokenRepo.save(prt);
+        tokenRepo.save(prt);    
 
         // Enlace
         String link = resetBaseUrl + "?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
