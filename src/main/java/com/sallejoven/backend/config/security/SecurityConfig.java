@@ -1,5 +1,12 @@
 package com.sallejoven.backend.config.security;
 
+import com.sallejoven.backend.config.UserInfoManagerConfig;
+import com.sallejoven.backend.errors.CustomAccessDeniedHandler;
+import com.sallejoven.backend.errors.CustomAuthenticationEntryPoint;
+import com.sallejoven.backend.repository.RefreshTokenRepository;
+import com.sallejoven.backend.service.LogoutHandlerService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -16,27 +23,19 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
-import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
-import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
-import static org.springframework.security.config.Customizer.withDefaults;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
 import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
-import com.sallejoven.backend.config.UserInfoManagerConfig;
-import com.sallejoven.backend.repository.RefreshTokenRepository;
-import com.sallejoven.backend.service.LogoutHandlerService;
-import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
@@ -53,128 +52,146 @@ public class SecurityConfig {
     private final RefreshTokenRepository refreshTokenRepo;
     private final LogoutHandlerService logoutHandlerService;
 
+    // Handlers personalizados para respuestas JSON unificadas
+    private final CustomAuthenticationEntryPoint authEntryPoint;
+    private final CustomAccessDeniedHandler accessDeniedHandler;
+
+    // 1) /sign-in/**
     @Order(1)
     @Bean
-    public SecurityFilterChain signInSecurityFilterChain(HttpSecurity httpSecurity) throws Exception{
-        return httpSecurity
+    public SecurityFilterChain signInSecurityFilterChain(HttpSecurity http) throws Exception {
+        return http
                 .securityMatcher(new AntPathRequestMatcher("/sign-in/**"))
-                .cors(withDefaults())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // <- preflight libre
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .userDetailsService(userInfoManagerConfig)
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .exceptionHandling(ex -> {
-                    ex.authenticationEntryPoint((request, response, authException) ->
-                            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, authException.getMessage()));
-                })
-                .httpBasic(withDefaults())
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(authEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
+                )
                 .build();
     }
 
+    // 2) /api/**
     @Order(2)
     @Bean
-    public SecurityFilterChain apiSecurityFilterChain(HttpSecurity httpSecurity) throws Exception{
-        return httpSecurity
+    public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http) throws Exception {
+        return http
                 .securityMatcher(new AntPathRequestMatcher("/api/**"))
-                .cors(withDefaults())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // <- preflight libre
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
                 )
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(withDefaults()))
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .authenticationEntryPoint(authEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
+                        .jwt(jwt -> {}) // withDefaults() implícito
+                )
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(new JwtAccessTokenFilter(rsaKeyRecord, jwtTokenUtils), UsernamePasswordAuthenticationFilter.class)
-                .exceptionHandling(ex -> {
-                    log.error("[SecurityConfig:apiSecurityFilterChain] Exception due to :{}",ex);
-                    ex.authenticationEntryPoint(new BearerTokenAuthenticationEntryPoint());
-                    ex.accessDeniedHandler(new BearerTokenAccessDeniedHandler());
-                })
-                .httpBasic(withDefaults())
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(authEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
+                )
                 .build();
     }
 
+    // 3) /refresh-token/**
     @Order(3)
     @Bean
-    public SecurityFilterChain refreshTokenSecurityFilterChain(HttpSecurity httpSecurity) throws Exception{
-        return httpSecurity
+    public SecurityFilterChain refreshTokenSecurityFilterChain(HttpSecurity http) throws Exception {
+        return http
                 .securityMatcher(new AntPathRequestMatcher("/refresh-token/**"))
-                .cors(withDefaults())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // <- preflight libre
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
                 )
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(withDefaults()))
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .addFilterBefore(new JwtRefreshTokenFilter(rsaKeyRecord,jwtTokenUtils,refreshTokenRepo), UsernamePasswordAuthenticationFilter.class)
-                .exceptionHandling(ex -> {
-                    log.error("[SecurityConfig:refreshTokenSecurityFilterChain] Exception due to :{}",ex);
-                    ex.authenticationEntryPoint(new BearerTokenAuthenticationEntryPoint());
-                    ex.accessDeniedHandler(new BearerTokenAccessDeniedHandler());
-                })
-                .httpBasic(withDefaults())
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .authenticationEntryPoint(authEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
+                        .jwt(jwt -> {})
+                )
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .addFilterBefore(new JwtRefreshTokenFilter(rsaKeyRecord, jwtTokenUtils, refreshTokenRepo), UsernamePasswordAuthenticationFilter.class)
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(authEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
+                )
                 .build();
     }
 
+    // 4) /logout/**
     @Order(4)
     @Bean
-    public SecurityFilterChain logoutSecurityFilterChain(HttpSecurity httpSecurity) throws Exception {
-        return httpSecurity
+    public SecurityFilterChain logoutSecurityFilterChain(HttpSecurity http) throws Exception {
+        return http
                 .securityMatcher(new AntPathRequestMatcher("/logout/**"))
-                .cors(withDefaults())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // <- preflight libre
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
                 )
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(withDefaults()))
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .addFilterBefore(new JwtAccessTokenFilter(rsaKeyRecord,jwtTokenUtils), UsernamePasswordAuthenticationFilter.class)
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .authenticationEntryPoint(authEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
+                        .jwt(jwt -> {})
+                )
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .addFilterBefore(new JwtAccessTokenFilter(rsaKeyRecord, jwtTokenUtils), UsernamePasswordAuthenticationFilter.class)
                 .logout(logout -> logout
                         .logoutUrl("/logout")
                         .addLogoutHandler(logoutHandlerService)
-                        .logoutSuccessHandler(((request, response, authentication) -> SecurityContextHolder.clearContext()))
+                        .logoutSuccessHandler((request, response, authentication) -> SecurityContextHolder.clearContext())
                 )
-                .exceptionHandling(ex -> {
-                    log.error("[SecurityConfig:logoutSecurityFilterChain] Exception due to :{}",ex);
-                    ex.authenticationEntryPoint(new BearerTokenAuthenticationEntryPoint());
-                    ex.accessDeniedHandler(new BearerTokenAccessDeniedHandler());
-                })
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(authEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
+                )
                 .build();
     }
 
+    // 5) /public/**
     @Order(5)
     @Bean
     public SecurityFilterChain publicEndpointSecurityFilterChain(HttpSecurity http) throws Exception {
         return http
                 .securityMatcher(new AntPathRequestMatcher("/public/**"))
-                .cors(withDefaults()) // << habilita filtro CORS
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // << preflight
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().permitAll()
                 )
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .build();
     }
 
+    // Beans comunes
     @Bean
     PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
     @Bean
-    JwtDecoder jwtDecoder(){
+    JwtDecoder jwtDecoder() {
         return NimbusJwtDecoder.withPublicKey(rsaKeyRecord.rsaPublicKey()).build();
     }
 
     @Bean
-    JwtEncoder jwtEncoder(){
-        JWK jwk = new RSAKey.Builder(rsaKeyRecord.rsaPublicKey()).privateKey(rsaKeyRecord.rsaPrivateKey()).build();
+    JwtEncoder jwtEncoder() {
+        JWK jwk = new RSAKey.Builder(rsaKeyRecord.rsaPublicKey())
+                .privateKey(rsaKeyRecord.rsaPrivateKey())
+                .build();
         JWKSource<SecurityContext> jwkSource = new ImmutableJWKSet<>(new JWKSet(jwk));
         return new NimbusJwtEncoder(jwkSource);
     }
@@ -182,12 +199,10 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration cfg = new CorsConfiguration();
-
         cfg.setAllowedOriginPatterns(List.of("*"));
-        cfg.setAllowedHeaders(List.of("*"));
-        cfg.setAllowedMethods(java.util.List.of("GET","POST","PUT","DELETE","OPTIONS"));
-        cfg.setAllowedHeaders(java.util.List.of("Authorization","Content-Type","RequiresBasicAuth","X-Requested-With"));
-        cfg.setExposedHeaders(java.util.List.of("WWW-Authenticate","Location")); // opcional
+        cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "RequiresBasicAuth", "X-Requested-With"));
+        cfg.setExposedHeaders(List.of("WWW-Authenticate", "Location"));
         cfg.setAllowCredentials(true);
         cfg.setMaxAge(3600L);
 
@@ -195,5 +210,4 @@ public class SecurityConfig {
         source.registerCorsConfiguration("/**", cfg);
         return source;
     }
-   
 }
