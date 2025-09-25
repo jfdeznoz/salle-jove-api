@@ -32,6 +32,7 @@ public class UserService {
     private final EventUserService eventUserService;
     private final EventGroupService eventGroupService;
     private final GroupService groupService;
+    private final AcademicStateService academicStateService;
 
     public UserSalle findByEmail(String email) throws SalleException {
         return userRepository.findByEmail(email).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
@@ -114,6 +115,7 @@ public class UserService {
             throw new SalleException(ErrorCodes.GROUP_NOT_FOUND, "Se requiere groupId para inscribir en un evento.");
         }
 
+        // responsable salle joven o delegado
         if (centerId != null && eventId == null) {
             List<GroupSalle> centerGroups = groupService.findGroupsByCenterId(centerId.longValue());
             if (centerGroups != null) {
@@ -126,6 +128,7 @@ public class UserService {
             return saved;
         }
 
+        //Usuario añadido solo para un evento
         if (eventId != null && groupId != null) {
             GroupSalle group = groupService.findById(groupId.longValue())
                     .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
@@ -146,7 +149,7 @@ public class UserService {
             return saved;
         }
 
-        // (C) groupId SIN evento => membership + eventos futuros
+        // Usuario normal que se añade a un grupo
         if (groupId != null) {
             GroupSalle group = groupService.findById(groupId.longValue())
                     .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
@@ -156,7 +159,6 @@ public class UserService {
             return saved;
         }
 
-        // (D) sin centro/grupo/evento => solo usuario
         return saved;
     }
 
@@ -167,11 +169,16 @@ public class UserService {
         return "ANIMATOR".equals(r);
     }
 
-    private UserGroup ensureMembership(UserSalle user, GroupSalle group, int userType) {
+    private UserGroup ensureMembership(UserSalle user, GroupSalle group, int userType) throws SalleException {
+        final int year = academicStateService.getVisibleYear();
+
         UserGroup existing = user.getGroups().stream()
-                .filter(ug -> ug.getGroup() != null
-                        && ug.getGroup().getId().equals(group.getId())
-                        && ug.getDeletedAt() == null)
+                .filter(ug ->
+                        ug.getGroup() != null
+                                && ug.getGroup().getId().equals(group.getId())
+                                && ug.getDeletedAt() == null
+                                && ug.getYear() != null
+                                && ug.getYear() == year)
                 .findFirst()
                 .orElse(null);
 
@@ -184,6 +191,7 @@ public class UserService {
                 .user(user)
                 .group(group)
                 .userType(userType)
+                .year(year)
                 .build();
 
         user.getGroups().add(membership);
@@ -205,6 +213,8 @@ public class UserService {
     }
 
     public void addUserToGroup(Long userId, Long groupId, Long userType) throws SalleException {
+        final int year = academicStateService.getVisibleYear();
+
         GroupSalle group = groupService.findById(groupId)
                 .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
 
@@ -215,6 +225,7 @@ public class UserService {
                 .user(user)
                 .group(group)
                 .userType(userType.intValue())
+                .year(year)
                 .build();
 
         user.getGroups().add(membership);
@@ -334,6 +345,7 @@ public class UserService {
                             .user(user)
                             .group(to)
                             .userType(type)
+                            .year(source.getYear())
                             .build();
                     user.getGroups().add(ug);
                     return ug;

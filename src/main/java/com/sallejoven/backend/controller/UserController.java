@@ -6,6 +6,7 @@ import com.sallejoven.backend.model.dto.UserSelfDto;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
+import com.sallejoven.backend.model.enums.UserType;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.model.requestDto.UserSalleRequestOptional;
 import com.sallejoven.backend.model.types.ErrorCodes;
@@ -58,7 +59,7 @@ public class UserController {
     }
 
     @GetMapping("/group/{groupId}")
-    public ResponseEntity<List<UserDto>> getUserByGroupId(@PathVariable Long groupId) {
+    public ResponseEntity<List<UserDto>> getUserByGroupId(@PathVariable Long groupId) throws SalleException {
         List<UserGroup> users = userGroupService.findByGroupId(groupId);
         List<UserDto> result = users.stream().map(user -> {
             try {
@@ -67,6 +68,24 @@ public class UserController {
                 throw new RuntimeException(e);
             }
         }).collect(Collectors.toList());
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/center/{centerId}/leaders")
+    public ResponseEntity<List<UserDto>> getCenterLeadersByCenter(@PathVariable Long centerId) throws SalleException {
+        List<UserGroup> ugs = userGroupService.findByCenterAndUserTypes(
+                centerId,
+                UserType.GROUP_LEADER.toInt(),
+                UserType.PASTORAL_DELEGATE.toInt()
+        );
+        List<UserDto> result = ugs.stream().map(ug -> {
+            try {
+                return salleConverters.buildSelfUserInfo(ug);
+            } catch (SalleException e) {
+                throw new RuntimeException(e);
+            }
+        }).toList();
+
         return ResponseEntity.ok(result);
     }
 

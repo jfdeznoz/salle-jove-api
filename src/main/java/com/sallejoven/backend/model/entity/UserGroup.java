@@ -29,6 +29,9 @@ public class UserGroup {
     @Column(name = "user_type", nullable = false)
     private Integer userType;
 
+    @Column(name = "year", nullable = false)
+    private Integer year;
+
     @Column(name = "deleted_at")
     @JsonFormat(pattern="yyyy-MM-dd HH:mm:ss")
     private LocalDateTime deletedAt;

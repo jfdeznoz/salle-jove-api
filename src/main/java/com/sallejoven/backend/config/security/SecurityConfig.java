@@ -23,6 +23,8 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
@@ -56,8 +58,20 @@ public class SecurityConfig {
     private final CustomAuthenticationEntryPoint authEntryPoint;
     private final CustomAccessDeniedHandler accessDeniedHandler;
 
-    // 1) /sign-in/**
     @Order(1)
+    @Bean
+    JwtAuthenticationConverter rolesJwtAuthenticationConverter() {
+        var rolesConv = new JwtGrantedAuthoritiesConverter();
+        rolesConv.setAuthoritiesClaimName("roles");
+        rolesConv.setAuthorityPrefix("ROLE_");
+
+        var jwtConv = new JwtAuthenticationConverter();
+        jwtConv.setJwtGrantedAuthoritiesConverter(rolesConv);
+        return jwtConv;
+    }
+
+    // 1) /sign-in/**
+    @Order(2)
     @Bean
     public SecurityFilterChain signInSecurityFilterChain(HttpSecurity http) throws Exception {
         return http
@@ -79,7 +93,7 @@ public class SecurityConfig {
     }
 
     // 2) /api/**
-    @Order(2)
+    @Order(3)
     @Bean
     public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http) throws Exception {
         return http
@@ -93,7 +107,7 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .authenticationEntryPoint(authEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler)
-                        .jwt(jwt -> {}) // withDefaults() implícito
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(rolesJwtAuthenticationConverter()))
                 )
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(new JwtAccessTokenFilter(rsaKeyRecord, jwtTokenUtils), UsernamePasswordAuthenticationFilter.class)
@@ -105,7 +119,7 @@ public class SecurityConfig {
     }
 
     // 3) /refresh-token/**
-    @Order(3)
+    @Order(4)
     @Bean
     public SecurityFilterChain refreshTokenSecurityFilterChain(HttpSecurity http) throws Exception {
         return http
@@ -131,7 +145,7 @@ public class SecurityConfig {
     }
 
     // 4) /logout/**
-    @Order(4)
+    @Order(5)
     @Bean
     public SecurityFilterChain logoutSecurityFilterChain(HttpSecurity http) throws Exception {
         return http
@@ -162,7 +176,7 @@ public class SecurityConfig {
     }
 
     // 5) /public/**
-    @Order(5)
+    @Order(6)
     @Bean
     public SecurityFilterChain publicEndpointSecurityFilterChain(HttpSecurity http) throws Exception {
         return http
@@ -202,7 +216,9 @@ public class SecurityConfig {
         CorsConfiguration cfg = new CorsConfiguration();
         cfg.setAllowedOriginPatterns(List.of(
                 "https://starchecksallejoven.com",
-                "https://www.starchecksallejoven.com"
+                "https://www.starchecksallejoven.com",
+                "http://localhost:*",
+                "http://127.0.0.1:*"
         ));
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "RequiresBasicAuth", "X-Requested-With"));

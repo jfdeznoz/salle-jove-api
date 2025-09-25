@@ -29,16 +29,22 @@ public class JwtTokenGenerator {
 
         log.info("[JwtTokenGenerator:generateAccessToken] Token Creation Started for:{}", authentication.getName());
 
-        String roles = getRolesOfUser(authentication);
+        List<String> granted = authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .toList();
 
-        String permissions = getPermissionsFromRoles(roles);
+        List<String> roles = granted.stream()
+                .filter(a -> a.startsWith("ROLE_"))
+                .map(a -> a.substring("ROLE_".length()))
+                .distinct()
+                .toList();
 
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer("atquil")
                 .issuedAt(Instant.now())
-                .expiresAt(Instant.now().plus(15 , ChronoUnit.MINUTES))
+                .expiresAt(Instant.now().plus(15, ChronoUnit.MINUTES))
                 .subject(authentication.getName())
-                .claim("scope", permissions)
+                .claim("roles", roles) // 👈 usamos roles (array), no scope
                 .build();
 
         return jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
@@ -47,38 +53,16 @@ public class JwtTokenGenerator {
     public String generateRefreshToken(Authentication authentication) {
 
         log.info("[JwtTokenGenerator:generateRefreshToken] Token Creation Started for:{}", authentication.getName());
-        
+
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer("atquil")
                 .issuedAt(Instant.now())
-                .expiresAt(Instant.now().plus(15 , ChronoUnit.DAYS))
+                .expiresAt(Instant.now().plus(15, ChronoUnit.DAYS))
                 .subject(authentication.getName())
-                .claim("scope", "REFRESH_TOKEN")
+                .claim("roles", List.of("REFRESH")) // opcional
                 .build();
-   
+
         return jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
-    }
-
-    private static String getRolesOfUser(Authentication authentication) {
-        return authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .collect(Collectors.joining(" "));
-    }
-
-    private String getPermissionsFromRoles(String roles) {
-        Set<String> permissions = new HashSet<>();
-
-        if (roles.contains("ROLE_ADMIN")) {
-            permissions.addAll(List.of("READ", "WRITE", "DELETE"));
-        }
-        if (roles.contains("ROLE_PASTORAL_DELEGATE")) {
-            permissions.add("READ");
-        }
-        if (roles.contains("ROLE_GROUP_LEADER")) {
-            permissions.add("READ");
-        }
-
-        return String.join(" ", permissions);
     }
 
 }
