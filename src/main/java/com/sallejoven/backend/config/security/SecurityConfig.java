@@ -62,8 +62,8 @@ public class SecurityConfig {
     @Bean
     JwtAuthenticationConverter rolesJwtAuthenticationConverter() {
         var rolesConv = new JwtGrantedAuthoritiesConverter();
-        rolesConv.setAuthoritiesClaimName("roles"); // <-- tu claim en el JWT
-        rolesConv.setAuthorityPrefix("ROLE_");      // <-- hará ROLE_ADMIN
+        rolesConv.setAuthoritiesClaimName("roles");
+        rolesConv.setAuthorityPrefix("ROLE_");
 
         var jwtConv = new JwtAuthenticationConverter();
         jwtConv.setJwtGrantedAuthoritiesConverter(rolesConv);
@@ -107,7 +107,7 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .authenticationEntryPoint(authEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler)
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(rolesJwtAuthenticationConverter())) // 👈 CLAVE
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(rolesJwtAuthenticationConverter()))
                 )
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(new JwtAccessTokenFilter(rsaKeyRecord, jwtTokenUtils), UsernamePasswordAuthenticationFilter.class)
