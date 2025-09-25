@@ -121,7 +121,7 @@ public class EventService {
     }
 
     @Transactional
-    public Event editEvent(RequestEvent requestEvent) throws IOException {
+    public Event editEvent(RequestEvent requestEvent) throws IOException, SalleException {
         Event existingEvent = eventRepository.findById(requestEvent.getId())
                 .orElseThrow(() -> new RuntimeException("Evento no encontrado con ID: " + requestEvent.getId()));
 
@@ -148,7 +148,7 @@ public class EventService {
         return updatedEvent;
     }
 
-    public void syncEventGroups(Event event, List<Integer> currentStages) {
+    public void syncEventGroups(Event event, List<Integer> currentStages) throws SalleException {
         List<Integer> updatedStages = Arrays.asList(event.getStages());
 
         Set<Integer> currentSet = new HashSet<>(currentStages);

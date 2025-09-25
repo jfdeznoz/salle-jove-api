@@ -10,9 +10,10 @@ public enum ErrorCodes {
     BLOCK_EVENT_ERROR_ADMIN("Solo un admin puede bloquear eventos generales", "E006"),
     BLOCK_EVENT_ERROR("No tienes permiso para bloquear este evento local", "E007"),
     CENTER_NOT_FOUND("Centro no encontrado", "E008"),
-    USER_GROUP_NOT_ASSIGNED("El usuario no pertenece al grupo origen", "009"),
-    EVENT_USER_NOT_FOUND("No se ha encontrado que el usuario vaya a dicho evento", "009");
-
+    USER_GROUP_NOT_ASSIGNED("El usuario no pertenece al grupo origen", "E009"),
+    EVENT_USER_NOT_FOUND("No se ha encontrado que el usuario vaya a dicho evento", "E010"),
+    PROMOTION_TARGET_GROUP_NOT_FOUND("No se ha encontrado el grupo por grupo y etapa", "E011"),
+    ACADEMIC_STATE_NOT_INITIALIZED("Estado año académico no inicializado", "E012");
 
     private final String message;
     private final String errorCode;

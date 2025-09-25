@@ -78,7 +78,7 @@ public class GroupService {
         return groupRepository.findByStageIn(stages);
     }
 
-    public List<GroupSalle> findAllByStageAndCenter(List<Integer> stages, Long centerId) {
+    public List<GroupSalle> findAllByStagesAndCenter(List<Integer> stages, Long centerId) {
         return groupRepository.findAllByStagesAndCenterId(stages, centerId);
     }
 
@@ -88,5 +88,10 @@ public class GroupService {
 
     public void deleteGroup(Long id) {
         groupRepository.deleteById(id);
+    }
+
+    public GroupSalle getByCenterAndStageOrThrow(Long centerId, int stage) throws SalleException {
+        return groupRepository.findByCenterIdAndStage(centerId, stage)
+                .orElseThrow(() -> new SalleException(ErrorCodes.PROMOTION_TARGET_GROUP_NOT_FOUND));
     }
 }

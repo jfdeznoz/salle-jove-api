@@ -22,4 +22,7 @@ public interface GroupRepository extends JpaRepository<GroupSalle, Long> {
     List<GroupSalle> findAllByStagesAndCenterId(@Param("stages") List<Integer> stages, @Param("centerId") Long centerId);
 
     List<GroupSalle> findByCenterId(Long centerId);
+
+    Optional<GroupSalle> findByCenterIdAndStage(Long centerId, Integer stage);
+
 }
