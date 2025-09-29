@@ -78,6 +78,10 @@ public class UserGroupService {
         return userGroupRepository.findByYearAndDeletedAtIsNull(year);
     }
 
+    public List<UserGroup> findActiveCatechumensByYear(int year) {
+        return userGroupRepository.findByYearAndUserTypeAndDeletedAtIsNull(year, 0);
+    }
+
     public boolean existsActiveForUserInYear(Long userId, int year) {
         return userGroupRepository.existsByUser_IdAndYearAndDeletedAtIsNull(userId, year);
     }
