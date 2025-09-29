@@ -66,8 +66,9 @@ public interface UserGroupRepository extends JpaRepository<UserGroup, Long> {
             @Param("types") Integer[] types
     );
 
-    // Ya existentes
     List<UserGroup> findByYearAndDeletedAtIsNull(Integer year);
+
+    List<UserGroup> findByYearAndUserTypeAndDeletedAtIsNull(int year, int userType);
 
     boolean existsByUser_IdAndYearAndDeletedAtIsNull(Long userId, Integer year);
 }

@@ -35,7 +35,7 @@ public class PromotionService {
         final int newYear = academicYear(today);
         final int sourceYear = newYear - 1;
 
-        List<UserGroup> sourceRows = userGroupService.findActiveByYear(sourceYear);
+        List<UserGroup> sourceRows = userGroupService.findActiveCatechumensByYear(sourceYear);
         if (sourceRows.isEmpty()) {
             log.info("Promoción: no hay filas vigentes en year={} (nada que promocionar).", sourceYear);
             academicStateService.setVisibleYear(newYear);
