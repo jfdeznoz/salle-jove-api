@@ -60,4 +60,30 @@ public interface UserRepository extends JpaRepository<UserSalle, Long> {
 
     @Query("SELECT u FROM UserSalle u WHERE u.roles LIKE %:role1% OR u.roles LIKE %:role2% AND u.deletedAt IS NULL")
     List<UserSalle> findAllByRoles(@Param("role1") String role1, @Param("role2") String role2);
+
+    @Query(value = """
+    SELECT u.*
+    FROM user_salle u
+    WHERE u.deleted_at IS NULL
+      AND (
+        -- nombre completo: name + ' ' + last_name
+        lower(
+          translate(
+            trim(coalesce(u.name,'') || ' ' || coalesce(u.last_name,'')),
+            'ÁÉÍÓÚÜÀÈÌÒÙÑáéíóúüàèìòùñ',
+            'AEIOUUAEIOUNaeiouuaeioun'
+          )
+        ) LIKE CONCAT('%', :normalized, '%')
+        OR
+        lower(
+          translate(
+            coalesce(u.email,''),
+            'ÁÉÍÓÚÜÀÈÌÒÙÑáéíóúüàèìòùñ',
+            'AEIOUUAEIOUNaeiouuaeioun'
+          )
+        ) LIKE CONCAT('%', :normalized, '%')
+      )
+    ORDER BY u.name NULLS LAST, u.last_name NULLS LAST
+    """, nativeQuery = true)
+    List<UserSalle> searchUsersNormalized(@Param("normalized") String normalized);
 }

@@ -4,36 +4,39 @@ import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.dto.GroupDto;
 import com.sallejoven.backend.model.dto.UserGroupDto;
 import com.sallejoven.backend.model.entity.GroupSalle;
+import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.service.GroupService;
+import com.sallejoven.backend.service.UserGroupService;
+import com.sallejoven.backend.service.UserService;
 import com.sallejoven.backend.utils.SalleConverters;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 @RestController
+@RequiredArgsConstructor
 @RequestMapping("/api/groups")
 public class GroupController {
 
     private final GroupService groupService;
     private final SalleConverters salleConverters;
-
-
-    @Autowired
-    public GroupController(GroupService groupService, SalleConverters salleConverters) {
-        this.groupService = groupService;
-        this.salleConverters = salleConverters;
-    }
+    private final UserGroupService userGroupService;
+    private final UserService userService;
 
    @GetMapping("/")
     public ResponseEntity<List<GroupDto>> getAllGroups() {
@@ -92,4 +95,41 @@ public class GroupController {
         }
         return ResponseEntity.notFound().build();
     }
+
+    @PutMapping("/user/{userId}/from/{fromGroupId}/to/{toGroupId}")
+    public ResponseEntity<Void> moveUserBetweenGroups(@PathVariable Long userId,
+                                                      @PathVariable Long fromGroupId,
+                                                      @PathVariable Long toGroupId) throws SalleException {
+
+        UserSalle user = userService.findByUserId(userId);
+        userGroupService.moveUserBetweenGroups(user, fromGroupId, toGroupId);
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/user/{userId}/group/{groupId}")
+    public ResponseEntity<Void> addUserToGroup(@PathVariable Long userId,
+                                               @PathVariable Long groupId,
+                                               @RequestBody Map<String,Integer> body) throws SalleException {
+        int userType = body.get("userType");
+        userGroupService.addUserToGroup(userService.findByUserId(userId), groupId, userType);
+        return ResponseEntity.noContent().build(); // o created(URI)
+    }
+
+    @DeleteMapping("/user/{userId}/group/{groupId}")
+    public ResponseEntity<Void> unlinkUserFromGroupByUserAndGroup(@PathVariable Long userId,
+                                                                  @PathVariable Long groupId) throws SalleException {
+        userGroupService.unlinkByUserAndGroup(userId, groupId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/user/{userId}/group/{groupId}")
+    public ResponseEntity<Void> changeUserGroupRole(@PathVariable Long userId,
+                                                    @PathVariable Long groupId,
+                                                    @RequestBody Map<String,Integer> body) throws SalleException {
+        int newRole = body.get("userType");
+        userGroupService.changeRoleByUserAndGroup(userId, groupId, newRole);
+        return ResponseEntity.noContent().build();
+    }
+
 }

@@ -1,12 +1,16 @@
 package com.sallejoven.backend.service;
 
 import com.sallejoven.backend.errors.SalleException;
+import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserGroup;
+import com.sallejoven.backend.model.entity.UserSalle;
+import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.repository.UserGroupRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 
@@ -17,6 +21,13 @@ public class UserGroupService {
 
     private final UserGroupRepository userGroupRepository;
     private final AcademicStateService academicStateService;
+    private final GroupService groupService;
+    private final EventUserService eventUserService;
+
+    public UserGroup findActiveById(Long userGroupId) throws SalleException {
+        return userGroupRepository.findByIdAndDeletedAtIsNull(userGroupId)
+                .orElseThrow(() -> new SalleException(ErrorCodes.USER_GROUP_NOT_ASSIGNED));
+    }
 
     public List<UserGroup> findByGroupIds(Collection<Long> groupIds) throws SalleException {
         int year = academicStateService.getVisibleYear();
@@ -90,4 +101,115 @@ public class UserGroupService {
     public void saveAll(List<UserGroup> userGroups) {
         userGroupRepository.saveAll(userGroups);
     }
+
+    @Transactional
+    public void moveUserBetweenGroups(UserSalle user, Long fromGroupId, Long toGroupId) throws SalleException {
+
+        if (fromGroupId.equals(toGroupId)) return;
+
+        GroupSalle to = groupService.findById(toGroupId)
+                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+
+        // 1) localizar membership origen (user + fromGroup)
+        UserGroup source = user.getGroups().stream()
+                .filter(m -> m.getGroup().getId().equals(fromGroupId))
+                .findFirst()
+                .orElseThrow(() -> new SalleException(ErrorCodes.USER_GROUP_NOT_ASSIGNED));
+
+        // 2) conservar tipo
+        Integer type = source.getUserType();
+
+        // 3) quitar membership origen (orphanRemoval=true la borrará en BD si tu mapeo lo tiene)
+        user.getGroups().remove(source);
+
+        // 4) crear/actualizar membership destino con mismo tipo
+        UserGroup dest = user.getGroups().stream()
+                .filter(m -> m.getGroup().getId().equals(toGroupId))
+                .findFirst()
+                .orElseGet(() -> {
+                    UserGroup ug = UserGroup.builder()
+                            .user(user)
+                            .group(to)
+                            .userType(type)
+                            .year(source.getYear())
+                            .build();
+                    user.getGroups().add(ug);
+                    return ug;
+                });
+
+        dest.setUserType(type);
+
+       /* // 5) persistir cambios en memberships
+        UserSalle updated = userService.saveUser(user);
+        */
+
+        // 6) inscribir al usuario (vía su UserGroup destino) en los eventos futuros del nuevo grupo
+        eventUserService.assignFutureGroupEventsToUser(user, to);
+    }
+
+    @Transactional
+    public UserGroup addUserToGroup(UserSalle user, Long groupId, int userType) throws SalleException {
+        if (userType != 0 && userType != 1 && userType != 5) {
+            throw new SalleException(ErrorCodes.USER_TYPE_NOT_VALID);
+        }
+
+        GroupSalle group = groupService.findById(groupId)
+                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+
+        int year = academicStateService.getVisibleYear();
+
+        UserGroup existing = user.getGroups().stream()
+                .filter(ug -> ug.getGroup() != null
+                        && ug.getGroup().getId().equals(groupId)
+                        && ug.getYear() != null
+                        && ug.getYear().equals(year))
+                .findFirst()
+                .orElse(null);
+
+        if (existing != null) {
+            existing.setUserType(userType);
+            return existing;
+        }
+
+        UserGroup newUg = UserGroup.builder()
+                .user(user)
+                .group(group)
+                .userType(userType)
+                .year(year)
+                .build();
+
+        user.getGroups().add(newUg);
+
+        eventUserService.assignFutureGroupEventsToUser(user, group);
+
+        return newUg;
+    }
+
+    @Transactional
+    public void unlinkByUserAndGroup(Long userId, Long groupId) throws SalleException {
+        int year = academicStateService.getVisibleYear();
+
+        UserGroup ug = userGroupRepository
+                .findByUser_IdAndGroup_IdAndYearAndDeletedAtIsNull(userId, groupId, year)
+                .orElseThrow(() -> new SalleException(ErrorCodes.USER_GROUP_NOT_ASSIGNED));
+        ug.setDeletedAt(LocalDateTime.now());
+
+        eventUserService.softDeleteByUserGroupIds(List.of(ug.getId()));
+    }
+
+    @Transactional
+    public void changeRoleByUserAndGroup(Long userId, Long groupId, int newUserType) throws SalleException {
+        if (newUserType != 0 && newUserType != 1 && newUserType != 5) {
+            throw new SalleException(ErrorCodes.USER_TYPE_NOT_VALID);
+        }
+
+        int year = academicStateService.getVisibleYear();
+
+        UserGroup ug = userGroupRepository
+                .findByUser_IdAndGroup_IdAndYearAndDeletedAtIsNull(userId, groupId, year)
+                .orElseThrow(() -> new SalleException(ErrorCodes.USER_GROUP_NOT_ASSIGNED));
+
+        ug.setUserType(newUserType);
+    }
+
 }

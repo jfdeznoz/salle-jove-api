@@ -62,3 +62,4 @@ jobs:
             --application-name "$EB_APP_NAME" \
             --environment-name "$EB_ENV_NAME" \
             --version-label "$VERSION_LABEL"
+            --option-settings Namespace=aws:elasticbeanstalk:application:environment,OptionName=SPRING_PROFILES_ACTIVE,Value=prod

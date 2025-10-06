@@ -4,6 +4,7 @@ import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.dto.UserDto;
 import com.sallejoven.backend.model.dto.UserSelfDto;
 import com.sallejoven.backend.model.entity.GroupSalle;
+import com.sallejoven.backend.model.entity.UserCenter;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.UserType;
@@ -14,6 +15,7 @@ import com.sallejoven.backend.service.AuthService;
 import com.sallejoven.backend.service.GroupLeaderImporterService;
 import com.sallejoven.backend.service.GroupService;
 import com.sallejoven.backend.service.PastoralDelegateImporterService;
+import com.sallejoven.backend.service.UserCenterService;
 import com.sallejoven.backend.service.UserGroupService;
 import com.sallejoven.backend.service.UserImporterService;
 import com.sallejoven.backend.service.UserService;
@@ -45,6 +47,7 @@ public class UserController {
     private final GroupService groupService;
     private final UserGroupService userGroupService;
     private final PastoralDelegateImporterService pastoralDelegateImporterService;
+    private final UserCenterService userCenterService;
 
     @GetMapping
     public ResponseEntity<List<UserSalle>> getAllUsers() {
@@ -73,18 +76,15 @@ public class UserController {
 
     @GetMapping("/center/{centerId}/leaders")
     public ResponseEntity<List<UserDto>> getCenterLeadersByCenter(@PathVariable Long centerId) throws SalleException {
-        List<UserGroup> ugs = userGroupService.findByCenterAndUserTypes(
-                centerId,
-                UserType.GROUP_LEADER.toInt(),
-                UserType.PASTORAL_DELEGATE.toInt()
-        );
-        List<UserDto> result = ugs.stream().map(ug -> {
-            try {
-                return salleConverters.buildSelfUserInfo(ug);
-            } catch (SalleException e) {
-                throw new RuntimeException(e);
-            }
-        }).toList();
+        var ucs = userCenterService.findActiveByCenterForCurrentYear(centerId);
+
+        var result = ucs.stream()
+                .filter(uc -> {
+                    Integer t = uc.getUserType();
+                    return t != null && (t == 2 || t == 3); // 2=GROUP_LEADER, 3=PASTORAL_DELEGATE
+                })
+                .map(uc -> salleConverters.userSalleToUserDto(uc.getUser(), uc.getUserType()))
+                .toList();
 
         return ResponseEntity.ok(result);
     }
@@ -108,6 +108,21 @@ public class UserController {
         String userEmail = authService.getCurrentUserEmail();
         return salleConverters.buildSelfUserInfo(userEmail);
     }
+
+    @GetMapping("/search")
+    public ResponseEntity<List<UserSelfDto>> searchUsers(@RequestParam("search") String search) throws SalleException {
+        List<UserSalle> users = userService.searchUsers(search);
+        List<UserSelfDto> result = users.stream()
+                .map(u -> {
+                    try { return salleConverters.buildSelfUserInfo(u); }
+                    catch (SalleException e) { throw new RuntimeException(e); }
+                })
+                .toList();
+
+        return ResponseEntity.ok(result);
+    }
+
+
 
     @PostMapping
     public ResponseEntity<UserSelfDto> createUser(@RequestBody UserSalleRequest userRequest) throws SalleException {
@@ -133,16 +148,6 @@ public class UserController {
 
         UserSalle user = userService.findByUserId(userId);
         userService.removeUserFromGroup(user, group);
-
-        return ResponseEntity.noContent().build();
-    }
-
-    @PutMapping("/{userId}/group/{fromGroupId}/to/{toGroupId}")
-    public ResponseEntity<Void> moveUserBetweenGroups(@PathVariable Long userId,
-                                                        @PathVariable Long fromGroupId,
-                                                        @PathVariable Long toGroupId) throws SalleException {
-
-        userService.moveUserBetweenGroups(userId, fromGroupId, toGroupId);
 
         return ResponseEntity.noContent().build();
     }

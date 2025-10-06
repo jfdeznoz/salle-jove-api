@@ -2,8 +2,11 @@ package com.sallejoven.backend.service;
 
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.Event;
+import com.sallejoven.backend.model.entity.EventGroup;
 import com.sallejoven.backend.model.entity.EventUser;
+import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserGroup;
+import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.requestDto.AttendanceUpdateDto;
 import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.repository.EventRepository;
@@ -12,6 +15,7 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -23,7 +27,7 @@ import java.util.Set;
 public class EventUserService {
 
     private final EventUserRepository eventUserRepository;
-    private final EventRepository eventRepository;
+    private final EventGroupService eventGroupService;
 
     public void saveAll(List<EventUser> users) {
         eventUserRepository.saveAll(users);
@@ -61,8 +65,6 @@ public class EventUserService {
         return eventUserRepository.softDeleteByEventIdAndUserGroupIds(eventId, userGroupIds);
     }
 
-    /* ===== Asignaciones con UserGroup (nuevo modelo) ===== */
-
     /** Asigna un único UserGroup a un evento (ignora si ya existe por UNIQUE(event,user_group_id)). */
     @Transactional
     public EventUser assignEventToUserGroup(Event event, UserGroup userGroup) {
@@ -74,64 +76,45 @@ public class EventUserService {
         return eventUserRepository.save(eu);
     }
 
-    /** Asigna varios UserGroup a un evento, evitando duplicados antes de insertar. */
     @Transactional
     public void assignEventToUserGroups(Event event, Collection<UserGroup> userGroups) {
         if (userGroups == null || userGroups.isEmpty()) return;
 
         List<Long> already = eventUserRepository.findUserGroupIdsByEvent(event.getId());
+
         List<EventUser> toInsert = userGroups.stream()
-                .filter(ug -> !already.contains(ug.getId()))
-                .map(ug -> EventUser.builder()
-                        .event(event)
-                        .userGroup(ug)
-                        .status(0)
-                        .build())
+                .filter(ug -> ug != null && ug.getId() != null && !already.contains(ug.getId()))
+                .map(ug -> assignEventToUserGroup(event, ug))
                 .toList();
 
         if (!toInsert.isEmpty()) {
-            eventUserRepository.saveAll(toInsert);
+            saveAll(toInsert);
         }
     }
 
-    /** Asigna un UserGroup a varios eventos (por ejemplo, al mover un usuario a otro grupo y re-enganchar eventos futuros). */
-    @Transactional
-    public void assignEventsToUserGroup(Collection<Event> events, UserGroup userGroup) {
-        if (events == null || events.isEmpty()) return;
+    public void assignFutureGroupEventsToUser(UserSalle user, GroupSalle group) {
+        UserGroup membership = user.getGroups().stream()
+                .filter(m -> m.getGroup().getId().equals(group.getId()))
+                .findFirst()
+                .orElse(null);
 
-        // Opcional: si esperas grandes volúmenes, puedes consultar existentes por lote.
-        List<EventUser> toInsert = events.stream()
-                .map(evt -> EventUser.builder()
-                        .event(evt)
-                        .userGroup(userGroup)
-                        .status(0)
-                        .build())
+        if (membership == null) {
+            return;
+        }
+
+        List<EventGroup> egList = eventGroupService.getEventGroupsByGroupId(group.getId());
+
+        LocalDate today = LocalDate.now();
+        List<Event> upcoming = egList.stream()
+                .map(EventGroup::getEvent)
+                .filter(evt -> {
+                    LocalDate end = evt.getEndDate() != null ? evt.getEndDate() : evt.getEventDate();
+                    return end != null && !end.isBefore(today);
+                })
                 .toList();
 
-        // Con UNIQUE(event,user_group_id) puedes delegar de-duplicación a la BD;
-        // si prefieres evitar constraint violations en logs, precalcula "already" por evento.
-        eventUserRepository.saveAll(toInsert);
-    }
-
-    /** Variante por IDs primitivos si te resulta cómodo desde controladores. */
-    @Transactional
-    public void assignEventToUserGroups(Long eventId, Collection<Long> userGroupIds) {
-        if (userGroupIds == null || userGroupIds.isEmpty()) return;
-        Event event = eventRepository.findById(eventId)
-                .orElseThrow(() -> new IllegalArgumentException("Evento no encontrado ID: " + eventId));
-
-        List<Long> already = eventUserRepository.findUserGroupIdsByEvent(eventId);
-        List<EventUser> toInsert = userGroupIds.stream()
-                .filter(id -> !already.contains(id))
-                .map(ugId -> EventUser.builder()
-                        .event(event)
-                        .userGroup(UserGroup.builder().id(ugId).build()) // referencia ligera
-                        .status(0)
-                        .build())
-                .toList();
-
-        if (!toInsert.isEmpty()) {
-            eventUserRepository.saveAll(toInsert);
+        for (Event e : upcoming) {
+            assignEventToUserGroup(e, membership);
         }
     }
 
@@ -163,5 +146,10 @@ public class EventUserService {
 
     public void softDeleteByUserGroupIds(List<Long> userGroupIds, LocalDateTime when) {
         eventUserRepository.softDeleteByUserGroupIdIn(userGroupIds, when);
+    }
+
+    public void softDeleteByUserGroupIds(List<Long> userGroupIds) {
+        LocalDateTime now = LocalDateTime.now();
+        eventUserRepository.softDeleteByUserGroupIdIn(userGroupIds, now);
     }
 }

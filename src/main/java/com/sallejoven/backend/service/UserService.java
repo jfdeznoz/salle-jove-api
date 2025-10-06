@@ -2,7 +2,6 @@ package com.sallejoven.backend.service;
 
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.Event;
-import com.sallejoven.backend.model.entity.EventGroup;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
@@ -11,17 +10,16 @@ import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.model.requestDto.UserSalleRequestOptional;
 import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.repository.UserRepository;
+import com.sallejoven.backend.utils.TextNormalizeUtils;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -30,9 +28,9 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EventUserService eventUserService;
-    private final EventGroupService eventGroupService;
     private final GroupService groupService;
     private final AcademicStateService academicStateService;
+    private final EventService eventService;
 
     public UserSalle findByEmail(String email) throws SalleException {
         return userRepository.findByEmail(email).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
@@ -40,6 +38,14 @@ public class UserService {
 
     public UserSalle findByUserId(Long id) throws SalleException {
         return userRepository.findById(id).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
+    }
+
+    public List<UserSalle> searchUsers(String rawSearch) {
+        String normalized = TextNormalizeUtils.toLowerNoAccents(rawSearch).trim();
+        if (normalized.length() < 5) {
+            return List.of();
+        }
+        return userRepository.searchUsersNormalized(normalized);
     }
 
     public UserSalle updateUserFromDto(Long id, UserSalleRequestOptional dto) throws SalleException {
@@ -122,7 +128,7 @@ public class UserService {
                 for (GroupSalle g : centerGroups) {
                     ensureMembership(saved, g, userType);
                     saved = userRepository.save(saved);
-                    assignFutureGroupEventsToUser(saved, g);
+                    eventUserService.assignFutureGroupEventsToUser(saved, g);
                 }
             }
             return saved;
@@ -140,12 +146,10 @@ public class UserService {
             UserGroup ug = ensureMembership(saved, group, userType);
             saved = userRepository.save(saved); // asegurar ug.id
 
-            Long ugId = ug.getId();
-            if (ugId == null) {
-                saved = userRepository.save(saved);
-                ugId = ug.getId();
-            }
-            eventUserService.assignEventToUserGroups(eventId.longValue(), List.of(ugId));
+            Event event = eventService.findById(eventId.longValue())
+                    .orElseThrow(() -> new SalleException(ErrorCodes.EVENT_NOT_FOUND));
+
+            eventUserService.assignEventToUserGroups(event, List.of(ug));
             return saved;
         }
 
@@ -155,7 +159,7 @@ public class UserService {
                     .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
             ensureMembership(saved, group, userType);
             saved = userRepository.save(saved);
-            assignFutureGroupEventsToUser(saved, group);
+            eventUserService.assignFutureGroupEventsToUser(saved, group);
             return saved;
         }
 
@@ -230,7 +234,7 @@ public class UserService {
 
         user.getGroups().add(membership);
         saveUser(user);
-        assignFutureGroupEventsToUser(user, group);
+        eventUserService.assignFutureGroupEventsToUser(user, group);
     }       
 
     public List<UserSalle> findAllUsers() {
@@ -309,85 +313,6 @@ public class UserService {
         } else {
             System.out.println("ℹ️ El usuario no pertenecía a ese grupo: " 
                 + user.getName() + " " + user.getLastName());
-        }
-    }
-
-    @Transactional
-    public void moveUserBetweenGroups(Long userId, Long fromGroupId, Long toGroupId) throws SalleException {
-
-        if (fromGroupId.equals(toGroupId)) return;
-
-        UserSalle user = findByUserId(userId);
-
-        GroupSalle from = groupService.findById(fromGroupId)
-                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
-        GroupSalle to = groupService.findById(toGroupId)
-                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
-
-        // 1) localizar membership origen (user + fromGroup)
-        UserGroup source = user.getGroups().stream()
-                .filter(m -> m.getGroup().getId().equals(fromGroupId))
-                .findFirst()
-                .orElseThrow(() -> new SalleException(ErrorCodes.USER_GROUP_NOT_ASSIGNED));
-
-        // 2) conservar tipo
-        Integer type = source.getUserType();
-
-        // 3) quitar membership origen (orphanRemoval=true la borrará en BD si tu mapeo lo tiene)
-        user.getGroups().remove(source);
-
-        // 4) crear/actualizar membership destino con mismo tipo
-        UserGroup dest = user.getGroups().stream()
-                .filter(m -> m.getGroup().getId().equals(toGroupId))
-                .findFirst()
-                .orElseGet(() -> {
-                    UserGroup ug = UserGroup.builder()
-                            .user(user)
-                            .group(to)
-                            .userType(type)
-                            .year(source.getYear())
-                            .build();
-                    user.getGroups().add(ug);
-                    return ug;
-                });
-
-        dest.setUserType(type);
-
-        // 5) persistir cambios en memberships
-        UserSalle updated = userRepository.save(user);
-
-        // 6) inscribir al usuario (vía su UserGroup destino) en los eventos futuros del nuevo grupo
-        assignFutureGroupEventsToUser(updated, to);
-    }
-
-    private void assignFutureGroupEventsToUser(UserSalle user, GroupSalle group) {
-        // 0) buscar la membership (UserGroup) de este usuario en este grupo
-        UserGroup membership = user.getGroups().stream()
-                .filter(m -> m.getGroup().getId().equals(group.getId()))
-                .findFirst()
-                .orElse(null);
-
-        if (membership == null) {
-            // el usuario ya no pertenece a este grupo; no inscribir
-            return;
-        }
-
-        // 1) eventos del grupo
-        List<EventGroup> egList = eventGroupService.getEventGroupsByGroupId(group.getId());
-
-        // 2) filtrar eventos futuros (si endDate es null, usamos eventDate)
-        LocalDate today = LocalDate.now();
-        List<Event> upcoming = egList.stream()
-                .map(EventGroup::getEvent)
-                .filter(evt -> {
-                    LocalDate end = evt.getEndDate() != null ? evt.getEndDate() : evt.getEventDate();
-                    return end != null && !end.isBefore(today);
-                })
-                .toList();
-
-        // 3) inscribir el UserGroup en esos eventos (evita duplicados por UNIQUE(event,user_group_id))
-        for (Event e : upcoming) {
-            eventUserService.assignEventToUserGroups(e, java.util.List.of(membership));
         }
     }
 

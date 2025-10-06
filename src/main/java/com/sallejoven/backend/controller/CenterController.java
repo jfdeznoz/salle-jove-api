@@ -4,15 +4,19 @@ import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.dto.CenterDto;
 import com.sallejoven.backend.model.dto.GroupDto;
 import com.sallejoven.backend.model.dto.UserCenterDto;
+import com.sallejoven.backend.model.dto.UserCenterGroupsDto;
 import com.sallejoven.backend.model.entity.Center;
 import com.sallejoven.backend.model.entity.GroupSalle;
+import com.sallejoven.backend.model.entity.UserCenter;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.types.ErrorCodes;
+import com.sallejoven.backend.service.AcademicStateService;
 import com.sallejoven.backend.service.AuthService;
 import com.sallejoven.backend.service.CenterService;
 import com.sallejoven.backend.service.GroupService;
+import com.sallejoven.backend.service.UserCenterService;
 import com.sallejoven.backend.service.UserService;
 import com.sallejoven.backend.utils.SalleConverters;
 import lombok.RequiredArgsConstructor;
@@ -20,9 +24,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -35,10 +38,9 @@ public class CenterController {
     private final UserService userService;
     private final AuthService authService;
     private final SalleConverters salleConverters;
+    private final AcademicStateService academicStateService;
+    private final UserCenterService userCenterService;
 
-    /**
-     * Devuelve todos los centros con sus grupos
-     */
     @GetMapping
     public ResponseEntity<List<CenterDto>> listAll() {
         List<Center> centers = centerService.getAllCentersWithGroups();
@@ -63,14 +65,10 @@ public class CenterController {
         return ResponseEntity.ok(dtos);
     }
 
-    /**
-     * Devuelve únicamente los grupos de un centro
-     */
     @GetMapping("/{centerId}/groups")
     public ResponseEntity<List<GroupDto>> listGroups(
             @PathVariable Long centerId) throws SalleException {
 
-        // Primero recuperamos el centro y comprobamos que existe
         Center center = centerService.getAllCentersWithGroups().stream()
                 .filter(c -> c.getId().equals(centerId))
                 .findFirst()
@@ -90,29 +88,66 @@ public class CenterController {
         return ResponseEntity.ok(dtos);
     }
 
-    @GetMapping("/me")
-    public ResponseEntity<List<UserCenterDto>> myCenters(Principal principal) throws SalleException {
-        UserSalle me = userService.findByEmail(principal.getName());
+    @GetMapping("/user/{userId}")
+    public ResponseEntity<List<UserCenterGroupsDto>> userCenters(@PathVariable Long userId) throws SalleException {
+        UserSalle user = userService.findByUserId(userId);
 
-        List<Role> roles = authService.getCurrentUserRoles();
-        Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : Collections.min(roles);
+        int visibleYear = academicStateService.getVisibleYear();
 
-        if (mainRole == Role.ADMIN) {
-            List<Center> centers = centerService.getAllCentersWithGroups(); // o getAllCentersWithGroups(); da igual, convertimos a []
-            List<UserCenterDto> dtos = centers.stream()
-                    .map(salleConverters::centerToUserCenterNoGroups)
-                    .sorted(Comparator.comparing(UserCenterDto::getCenterName, String.CASE_INSENSITIVE_ORDER))
-                    .collect(Collectors.toList());
-            return ResponseEntity.ok(dtos);
-        }
-
-        // NO-ADMIN -> agrupar sus UserGroup por centro
-        List<UserGroup> userGroups = me.getGroups().stream()
+        List<UserGroup> userGroups = user.getGroups().stream()
                 .filter(ug -> ug.getDeletedAt() == null
-                        && ug.getGroup() != null)
+                        && ug.getGroup() != null
+                        && ug.getYear() == visibleYear)
                 .collect(Collectors.toList());
 
-        List<UserCenterDto> dtos = salleConverters.userGroupsToUserCenters(userGroups);
+        List<UserCenterGroupsDto> dtos = salleConverters.userGroupsToUserCenters(userGroups);
         return ResponseEntity.ok(dtos);
     }
+
+    @GetMapping("/me")
+    public ResponseEntity<List<UserCenterGroupsDto>> myCenters(Principal principal) throws SalleException {
+        UserSalle me = userService.findByEmail(principal.getName());
+        List<Role> roles = authService.getCurrentUserRoles();
+        return ResponseEntity.ok(centerService.getCentersForUser(me, roles));
+    }
+
+    @GetMapping("/user/{userId}/center")
+    public ResponseEntity<UserCenterDto> getUserCenter(@PathVariable Long userId) throws SalleException {
+        UserCenter uc = userCenterService.findByUserForCurrentYear(userId);
+
+        if (uc == null) {
+            return ResponseEntity.noContent().build();
+        }
+
+        UserCenterDto dto = salleConverters.userCenterToDto(uc);
+        return ResponseEntity.ok(dto);
+    }
+
+    @PostMapping("/user/{userId}/center/{centerId}")
+    public ResponseEntity<UserCenterDto> addCenterRole(
+            @PathVariable Long userId,
+            @PathVariable Long centerId,
+            @RequestBody Map<String, Integer> body
+    ) throws SalleException {
+        Integer userType = body.get("userType");
+        UserCenter uc = userCenterService.addCenterRole(userId, centerId, userType);
+        return ResponseEntity.ok(salleConverters.userCenterToDto(uc));
+    }
+
+    @PutMapping("/user-center/{userCenterId}")
+    public ResponseEntity<UserCenterDto> changeCenterRole(
+            @PathVariable Long userCenterId,
+            @RequestBody Map<String, Integer> body
+    ) throws SalleException {
+        Integer userType = body.get("userType");
+        UserCenter uc = userCenterService.updateCenterRole(userCenterId, userType);
+        return ResponseEntity.ok(salleConverters.userCenterToDto(uc));
+    }
+
+    @DeleteMapping("/user-center/{userCenterId}")
+    public ResponseEntity<Void> deleteCenterRole(@PathVariable Long userCenterId) throws SalleException {
+        userCenterService.softDelete(userCenterId);
+        return ResponseEntity.noContent().build();
+    }
+
 }
