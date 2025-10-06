@@ -13,7 +13,13 @@ public enum ErrorCodes {
     USER_GROUP_NOT_ASSIGNED("El usuario no pertenece al grupo origen", "E009"),
     EVENT_USER_NOT_FOUND("No se ha encontrado que el usuario vaya a dicho evento", "E010"),
     PROMOTION_TARGET_GROUP_NOT_FOUND("No se ha encontrado el grupo por grupo y etapa", "E011"),
-    ACADEMIC_STATE_NOT_INITIALIZED("Estado año académico no inicializado", "E012");
+    ACADEMIC_STATE_NOT_INITIALIZED("Estado año académico no inicializado", "E012"),
+    USER_TYPE_CENTER_NOT_VALID("El tipo de usuario para un centro debe ser 2 o 3", "E013"),
+    USER_TYPE_CENTER_EXISTS("Ya existe este usuario para el centro", "E014"),
+    USER_CENTER_NOT_FOUND("No se ha encontrado el user center", "E015"),
+    USER_TYPE_NOT_VALID("El tipo de usuario no es correcto", "E016");
+
+
 
     private final String message;
     private final String errorCode;

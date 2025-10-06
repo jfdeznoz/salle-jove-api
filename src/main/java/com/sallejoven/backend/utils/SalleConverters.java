@@ -1,5 +1,6 @@
 package com.sallejoven.backend.utils;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -7,8 +8,10 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import com.sallejoven.backend.model.dto.UserCenterDto;
+import com.sallejoven.backend.model.dto.UserCenterGroupsDto;
 import com.sallejoven.backend.model.dto.UserDto;
 import com.sallejoven.backend.model.dto.UserGroupDto;
+import com.sallejoven.backend.model.entity.UserCenter;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.enums.UserType;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -213,17 +216,7 @@ public class SalleConverters {
                 .build();
     }
 
-    public UserCenterDto centerToUserCenterNoGroups(Center center) {
-        return UserCenterDto.builder()
-                .centerId(center.getId().intValue())
-                .centerName(center.getName())
-                .cityName(center.getCity())
-                .groups(Collections.emptyList())
-                .build();
-    }
-
-    /** NO-ADMIN: agrupa UserGroup por centro y crea UserCenterDto con sus grupos. */
-    public List<UserCenterDto> userGroupsToUserCenters(List<UserGroup> userGroups) {
+    public List<UserCenterGroupsDto> userGroupsToUserCenters(List<UserGroup> userGroups) {
         Map<Center, List<UserGroup>> byCenter = userGroups.stream()
                 .collect(Collectors.groupingBy(ug -> ug.getGroup().getCenter()));
 
@@ -235,14 +228,88 @@ public class SalleConverters {
                             .sorted(Comparator.comparing(UserGroupDto::getStage)) // opcional
                             .collect(Collectors.toList());
 
-                    return UserCenterDto.builder()
+                    return UserCenterGroupsDto.builder()
                             .centerId(c.getId().intValue())
                             .centerName(c.getName())
                             .cityName(c.getCity())
                             .groups(groupDtos)
                             .build();
                 })
-                .sorted(Comparator.comparing(UserCenterDto::getCenterName, String.CASE_INSENSITIVE_ORDER))
+                .sorted(Comparator.comparing(UserCenterGroupsDto::getCenterName, String.CASE_INSENSITIVE_ORDER))
                 .collect(Collectors.toList());
+    }
+
+    public UserCenterGroupsDto centerToUserCenterNoGroups(Center c) {
+        return UserCenterGroupsDto.builder()
+                .centerId(c.getId().intValue())
+                .centerName(c.getName())
+                .cityName(c.getCity() != null ? c.getCity() : null)
+                .build();
+    }
+
+    public UserCenterGroupsDto toUserCenterGroupsDto(Center center, List<GroupSalle> groups, int roleCode) {
+        UserCenterGroupsDto dto = centerToUserCenterNoGroups(center);
+
+        List<UserGroupDto> groupDtos = new ArrayList<>(groups.size());
+        for (GroupSalle g : groups) {
+            groupDtos.add(UserGroupDto.builder()
+                    .groupId(g.getId().intValue())
+                    .stage(g.getStage())
+                    .user_type(roleCode) // p.ej. ADMIN=4, DELEGATE=3, LEADER=2
+                    .build());
+        }
+
+        groupDtos.sort((a, b) -> {
+            int s = Comparator.nullsLast(Integer::compareTo).compare(a.getStage(), b.getStage());
+            return (s != 0) ? s : Comparator.nullsLast(Integer::compareTo).compare(a.getGroupId(), b.getGroupId());
+        });
+
+        dto.setGroups(groupDtos);
+        return dto;
+    }
+
+    public UserCenterDto userCenterToDto(UserCenter uc) {
+        var center = uc.getCenter();
+        return UserCenterDto.builder()
+                .id(uc.getId())
+                .centerId(center.getId() != null ? center.getId().intValue() : null)
+                .centerName(center.getName())
+                .cityName(center.getCity() != null ? center.getCity() : null)
+                .userType(uc.getUserType()) // int (0..4)
+                .build();
+    }
+
+    public UserDto userSalleToUserDto(UserSalle user, int userType) {
+        if (user == null) {
+            return null;
+        }
+
+        return UserDto.builder()
+                .id(user.getId())
+                .name(user.getName())
+                .lastName(user.getLastName())
+                .dni(user.getDni())
+                .phone(user.getPhone())
+                .email(user.getEmail())
+                .tshirtSize(user.getTshirtSize())
+                .healthCardNumber(user.getHealthCardNumber())
+                .intolerances(user.getIntolerances())
+                .chronicDiseases(user.getChronicDiseases())
+                .imageAuthorization(user.getImageAuthorization())
+                .birthDate(user.getBirthDate())
+
+                .gender(user.getGender())
+                .address(user.getAddress())
+                .city(user.getCity())
+
+                .motherFullName(user.getMotherFullName())
+                .fatherFullName(user.getFatherFullName())
+                .motherEmail(user.getMotherEmail())
+                .fatherEmail(user.getFatherEmail())
+                .fatherPhone(user.getFatherPhone())
+                .motherPhone(user.getMotherPhone())
+
+                .userType(userType) // 👈 añadimos el tipo de rol en el centro
+                .build();
     }
 }

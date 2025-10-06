@@ -1,23 +1,28 @@
 package com.sallejoven.backend.service;
 
+import com.sallejoven.backend.model.entity.Event;
 import com.sallejoven.backend.model.entity.EventGroup;
+import com.sallejoven.backend.model.entity.EventUser;
 import com.sallejoven.backend.model.entity.GroupSalle;
+import com.sallejoven.backend.model.entity.UserGroup;
+import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.repository.EventGroupRepository;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
+@RequiredArgsConstructor
 @Service
 public class EventGroupService {
 
     private final EventGroupRepository eventGroupRepository;
-
-    @Autowired
-    public EventGroupService(EventGroupRepository eventGroupRepository) {
-        this.eventGroupRepository = eventGroupRepository;
-    }
     
     public List<EventGroup> saveAllEventGroup(List<EventGroup> eventGroups) {
         return eventGroupRepository.saveAll(eventGroups);
@@ -48,5 +53,27 @@ public class EventGroupService {
     public void softDeleteByEventId(Long eventId) {
         eventGroupRepository.softDeleteByEventId(eventId);
     }
+
+    /*@Transactional
+    public void assignEventToUserGroups(Long eventId, Collection<Long> userGroupIds) {
+        if (userGroupIds == null || userGroupIds.isEmpty()) return;
+
+        Event event = eventService.findById(eventId)
+                .orElseThrow(() -> new IllegalArgumentException("Evento no encontrado ID: " + eventId));
+
+        List<EventUser> batch = userGroupIds.stream()
+                .map(ugId -> EventUser.builder()
+                        .event(event)
+                        .userGroup(UserGroup.builder().id(ugId).build())
+                        .status(0)
+                        .build())
+                .toList();
+
+        try {
+            eventUserService.saveAll(batch);
+        } catch (DataIntegrityViolationException dup) {
+            log.debug("Asignaciones duplicadas para eventId={}", eventId, dup);
+        }
+    }*/
 
 }

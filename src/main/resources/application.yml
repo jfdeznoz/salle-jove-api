@@ -2,8 +2,5 @@ spring:
   application:
     name: salle-joven
 
-  profiles:
-    default: prod
-
 server:
   port: ${PORT:8080}

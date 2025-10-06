@@ -10,6 +10,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class UserGroupDto {
+    private Integer id;
+
     private Integer groupId;
 
     private Integer stage;

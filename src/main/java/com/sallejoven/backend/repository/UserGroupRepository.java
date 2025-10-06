@@ -6,8 +6,17 @@ import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import java.util.Optional;
 
 public interface UserGroupRepository extends JpaRepository<UserGroup, Long> {
+
+    @Query("""
+        select ug
+        from UserGroup ug
+        where ug.id = :id
+          and ug.deletedAt is null
+    """)
+    Optional<UserGroup> findByIdAndDeletedAtIsNull(@Param("id") Long id);
 
     @Query("""
         select ug
@@ -71,4 +80,10 @@ public interface UserGroupRepository extends JpaRepository<UserGroup, Long> {
     List<UserGroup> findByYearAndUserTypeAndDeletedAtIsNull(int year, int userType);
 
     boolean existsByUser_IdAndYearAndDeletedAtIsNull(Long userId, Integer year);
+
+    Optional<UserGroup> findByUser_IdAndGroup_IdAndYearAndDeletedAtIsNull(
+            Long userId,
+            Long groupId,
+            Integer year
+    );
 }
