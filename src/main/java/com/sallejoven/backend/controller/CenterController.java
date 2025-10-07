@@ -108,7 +108,18 @@ public class CenterController {
     public ResponseEntity<List<UserCenterGroupsDto>> myCenters(Principal principal) throws SalleException {
         UserSalle me = userService.findByEmail(principal.getName());
         List<Role> roles = authService.getCurrentUserRoles();
-        return ResponseEntity.ok(centerService.getCentersForUser(me, roles));
+
+        var raws = centerService.getCentersForUserRaw(me, roles);
+
+        List<UserCenterGroupsDto> dtos = raws.stream()
+                .map(r -> salleConverters.toUserCenterGroupsDto(
+                        r.getCenter(),
+                        r.getGroups(),
+                        r.getUserType()
+                ))
+                .toList();
+
+        return ResponseEntity.ok(dtos);
     }
 
     @GetMapping("/user/{userId}/center")

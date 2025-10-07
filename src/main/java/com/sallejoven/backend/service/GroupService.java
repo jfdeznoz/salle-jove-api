@@ -33,8 +33,9 @@ public class GroupService {
         this.authService = authService;
     }
 
-    public Optional<GroupSalle> findById(Long id) {
-        return groupRepository.findById(id);
+    public GroupSalle findById(Long id) throws SalleException {
+        return groupRepository.findById(id)
+                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
     }
 
     public List<GroupSalle> findAll() {

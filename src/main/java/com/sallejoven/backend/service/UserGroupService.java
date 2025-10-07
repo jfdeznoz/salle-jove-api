@@ -107,8 +107,7 @@ public class UserGroupService {
 
         if (fromGroupId.equals(toGroupId)) return;
 
-        GroupSalle to = groupService.findById(toGroupId)
-                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+        GroupSalle to = groupService.findById(toGroupId);
 
         // 1) localizar membership origen (user + fromGroup)
         UserGroup source = user.getGroups().stream()
@@ -153,8 +152,7 @@ public class UserGroupService {
             throw new SalleException(ErrorCodes.USER_TYPE_NOT_VALID);
         }
 
-        GroupSalle group = groupService.findById(groupId)
-                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+        GroupSalle group = groupService.findById(groupId);
 
         int year = academicStateService.getVisibleYear();
 
