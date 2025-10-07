@@ -66,9 +66,9 @@ public class GroupController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<GroupSalle> getGroupById(@PathVariable Long id) {
-        Optional<GroupSalle> group = groupService.findById(id);
-        return group.map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<GroupSalle> getGroupById(@PathVariable Long id) throws SalleException {
+        GroupSalle group = groupService.findById(id);
+        return ResponseEntity.ok(group);
     }
 
     @PostMapping("/")
@@ -77,19 +77,18 @@ public class GroupController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<GroupSalle> updateGroup(@PathVariable Long id, @RequestBody GroupSalle groupDetails) {
-        Optional<GroupSalle> group = groupService.findById(id);
-        if (group.isPresent()) {
-            GroupSalle existingGroup = group.get();
-            existingGroup.setStage(groupDetails.getStage());
-            return ResponseEntity.ok(groupService.saveGroup(existingGroup));
+    public ResponseEntity<GroupSalle> updateGroup(@PathVariable Long id, @RequestBody GroupSalle groupDetails) throws SalleException {
+        GroupSalle group = groupService.findById(id);
+        if (group != null) {
+            group.setStage(groupDetails.getStage());
+            return ResponseEntity.ok(groupService.saveGroup(group));
         }
         return ResponseEntity.notFound().build();
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteGroup(@PathVariable Long id) {
-        if (groupService.findById(id).isPresent()) {
+    public ResponseEntity<Void> deleteGroup(@PathVariable Long id) throws SalleException {
+        if (groupService.findById(id) != null) {
             groupService.deleteGroup(id);
             return ResponseEntity.noContent().build();
         }

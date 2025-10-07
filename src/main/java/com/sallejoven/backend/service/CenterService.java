@@ -11,6 +11,8 @@ import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.enums.UserType;
+import com.sallejoven.backend.model.raw.UserCenterGroupsRaw;
+import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.repository.CenterRepository;
 import com.sallejoven.backend.utils.SalleConverters;
 import lombok.RequiredArgsConstructor;
@@ -21,8 +23,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -31,7 +35,11 @@ public class CenterService {
     private final CenterRepository centerRepository;
     private final GroupService groupService;
     private final UserCenterService userCenterService;
-    private final SalleConverters salleConverters;
+
+    public Center findById(Long id) throws SalleException {
+        return centerRepository.findById(id)
+                .orElseThrow(() -> new SalleException(ErrorCodes.CENTER_NOT_FOUND));
+    }
 
     public List<Center> getAllCentersWithGroups() {
         return centerRepository.findAll(Sort.by(Sort.Direction.ASC, "name"));
@@ -41,63 +49,75 @@ public class CenterService {
         return groupService.findByCenter(center);
     }
 
-    public List<UserCenterGroupsDto> getCentersForUser(UserSalle me, List<Role> roles) throws SalleException {
+    public List<UserCenterGroupsRaw> getCentersForUserRaw(UserSalle me, List<Role> roles) throws SalleException {
         Role mainRole = (roles == null || roles.isEmpty()) ? Role.PARTICIPANT : Collections.min(roles);
 
         switch (mainRole) {
             case ADMIN:
-                return buildForAdmin();
+                return rawForAdmin();
 
             case GROUP_LEADER:
             case PASTORAL_DELEGATE:
-                return  buildForLeaderOrDelegate(me);
+                return rawForLeaderOrDelegate(me);
 
             default:
-                return buildForDefaultUser(me);
+                return rawForDefaultUser(me);
         }
     }
 
-    private List<UserCenterGroupsDto> buildForAdmin() {
-        List<UserCenterGroupsDto> dtos = new ArrayList<>();
+    private List<UserCenterGroupsRaw> rawForAdmin() {
+        List<UserCenterGroupsRaw> raws = new ArrayList<>();
         for (Center c : getAllCentersWithGroups()) {
             List<GroupSalle> groups = groupService.findGroupsByCenterId(c.getId());
-            dtos.add(salleConverters.toUserCenterGroupsDto(c, groups, UserType.ADMIN.toInt())); // 4
+            raws.add(new UserCenterGroupsRaw(c, groups, UserType.ADMIN.toInt())); // 4
         }
-        return dtos;
+        return raws;
     }
 
-    private List<UserCenterGroupsDto> buildForLeaderOrDelegate(UserSalle me) throws SalleException {
-        List<UserCenterGroupsDto> result = new ArrayList<>();
+    private List<UserCenterGroupsRaw> rawForLeaderOrDelegate(UserSalle me) throws SalleException {
+        List<UserCenterGroupsRaw> result = new ArrayList<>();
 
         UserCenter myCenter = userCenterService.findByUserForCurrentYear(me.getId());
-        final Integer mainCenterIdInt;
+        final Long mainCenterId;
 
         if (myCenter != null) {
             Center c = myCenter.getCenter();
-            mainCenterIdInt = Math.toIntExact(c.getId()); // asignación única
+            mainCenterId = c.getId();
 
             List<GroupSalle> groups = groupService.findGroupsByCenterId(c.getId());
-            result.add(salleConverters.toUserCenterGroupsDto(c, groups, myCenter.getUserType())); // 2 ó 3
+            result.add(new UserCenterGroupsRaw(c, groups, myCenter.getUserType())); // 2 ó 3
         } else {
-            mainCenterIdInt = null;
+            mainCenterId = null;
         }
 
-        List<UserCenterGroupsDto> allUserCenters = buildForDefaultUser(me);
-
-        if (mainCenterIdInt != null) {
-            allUserCenters.removeIf(dto -> Objects.equals(dto.getCenterId(), mainCenterIdInt));
+        List<UserCenterGroupsRaw> others = rawForDefaultUser(me);
+        if (mainCenterId != null) {
+            others.removeIf(raw -> raw.getCenter().getId().equals(mainCenterId));
         }
 
-        result.addAll(allUserCenters);
+        result.addAll(others);
         return result;
     }
 
-
-    private List<UserCenterGroupsDto> buildForDefaultUser(UserSalle me) {
+    private List<UserCenterGroupsRaw> rawForDefaultUser(UserSalle me) {
         List<UserGroup> active = me.getGroups().stream()
                 .filter(this::isActive)
                 .toList();
-        return salleConverters.userGroupsToUserCenters(active);
+
+        // agrupamos por centro y devolvemos un raw por centro
+        Map<Center, List<GroupSalle>> byCenter = active.stream()
+                .filter(ug -> ug.getGroup() != null && ug.getGroup().getCenter() != null)
+                .collect(Collectors.groupingBy(
+                        ug -> ug.getGroup().getCenter(),
+                        Collectors.mapping(UserGroup::getGroup, Collectors.toList())
+                ));
+
+        List<UserCenterGroupsRaw> raws = new ArrayList<>();
+        for (Map.Entry<Center, List<GroupSalle>> e : byCenter.entrySet()) {
+            // Para usuario “normal” ponemos el tipo PARTICIPANT (ajusta si tienes otra regla)
+            raws.add(new UserCenterGroupsRaw(e.getKey(), e.getValue(), UserType.PARTICIPANT.toInt()));
+        }
+        return raws;
     }
 
     private boolean isActive(UserGroup ug) {

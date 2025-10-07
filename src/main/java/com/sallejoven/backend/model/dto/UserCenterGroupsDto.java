@@ -1,4 +1,3 @@
-// src/main/java/com/sallejoven/backend/model/dto/UserCenterGroupsDto.java
 package com.sallejoven.backend.model.dto;
 
 import lombok.AllArgsConstructor;
@@ -15,6 +14,5 @@ public class UserCenterGroupsDto {
     private Integer centerId;
     private String centerName;
     private String cityName;
-    // Reutilizamos UserGroupDto para que incluya user_type, etc.
     private List<UserGroupDto> groups;
 }

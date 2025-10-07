@@ -4,11 +4,13 @@ import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.Event;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserGroup;
+import com.sallejoven.backend.model.entity.UserPending;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.model.requestDto.UserSalleRequestOptional;
 import com.sallejoven.backend.model.types.ErrorCodes;
+import com.sallejoven.backend.repository.UserPendingRepository;
 import com.sallejoven.backend.repository.UserRepository;
 import com.sallejoven.backend.utils.TextNormalizeUtils;
 import jakarta.transaction.Transactional;
@@ -136,8 +138,7 @@ public class UserService {
 
         //Usuario añadido solo para un evento
         if (eventId != null && groupId != null) {
-            GroupSalle group = groupService.findById(groupId.longValue())
-                    .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+            GroupSalle group = groupService.findById(groupId.longValue());
 
             if (isAnimator(req.getRol())) {
                 userType = 5;
@@ -155,8 +156,7 @@ public class UserService {
 
         // Usuario normal que se añade a un grupo
         if (groupId != null) {
-            GroupSalle group = groupService.findById(groupId.longValue())
-                    .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+            GroupSalle group = groupService.findById(groupId.longValue());
             ensureMembership(saved, group, userType);
             saved = userRepository.save(saved);
             eventUserService.assignFutureGroupEventsToUser(saved, group);
@@ -211,7 +211,7 @@ public class UserService {
         return switch (r) {
             case "GROUP_LEADER"      -> 2;
             case "ANIMATOR"          -> 1;
-            case "PASTORAL_DELEGATE" -> 3; // por si lo usas en grupos
+            case "PASTORAL_DELEGATE" -> 3;
             default                  -> 0; // PARTICIPANT
         };
     }
@@ -219,8 +219,7 @@ public class UserService {
     public void addUserToGroup(Long userId, Long groupId, Long userType) throws SalleException {
         final int year = academicStateService.getVisibleYear();
 
-        GroupSalle group = groupService.findById(groupId)
-                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+        GroupSalle group = groupService.findById(groupId);
 
         UserSalle user = findByUserId(userId);
 
@@ -298,7 +297,16 @@ public class UserService {
                 .map(String::toUpperCase)
                 .map(Role::valueOf)
                 .toList();
-    }  
+    }
+
+    public List<Role> getUserRoles(UserPending userSalle) throws SalleException {
+        return Arrays.stream(userSalle.getRoles().split(","))
+                .map(String::trim)
+                .map(role -> role.replace("ROLE_", ""))
+                .map(String::toUpperCase)
+                .map(Role::valueOf)
+                .toList();
+    }
 
     public List<UserSalle> findAllByRoles() {
         return userRepository.findAllByRoles("ROLE_PARTICIPANT", "ROLE_ANIMATOR");

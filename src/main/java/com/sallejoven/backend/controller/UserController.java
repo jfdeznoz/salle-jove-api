@@ -143,8 +143,7 @@ public class UserController {
 
     @DeleteMapping("/{id}/group/{groupId}")
     public ResponseEntity<Void> deleteUserToGroup( @PathVariable Long groupId, @PathVariable Long userId) throws SalleException {
-        GroupSalle group = groupService.findById(groupId)
-                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+        GroupSalle group = groupService.findById(groupId);
 
         UserSalle user = userService.findByUserId(userId);
         userService.removeUserFromGroup(user, group);

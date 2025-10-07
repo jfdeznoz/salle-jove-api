@@ -17,9 +17,9 @@ public enum ErrorCodes {
     USER_TYPE_CENTER_NOT_VALID("El tipo de usuario para un centro debe ser 2 o 3", "E013"),
     USER_TYPE_CENTER_EXISTS("Ya existe este usuario para el centro", "E014"),
     USER_CENTER_NOT_FOUND("No se ha encontrado el user center", "E015"),
-    USER_TYPE_NOT_VALID("El tipo de usuario no es correcto", "E016");
-
-
+    USER_TYPE_NOT_VALID("El tipo de usuario no es correcto", "E016"),
+    EMAIL_ALREADY_EXISTS("Ya existe un usuario con este email", "E017"),
+    DNI_ALREADY_EXISTS("Ya existe un usuario con este dni", "E018");
 
     private final String message;
     private final String errorCode;

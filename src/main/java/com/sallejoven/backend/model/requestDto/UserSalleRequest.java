@@ -61,4 +61,6 @@ public class UserSalleRequest {
     private Integer groupId;
 
     private Integer centerId;
+
+    private String password;
 }

@@ -11,9 +11,14 @@ import com.sallejoven.backend.model.dto.UserCenterDto;
 import com.sallejoven.backend.model.dto.UserCenterGroupsDto;
 import com.sallejoven.backend.model.dto.UserDto;
 import com.sallejoven.backend.model.dto.UserGroupDto;
+import com.sallejoven.backend.model.dto.UserPendingDto;
 import com.sallejoven.backend.model.entity.UserCenter;
 import com.sallejoven.backend.model.entity.UserGroup;
+import com.sallejoven.backend.model.entity.UserPending;
 import com.sallejoven.backend.model.enums.UserType;
+import com.sallejoven.backend.service.CenterService;
+import com.sallejoven.backend.service.GroupService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.sallejoven.backend.errors.SalleException;
@@ -33,18 +38,13 @@ import com.sallejoven.backend.service.UserService;
 
 
 @Service
+@RequiredArgsConstructor
 public class SalleConverters {
 
     private final UserService userService;
     private final AuthService authService;
-    private final GroupRepository groupRepository;
-
-    @Autowired
-    public SalleConverters(UserService userService, AuthService authService, GroupRepository groupRepository) {
-        this.userService = userService;
-        this.authService = authService;
-        this.groupRepository = groupRepository;
-    }
+    private final CenterService centerService;
+    private final GroupService groupService;
 
     public UserSelfDto buildSelfUserInfo(String userEmail) throws SalleException {
         UserSalle userTango = userService.findByEmail(userEmail);
@@ -107,6 +107,51 @@ public class SalleConverters {
             .motherPhone(userTango.getMotherPhone())
             .build();
     }
+
+    public UserPendingDto userPendingToDto(UserPending userTango) throws SalleException {
+        List<Role> roles = userService.getUserRoles(userTango);
+        Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : roles.get(0);
+
+        Center center = null;
+        GroupSalle group = null;
+
+        if (userTango.getCenterId() != null) {
+            center = centerService.findById(userTango.getCenterId());
+        }
+
+        if (userTango.getGroupId() != null) {
+            group = groupService.findById(userTango.getGroupId());
+            center = group.getCenter();
+        }
+
+        return UserPendingDto.builder()
+                .id(userTango.getId())
+                .name(userTango.getName())
+                .lastName(userTango.getLastName())
+                .dni(userTango.getDni())
+                .phone(userTango.getPhone())
+                .email(userTango.getEmail())
+                .tshirtSize(userTango.getTshirtSize())
+                .healthCardNumber(userTango.getHealthCardNumber())
+                .intolerances(userTango.getIntolerances())
+                .chronicDiseases(userTango.getChronicDiseases())
+                .imageAuthorization(userTango.getImageAuthorization())
+                .birthDate(userTango.getBirthDate())
+                .rol(mainRole)
+                .gender(userTango.getGender())
+                .address(userTango.getAddress())
+                .city(userTango.getCity())
+                .motherFullName(userTango.getMotherFullName())
+                .fatherFullName(userTango.getFatherFullName())
+                .motherEmail(userTango.getMotherEmail())
+                .fatherEmail(userTango.getFatherEmail())
+                .fatherPhone(userTango.getFatherPhone())
+                .motherPhone(userTango.getMotherPhone())
+                .center(center != null ? center.getName() + " - " + center.getCity() : null)
+                .stage(group != null ? group.getStage() : null)
+                .build();
+    }
+
 
     public UserDto buildSelfUserInfo(UserGroup userGroup) throws SalleException {
         UserSalle userTango = userGroup.getUser();
