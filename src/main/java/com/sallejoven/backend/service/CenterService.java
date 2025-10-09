@@ -22,10 +22,13 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -76,23 +79,31 @@ public class CenterService {
 
     private List<UserCenterGroupsRaw> rawForLeaderOrDelegate(UserSalle me) throws SalleException {
         List<UserCenterGroupsRaw> result = new ArrayList<>();
+        List<UserCenter> myCenters = userCenterService.findByUserForCurrentYear(me.getId());
 
-        UserCenter myCenter = userCenterService.findByUserForCurrentYear(me.getId());
-        final Long mainCenterId;
+        Map<Long, UserCenter> chosenByCenter = new LinkedHashMap<>();
+        for (UserCenter uc : myCenters) {
+            Integer t = uc.getUserType();
+            if (t != null && (t == 2 || t == 3)) {
+                Long centerId = uc.getCenter().getId();
+                UserCenter prev = chosenByCenter.get(centerId);
+                if (prev == null || prev.getUserType() != 3) {
+                    chosenByCenter.put(centerId, uc);
+                }
+            }
+        }
 
-        if (myCenter != null) {
-            Center c = myCenter.getCenter();
-            mainCenterId = c.getId();
-
-            List<GroupSalle> groups = groupService.findGroupsByCenterId(c.getId());
-            result.add(new UserCenterGroupsRaw(c, groups, myCenter.getUserType())); // 2 ó 3
-        } else {
-            mainCenterId = null;
+        Set<Long> mainCenterIds = new HashSet<>(chosenByCenter.keySet());
+        for (UserCenter uc : chosenByCenter.values()) {
+            Center c = uc.getCenter();
+            Long centerId = c.getId();
+            List<GroupSalle> groups = groupService.findGroupsByCenterId(centerId);
+            result.add(new UserCenterGroupsRaw(c, groups, uc.getUserType())); // 2 ó 3
         }
 
         List<UserCenterGroupsRaw> others = rawForDefaultUser(me);
-        if (mainCenterId != null) {
-            others.removeIf(raw -> raw.getCenter().getId().equals(mainCenterId));
+        if (!mainCenterIds.isEmpty()) {
+            others.removeIf(raw -> mainCenterIds.contains(raw.getCenter().getId()));
         }
 
         result.addAll(others);
@@ -122,10 +133,6 @@ public class CenterService {
 
     private boolean isActive(UserGroup ug) {
         return ug != null && ug.getDeletedAt() == null && ug.getGroup() != null;
-    }
-
-    public UserCenter getUserCenterDtoForCurrentYear(Long userId) throws SalleException {
-        return userCenterService.findByUserForCurrentYear(userId);
     }
 
 }

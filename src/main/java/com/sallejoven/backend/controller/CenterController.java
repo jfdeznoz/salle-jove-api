@@ -123,15 +123,18 @@ public class CenterController {
     }
 
     @GetMapping("/user/{userId}/center")
-    public ResponseEntity<UserCenterDto> getUserCenter(@PathVariable Long userId) throws SalleException {
-        UserCenter uc = userCenterService.findByUserForCurrentYear(userId);
+    public ResponseEntity<List<UserCenterDto>> getUserCenters(@PathVariable Long userId) throws SalleException {
+        List<UserCenter> list = userCenterService.findByUserForCurrentYear(userId);
 
-        if (uc == null) {
+        if (list == null || list.isEmpty()) {
             return ResponseEntity.noContent().build();
         }
 
-        UserCenterDto dto = salleConverters.userCenterToDto(uc);
-        return ResponseEntity.ok(dto);
+        List<UserCenterDto> dtos = list.stream()
+                .map(salleConverters::userCenterToDto)
+                .toList();
+
+        return ResponseEntity.ok(dtos);
     }
 
     @PostMapping("/user/{userId}/center/{centerId}")
