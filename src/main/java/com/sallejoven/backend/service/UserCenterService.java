@@ -24,7 +24,7 @@ public class UserCenterService {
     private final CenterRepository centerRepo;
     private final AcademicStateService academicStateService;
 
-    public UserCenter findByUserForCurrentYear(Long userId) throws SalleException {
+    public List<UserCenter> findByUserForCurrentYear(Long userId) throws SalleException {
         int year = academicStateService.getVisibleYear();
         return userCenterRepo.findByUser_IdAndYearAndDeletedAtIsNull(userId, year);
     }

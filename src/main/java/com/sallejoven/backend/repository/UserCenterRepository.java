@@ -8,7 +8,7 @@ import java.util.List;
 
 public interface UserCenterRepository extends JpaRepository<UserCenter, Long> {
 
-    UserCenter findByUser_IdAndYearAndDeletedAtIsNull(Long userId, Integer year);
+    List<UserCenter> findByUser_IdAndYearAndDeletedAtIsNull(Long userId, Integer year);
 
     boolean existsByUser_IdAndCenter_IdAndYearAndDeletedAtIsNullAndUserType(
             Long userId, Long centerId, Integer year, Integer userType
