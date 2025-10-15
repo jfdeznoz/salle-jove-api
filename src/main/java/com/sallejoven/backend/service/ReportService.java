@@ -1,26 +1,36 @@
 package com.sallejoven.backend.service;
 
+import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.Center;
 import com.sallejoven.backend.model.entity.Event;
 import com.sallejoven.backend.model.entity.EventUser;
 import com.sallejoven.backend.model.entity.GroupSalle;
-import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.enums.Stage;
 import com.sallejoven.backend.model.enums.TshirtSizeEnum;
 import com.sallejoven.backend.model.types.ReportType;
+import com.sallejoven.backend.repository.projection.SeguroRow;
 import com.sallejoven.backend.utils.ExcelReportUtils;
 
+import jakarta.mail.MessagingException;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -29,24 +39,60 @@ public class ReportService {
 
     private final EventService eventService;
     private final EventUserService eventUserService;
-    private final UserService userService;
+    private final UserGroupService userGroupService;
     private final S3Service s3Service;
     private final EmailService emailService;
     private final AuthService authService;
+    private final AcademicStateService academicStateService;
 
-    public String generateSeguroReportZip() throws IOException {
-        List<UserSalle> participants = userService.findAllByRoles();
-        ByteArrayOutputStream seguroReport = generateSeguroReport(participants);
-        String folderPath = "reports/general";
+    @Value("${salle.aws.prefix:}")
+    private String s3Prefix; // "" en prod, "test/" en local
+
+    public String generateSeguroReportZip() throws IOException, SalleException, MessagingException {
+        var rows = userGroupService.findSeguroRowsForCurrentYear();
+        ByteArrayOutputStream seguroReport = generateSeguroReport(rows);
+
+        int currentYear = academicStateService.getVisibleYear();
+        String baseFolder = currentYear + "/reports/general";
+        String folderPath = withPrefix(baseFolder);
         String fileName   = "informe_seguro_salle_joven.xlsx";
-        return s3Service.uploadFileReport(seguroReport, folderPath, fileName);
+        String fullPath   = folderPath + "/" + fileName;
+
+        String url = s3Service.uploadFileReport(seguroReport, folderPath, fileName);
+
+        Map<String, byte[]> attachments = new LinkedHashMap<>();
+        attachments.put(fileName, seguroReport.toByteArray());
+        String email   = authService.getCurrentUserEmail();
+        String subject = "Informe de seguro (general)";
+        String body    = "<p>Adjunto encontrarás el <strong>informe de seguro</strong> general.</p>"
+                + "<p>También puedes descargarlo desde: <a href=\"" + url + "\">este enlace</a>.</p>";
+
+        emailService.sendEmailWithAttachments(email, subject, body, attachments);
+
+        return url;
+    }
+
+
+    private String withPrefix(String path) {
+        if (s3Prefix == null || s3Prefix.isBlank()) return normalize(path);
+        String p = s3Prefix;
+        if (!p.endsWith("/")) p = p + "/";
+        return normalize(p + path);
+    }
+
+    private String normalize(String path) {
+        String p = path.replaceAll("/{2,}", "/");
+        if (p.startsWith("/")) p = p.substring(1);
+        if (p.endsWith("/")) p = p.substring(0, p.length() - 1);
+        return p;
     }
 
     public List<String> generateEventReports(Long eventId, List<ReportType> types, boolean overwrite) throws Exception {
         Event event = eventService.findById(eventId).orElseThrow(() -> new IllegalArgumentException("Evento no encontrado ID: " + eventId));
         
         List<EventUser> participants = eventUserService.findConfirmedByEventIdOrdered(eventId);
-        String folder = "reports/event_" + eventId;
+        int currentYear = academicStateService.getVisibleYear();
+        String folder = currentYear + "reports/event_" + eventId;
 
         Map<String, byte[]> attachments = new LinkedHashMap<>();
         List<String>      urls        = new ArrayList<>();
@@ -106,41 +152,43 @@ public class ReportService {
         return urls;
     }
 
-    private ByteArrayOutputStream generateSeguroReport(List<UserSalle> participants) throws IOException {
+    private ByteArrayOutputStream generateSeguroReport(List<SeguroRow> rows) throws IOException {
         Workbook wb    = new XSSFWorkbook();
         Sheet    sheet = wb.createSheet("Informe Seguro");
 
-        String[] cols = {"Nombre y apellidos", "Fecha de nacimiento", "DNI", "Colegio", "Grupo"};
+        String[] cols = {"Nombre y apellidos", "Fecha de nacimiento", "DNI", "Centro - Grupo"};
         Row header = sheet.createRow(0);
-        for (int i = 0; i < cols.length; i++) {
-            header.createCell(i).setCellValue(cols[i]);
+        for (int i = 0; i < cols.length; i++) header.createCell(i).setCellValue(cols[i]);
+
+        int r = 1;
+        for (SeguroRow sr : rows) {
+            String fullName = ((sr.getName() == null ? "" : sr.getName()) + " " +
+                    (sr.getLastName() == null ? "" : sr.getLastName())).trim();
+            String birth    = (sr.getBirthDate() != null) ? sr.getBirthDate().toString() : "";
+            String dni      = (sr.getDni() == null ? "" : sr.getDni());
+            String cg       = (sr.getCentersGroups() == null ? "" : sr.getCentersGroups());
+
+            Row row = sheet.createRow(r++);
+            row.createCell(0).setCellValue(fullName);
+            row.createCell(1).setCellValue(birth);
+            row.createCell(2).setCellValue(dni);
+            row.createCell(3).setCellValue(cg);
         }
 
-        int rowNum = 1;
-        for (UserSalle u : participants) {
-            GroupSalle group = Optional.ofNullable(u.getGroups())
-                    .flatMap(set -> set.stream()
-                            .map(UserGroup::getGroup) // me quedo con los GroupSalle
-                            .filter(Objects::nonNull)
-                            .max(Comparator.comparingInt(g ->
-                                    g.getStage() != null ? g.getStage() : Integer.MIN_VALUE)))
-                    .orElse(null);
-
-            Row row = sheet.createRow(rowNum++);
-            row.createCell(0).setCellValue(u.getName() + " " + u.getLastName());
-            row.createCell(1).setCellValue(
-                    u.getBirthDate() != null
-                            ? u.getBirthDate().toString()
-                            : "");
-            row.createCell(2).setCellValue(u.getDni());
-            row.createCell(3).setCellValue(getSchool(u));
-            row.createCell(4).setCellValue(getStageName(group));
-        }
+        for (int c = 0; c < cols.length; c++) sheet.autoSizeColumn(c);
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         wb.write(out);
         wb.close();
         return out;
+    }
+
+    private String getStageName(GroupSalle group) {
+        if (group == null || group.getStage() == null) return "";
+        return Stage
+                .values()[group.getStage()]
+                .name()
+                .replace("_", " ");
     }
 
     private ByteArrayOutputStream generateCamisetasReport(Event event,
@@ -177,7 +225,6 @@ public class ReportService {
         catq.setCellStyle(center);
         sheet.addMergedRegion(new CellRangeAddress(2, 2, 10, 16));
 
-        // Fila 3: tallas
         Row row3 = sheet.createRow(3);
         for (int i = 0; i < sizes.length; i++) {
             Cell cc = row3.createCell(2 + i);
@@ -213,7 +260,6 @@ public class ReportService {
             bySchool.get(school)[sizeIdx][roleIdx]++;
         }
 
-        // --- Volcado final ---
         int rowNum = 4;
         for (Map.Entry<String, int[][]> e : bySchool.entrySet()) {
             Row r = sheet.createRow(rowNum++);
@@ -359,7 +405,4 @@ public class ReportService {
                 .orElse("");
     }
 
-    private String getStageName(GroupSalle group) {
-        return Stage.values()[group.getStage()].name().replace("_", " ");
-    }
 }
