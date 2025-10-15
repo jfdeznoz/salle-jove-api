@@ -3,6 +3,8 @@ package com.sallejoven.backend.repository;
 import com.sallejoven.backend.model.entity.UserGroup;
 import java.util.Collection;
 import java.util.List;
+
+import com.sallejoven.backend.repository.projection.SeguroRow;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -97,4 +99,54 @@ public interface UserGroupRepository extends JpaRepository<UserGroup, Long> {
             Long groupId,
             Integer year
     );
+
+    @Query(value = """
+  SELECT 
+    u.id         AS user_id,
+    u.name       AS name,
+    u.last_name  AS last_name,
+    u.birth_date AS birth_date,
+    u.dni        AS dni,
+    STRING_AGG(
+      DISTINCT (
+        c.name || ' (' || c.city || ') - ' ||
+        CASE g.stage
+          WHEN 0 THEN 'NAZARET 1'
+          WHEN 1 THEN 'NAZARET 2'
+          WHEN 2 THEN 'GENESARET 1'
+          WHEN 3 THEN 'GENESARET 2'
+          WHEN 4 THEN 'CAFARNAUM 1'
+          WHEN 5 THEN 'CAFARNAUM 2'
+          WHEN 6 THEN 'BETANIA 1'
+          WHEN 7 THEN 'BETANIA 2'
+          WHEN 8 THEN 'JERUSALEM'
+        END
+      ),
+      ', '
+      ORDER BY
+      (c.name || ' (' || c.city || ') - ' ||
+       CASE g.stage
+         WHEN 0 THEN 'NAZARET 1'
+         WHEN 1 THEN 'NAZARET 2'
+         WHEN 2 THEN 'GENESARET 1'
+         WHEN 3 THEN 'GENESARET 2'
+         WHEN 4 THEN 'CAFARNAUM 1'
+         WHEN 5 THEN 'CAFARNAUM 2'
+         WHEN 6 THEN 'BETANIA 1'
+         WHEN 7 THEN 'BETANIA 2'
+         WHEN 8 THEN 'JERUSALEM'
+       END)
+    ) AS centers_groups
+  FROM user_group ug
+  JOIN user_salle  u ON u.id = ug.user_salle
+  JOIN group_salle g ON g.id = ug.group_salle
+  JOIN center      c ON c.id = g.center
+  WHERE ug.year = :year
+    AND ug.deleted_at IS NULL
+    AND ug.user_type IN (0, 1)
+  GROUP BY u.id, u.name, u.last_name, u.birth_date, u.dni
+  ORDER BY MIN(c.name), MIN(g.stage), u.last_name, u.name
+  """, nativeQuery = true)
+    List<SeguroRow> findSeguroRows(@Param("year") int year);
+
 }

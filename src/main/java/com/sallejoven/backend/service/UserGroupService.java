@@ -6,6 +6,7 @@ import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.repository.UserGroupRepository;
+import com.sallejoven.backend.repository.projection.SeguroRow;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -208,6 +209,11 @@ public class UserGroupService {
                 .orElseThrow(() -> new SalleException(ErrorCodes.USER_GROUP_NOT_ASSIGNED));
 
         ug.setUserType(newUserType);
+    }
+
+    public List<SeguroRow> findSeguroRowsForCurrentYear() throws SalleException {
+        int year = academicStateService.getVisibleYear();
+        return userGroupRepository.findSeguroRows(year);
     }
 
 }
