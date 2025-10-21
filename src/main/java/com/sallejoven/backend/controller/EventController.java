@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -30,6 +31,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+@PreAuthorize("isAuthenticated()")
 @RequestMapping(value = "/api/events")
 @RestController
 @RequiredArgsConstructor
@@ -55,12 +57,14 @@ public class EventController {
         return event.map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
+    @PreAuthorize("@authz.isAnyManagerType()")
     @PostMapping(value = "/", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<EventDto> createEvent(@ModelAttribute RequestEvent requestEvent) throws IOException, SalleException {
         Event eventCreated = eventService.saveEvent(requestEvent);
         return ResponseEntity.ok(salleConverters.eventToDto(eventCreated));
     }
 
+    @PreAuthorize("@authz.canManageEventForEditOrDelete(#eventId)")
     @PutMapping(value = "/{eventId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<EventDto> editEvent(@ModelAttribute RequestEvent requestEvent) throws IOException, SalleException {
         Event eventCreated = eventService.editEvent(requestEvent);
@@ -68,15 +72,17 @@ public class EventController {
         return ResponseEntity.ok(salleConverters.eventToDto(eventCreated));
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteEvent(@PathVariable Long id) {
-        if (eventService.findById(id).isPresent()) {
-            eventService.deleteEvent(id);
+    @PreAuthorize("@authz.canManageEventForEditOrDelete(#eventId)")
+    @DeleteMapping("/{eventId}")
+    public ResponseEntity<Void> deleteEvent(@PathVariable Long eventId) {
+        if (eventService.findById(eventId).isPresent()) {
+            eventService.deleteEvent(eventId);
             return ResponseEntity.noContent().build();
         }
         return ResponseEntity.notFound().build();
     }
 
+    @PreAuthorize("@authz.canManageEventGroupParticipants(T(java.lang.Long).valueOf(#eventId), T(java.lang.Long).valueOf(#groupId))")
     @GetMapping("/participants")
         public ResponseEntity<List<ParticipantDto>> getParticipantsByGroupAndEvent(@RequestParam Integer eventId,
                                                                                    @RequestParam Integer groupId) {
@@ -90,6 +96,7 @@ public class EventController {
         }).collect(Collectors.toList()));
     }
 
+    @PreAuthorize("@authz.canManageEventGroupParticipants(T(java.lang.Long).valueOf(#eventId), T(java.lang.Long).valueOf(#groupId))")
     @PostMapping("/{eventId}/groups/{groupId}/participants")
     public ResponseEntity<Void> updateAttendance(@PathVariable Long eventId,
                                                  @PathVariable Integer groupId,
@@ -98,6 +105,7 @@ public class EventController {
         return ResponseEntity.ok().build();
     }
 
+    @PreAuthorize("@authz.canManageEventForEditOrDelete(#eventId)")
     @PutMapping("/{eventId}/block")
     public ResponseEntity<EventDto> toggleEventBlocked(@PathVariable Long eventId,
                                                        @RequestBody Map<String, Boolean> body) throws SalleException {

@@ -6,6 +6,7 @@ import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.repository.UserGroupRepository;
+import com.sallejoven.backend.repository.UserRepository;
 import com.sallejoven.backend.repository.projection.SeguroRow;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,7 @@ public class UserGroupService {
     private final AcademicStateService academicStateService;
     private final GroupService groupService;
     private final EventUserService eventUserService;
+    private final UserRepository userRepository;
 
     public UserGroup findActiveById(Long userGroupId) throws SalleException {
         return userGroupRepository.findByIdAndDeletedAtIsNull(userGroupId)
@@ -94,6 +96,11 @@ public class UserGroupService {
         return userGroupRepository.findByYearAndUserTypeAndDeletedAtIsNull(year, 0);
     }
 
+    public List<UserGroup> findByUserAndUserTypeForCurrentYear(Long userId, int userType) throws SalleException {
+        int year = academicStateService.getVisibleYear();
+        return userGroupRepository.findByUser_IdAndYearAndDeletedAtIsNullAndUserType(userId, year, userType);
+    }
+
     public boolean existsActiveForUserInYear(Long userId, int year) {
         return userGroupRepository.existsByUser_IdAndYearAndDeletedAtIsNull(userId, year);
     }
@@ -139,9 +146,8 @@ public class UserGroupService {
 
         dest.setUserType(type);
 
-       /* // 5) persistir cambios en memberships
-        UserSalle updated = userService.saveUser(user);
-        */
+       // 5) persistir cambios en memberships
+        UserSalle updated = userRepository.save(user);
 
         // 6) inscribir al usuario (vía su UserGroup destino) en los eventos futuros del nuevo grupo
         eventUserService.assignFutureGroupEventsToUser(user, to);

@@ -22,6 +22,7 @@ import com.sallejoven.backend.service.UserService;
 import com.sallejoven.backend.utils.SalleConverters;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -36,6 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+@PreAuthorize("isAuthenticated()")
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/api/users")
@@ -49,6 +51,7 @@ public class UserController {
     private final PastoralDelegateImporterService pastoralDelegateImporterService;
     private final UserCenterService userCenterService;
 
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping
     public ResponseEntity<List<UserSalle>> getAllUsers() {
         List<UserSalle> users = userService.findAllUsers();
@@ -61,8 +64,9 @@ public class UserController {
         return user.map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
+    @PreAuthorize("@authz.hasCenterOfGroup(#groupId,'PASTORAL_DELEGATE','GROUP_LEADER') || @authz.hasGroupRole(#groupId,'ANIMATOR')")
     @GetMapping("/group/{groupId}")
-    public ResponseEntity<List<UserDto>> getUserByGroupId(@PathVariable Long groupId) throws SalleException {
+    public ResponseEntity<List<UserDto>> getUsersByGroupId(@PathVariable Long groupId) throws SalleException {
         List<UserGroup> users = userGroupService.findByGroupId(groupId);
         List<UserDto> result = users.stream().map(user -> {
             try {
@@ -74,6 +78,7 @@ public class UserController {
         return ResponseEntity.ok(result);
     }
 
+    @PreAuthorize("@authz.hasCenterRole(#centerId, 'PASTORAL_DELEGATE','GROUP_LEADER')")
     @GetMapping("/center/{centerId}/leaders")
     public ResponseEntity<List<UserDto>> getCenterLeadersByCenter(@PathVariable Long centerId) throws SalleException {
         var ucs = userCenterService.findActiveByCenterForCurrentYear(centerId);
@@ -89,6 +94,7 @@ public class UserController {
         return ResponseEntity.ok(result);
     }
 
+    @PreAuthorize("@authz.hasCenterRole(#centerId, 'PASTORAL_DELEGATE','GROUP_LEADER')")
     @GetMapping("/catechist/center/{centerId}")
     public ResponseEntity<List<UserSelfDto>> getUserByCenterId(@PathVariable Long centerId, @RequestParam(required = false) String role) {
         List<UserSalle> users = userService.getUsersByCenterId(centerId, role);
@@ -109,6 +115,7 @@ public class UserController {
         return salleConverters.buildSelfUserInfo(userEmail);
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/search")
     public ResponseEntity<List<UserSelfDto>> searchUsers(@RequestParam("search") String search) throws SalleException {
         List<UserSalle> users = userService.searchUsers(search);
@@ -122,8 +129,7 @@ public class UserController {
         return ResponseEntity.ok(result);
     }
 
-
-
+    @PreAuthorize("@authz.canCreateUser(#userRequest)")
     @PostMapping
     public ResponseEntity<UserSelfDto> createUser(@RequestBody UserSalleRequest userRequest) throws SalleException {
         UserSalle savedUser = userService.saveUser(userRequest);
@@ -131,6 +137,7 @@ public class UserController {
         return ResponseEntity.ok(dto);
     }
 
+    @PreAuthorize("@authz.hasCenterOfGroup(#groupId, 'PASTORAL_DELEGATE','GROUP_LEADER')")
     @PostMapping("/{groupId}/add-existing")
     public ResponseEntity<Void> addExistingUserToGroup( @PathVariable Long groupId, @RequestBody Map<String, Long> body) throws SalleException {
         Long userId = body.get("userId");
@@ -141,6 +148,7 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
+    @PreAuthorize("@authz.hasCenterOfGroup(#groupId, 'PASTORAL_DELEGATE','GROUP_LEADER')")
     @DeleteMapping("/{id}/group/{groupId}")
     public ResponseEntity<Void> deleteUserToGroup( @PathVariable Long groupId, @PathVariable Long userId) throws SalleException {
         GroupSalle group = groupService.findById(groupId);
@@ -151,6 +159,7 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
+    @PreAuthorize("@authz.canManageUser(#id) || @authz.canEditUserAsAnimator(#id)")
     @PutMapping("/{id}")
     public ResponseEntity<UserSelfDto> updateUser(@PathVariable Long id, @RequestBody UserSalleRequestOptional dto) {
         try {
@@ -162,6 +171,7 @@ public class UserController {
         }
     }
 
+    @PreAuthorize("@authz.canManageUser(#id)")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteUser(@PathVariable Long id) throws SalleException {
         if (userService.findById(id).isPresent()) {

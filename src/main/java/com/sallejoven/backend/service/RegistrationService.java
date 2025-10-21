@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 @Service
@@ -31,12 +32,11 @@ public class RegistrationService {
     private final PasswordEncoder passwordEncoder;
 
     private final GroupService groupService;
-    private final EventService eventService;
     private final EventUserService eventUserService;
     private final AcademicStateService academicStateService;
     private final UserCenterService userCenterService;
+    private final AuthorityService authorityService;
 
-    private final SalleConverters converters;
 
     @Transactional
     public UserPending registerPublic(UserSalleRequest req) throws SalleException {
@@ -162,17 +162,33 @@ public class RegistrationService {
         userPendingRepository.deleteById(id);
     }
 
-    public List<UserPendingDto> listPending() {
-        return userPendingRepository.findAll()
-                .stream()
-                .map(p -> {
-                    try {
-                        return converters.userPendingToDto(p);
-                    } catch (SalleException e) {
-                        throw new RuntimeException(e);
-                    }
-                })
-                .toList();
+    public List<UserPending> listPending() {
+        var auths = authorityService.getCurrentAuth();
+        if (auths.contains("ROLE_ADMIN")) {
+            return userPendingRepository.findAll();
+        }
+
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) return List.of();
+
+        var myCenterIds = authorityService.extractCenterIdsForYear(auths, year);
+        if (myCenterIds.isEmpty()) return List.of();
+
+        boolean iAmPD = auths.stream().anyMatch(a ->
+                a.startsWith("CENTER:") && a.endsWith(":" + year) && a.contains(":PASTORAL_DELEGATE:"));
+        boolean iAmGL = auths.stream().anyMatch(a ->
+                a.startsWith("CENTER:") && a.endsWith(":" + year) && a.contains(":GROUP_LEADER:"));
+
+        if (!iAmPD && !iAmGL) return List.of();
+
+        var result = new LinkedHashSet<UserPending>(); // evita duplicados y mantiene orden
+
+        if (iAmPD) {
+            result.addAll(userPendingRepository.findByCenterIdIn(myCenterIds));
+        }
+        result.addAll(userPendingRepository.findByGroupCenterIds(myCenterIds));
+
+        return result.stream().toList();
     }
 
     private String normalizeRole(String rolText) {

@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.validation.BindException;
 import org.springframework.web.ErrorResponseException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -15,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 
+import java.nio.file.AccessDeniedException;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
@@ -100,6 +102,18 @@ public class GlobalExceptionHandler {
         // opcional: subError con el código
         out.addSubError(new Error.ApiValidationError("SalleException", ex.getErrorCode()));
         log.warn("400 SalleException on {}: code={} msg={}", req.getRequestURI(), ex.getErrorCode(), ex.getMessage());
+        return out;
+    }
+
+
+    @ExceptionHandler({ AuthorizationDeniedException.class, AccessDeniedException.class })
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public Error handleAccessDenied(RuntimeException ex, HttpServletRequest req) {
+        Error out = new Error(HttpStatus.FORBIDDEN);
+        out.setMessage("Access denied");
+        out.setPath(req.getRequestURI());
+        out.setDebugMessage(null); // opcional: oculta el detalle en prod
+        log.warn("403 Access denied on {}: {}", req.getRequestURI(), ex.getMessage());
         return out;
     }
 

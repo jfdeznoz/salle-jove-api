@@ -32,4 +32,26 @@ public interface EventGroupRepository extends JpaRepository<EventGroup, Long> {
     @Transactional
     @Query("UPDATE EventGroup eg SET eg.deletedAt = CURRENT_TIMESTAMP WHERE eg.event.id = :eventId")
     void softDeleteByEventId(@Param("eventId") Long eventId);
+
+    @Query("""
+        SELECT eg
+        FROM EventGroup eg
+        JOIN eg.groupSalle g
+        WHERE eg.event.id = :eventId
+          AND g.center.id = :centerId
+          AND eg.deletedAt IS NULL
+    """)
+    List<EventGroup> findByEventIdAndCenterId(@Param("eventId") Long eventId,
+                                              @Param("centerId") Long centerId);
+
+    @Query("""
+        SELECT eg
+        FROM EventGroup eg
+        JOIN eg.groupSalle g
+        WHERE eg.event.id = :eventId
+          AND g.center.id IN :centerIds
+          AND eg.deletedAt IS NULL
+    """)
+    List<EventGroup> findByEventIdAndCenterIds(@Param("eventId") Long eventId,
+                                               @Param("centerIds") List<Long> centerIds);
 }

@@ -9,6 +9,7 @@ import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.repository.GroupRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -19,19 +20,14 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+@RequiredArgsConstructor
 @Service
 public class GroupService {
 
     private final GroupRepository groupRepository;
     private final EventGroupService eventGroupService;
-    private final AuthService authService;
-
-    @Autowired
-    public GroupService(GroupRepository groupRepository, EventGroupService eventGroupService, AuthService authService) {
-        this.groupRepository = groupRepository;
-        this.eventGroupService = eventGroupService;
-        this.authService = authService;
-    }
+    private final AuthorityService authorityService;
+    private final AcademicStateService academicStateService;
 
     public GroupSalle findById(Long id) throws SalleException {
         return groupRepository.findById(id)
@@ -55,23 +51,38 @@ public class GroupService {
     }
 
     public List<GroupSalle> findAllByEvent(Long eventId) throws SalleException {
-        List<Role> roles = authService.getCurrentUserRoles();
-        List<EventGroup> eventGroups = new ArrayList<>();
+        int year = academicStateService.getVisibleYear();
+        Set<String> auths = authorityService.getCurrentAuth();
 
-        if(roles.contains(Role.ADMIN)){
-            eventGroups = eventGroupService.getEventGroupsByEventId(eventId);
-        }else if(roles.contains(Role.PASTORAL_DELEGATE) || roles.contains(Role.GROUP_LEADER)){
-            UserSalle userSalle = authService.getCurrentUser();
-
-            List<Long> userGroupIds = userSalle.getGroups().stream()
-                    .map(ug -> ug.getGroup().getId())
-                    .collect(Collectors.toList());
-
-            eventGroups = eventGroupService.getEventGroupsByEventIdAndGroupIds(eventId, userGroupIds);
+        // 1) ADMIN -> todos los grupos del evento
+        if (auths.contains("ROLE_ADMIN")) {
+            return eventGroupService.getEventGroupsByEventId(eventId).stream()
+                    .map(EventGroup::getGroupSalle)
+                    .distinct()
+                    .toList();
         }
-        
-        return eventGroups.stream()
+
+        // 2) PD/GL -> grupos del evento de sus centros
+        var centerIds = authorityService.extractCenterIdsForYear(auths, year);
+        var groupsByCenter = centerIds.isEmpty()
+                ? List.<GroupSalle>of()
+                : eventGroupService.getEventGroupsByEventAndCenters(eventId, centerIds.stream().toList())
+                .stream()
                 .map(EventGroup::getGroupSalle)
+                .toList();
+
+        // 3) ANIMATOR -> grupos del evento donde es catequista (según authorities GROUP:{gid}:ANIMATOR:{year})
+        var animatorGroupIds = authorityService.extractAnimatorGroupIdsForYear(auths, year);
+        var groupsByAnimator = animatorGroupIds.isEmpty()
+                ? List.<GroupSalle>of()
+                : eventGroupService.getEventGroupsByEventIdAndGroupIds(eventId, animatorGroupIds.stream().toList())
+                .stream()
+                .map(EventGroup::getGroupSalle)
+                .toList();
+
+        // 4) Unión (sin duplicados)
+        return java.util.stream.Stream.concat(groupsByCenter.stream(), groupsByAnimator.stream())
+                .distinct()
                 .toList();
     }
 

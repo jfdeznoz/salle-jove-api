@@ -4,6 +4,7 @@ import com.sallejoven.backend.model.types.ReportType;
 import com.sallejoven.backend.service.ReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,6 +23,7 @@ public class ReportController {
 
     private final ReportService reportService;
 
+    @PreAuthorize("@authz.canManageEventForEditOrDelete(#eventId)")
     @GetMapping("/event/{eventId}")
     public ResponseEntity<Map<String, List<String>>> generateEventReports(@PathVariable Long eventId, @RequestParam("types") String typesCsv, 
                                                                         @RequestParam(defaultValue = "false") boolean overwrite) throws Exception {
@@ -44,7 +46,7 @@ public class ReportController {
         return ResponseEntity.ok(Map.of("reportUrls", urls));
     }
 
-
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/general/seguro")
     public ResponseEntity<Map<String, String>> generateGeneralSeguroReport() throws Exception {
         String seguroUrl = reportService.generateSeguroReportZip();

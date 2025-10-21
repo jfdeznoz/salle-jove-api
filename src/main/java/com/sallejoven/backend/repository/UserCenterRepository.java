@@ -14,7 +14,11 @@ public interface UserCenterRepository extends JpaRepository<UserCenter, Long> {
             Long userId, Long centerId, Integer year, Integer userType
     );
 
+    boolean existsByUser_IdAndYearAndDeletedAtIsNullAndUserType(Long userId, Integer year, Integer userType);
+
     List<UserCenter> findByCenter_IdAndYearAndDeletedAtIsNull(Long centerId, Integer year);
 
     Optional<UserCenter> findByIdAndDeletedAtIsNull(Long id);
+
+    Optional<UserCenter> findByUser_IdAndCenter_IdAndYearAndDeletedAtIsNull(Long userId, Long centerId, Integer year);
 }

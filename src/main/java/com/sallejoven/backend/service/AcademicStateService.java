@@ -22,6 +22,12 @@ public class AcademicStateService {
                 .getVisibleYear();
     }
 
+    public Integer getVisibleYearOrNull() {
+        return repo.findById((short) 1)
+                .map(AcademicState::getVisibleYear)
+                .orElse(null);
+    }
+
     @Transactional
     public int setVisibleYear(int year) {
         AcademicState st = repo.findById((short)1).orElseGet(AcademicState::new);
