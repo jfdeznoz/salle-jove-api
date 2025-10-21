@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import com.sallejoven.backend.model.dto.CenterDto;
 import com.sallejoven.backend.model.dto.UserCenterDto;
 import com.sallejoven.backend.model.dto.UserCenterGroupsDto;
 import com.sallejoven.backend.model.dto.UserDto;
@@ -16,6 +17,7 @@ import com.sallejoven.backend.model.entity.UserCenter;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserPending;
 import com.sallejoven.backend.model.enums.UserType;
+import com.sallejoven.backend.service.AuthorityService;
 import com.sallejoven.backend.service.CenterService;
 import com.sallejoven.backend.service.GroupService;
 import lombok.RequiredArgsConstructor;
@@ -42,111 +44,109 @@ import com.sallejoven.backend.service.UserService;
 public class SalleConverters {
 
     private final UserService userService;
-    private final AuthService authService;
     private final CenterService centerService;
     private final GroupService groupService;
+    private final AuthorityService authorityService;
 
     public UserSelfDto buildSelfUserInfo(String userEmail) throws SalleException {
-        UserSalle userTango = userService.findByEmail(userEmail);
+        UserSalle userSalle = userService.findByEmail(userEmail);
 
-        List<Role> roles = authService.getCurrentUserRoles();
-        Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : Collections.min(roles);
+        Role mainRole = authorityService.computeDisplayRole(userSalle.getId());
 
         return UserSelfDto.builder()
-            .id(userTango.getId())
-            .name(userTango.getName())
-            .lastName(userTango.getLastName())
-            .dni(userTango.getDni())
-            .phone(userTango.getPhone())
-            .email(userTango.getEmail())
-            .tshirtSize(userTango.getTshirtSize())
-            .healthCardNumber(userTango.getHealthCardNumber())
-            .intolerances(userTango.getIntolerances())
-            .chronicDiseases(userTango.getChronicDiseases())
-            .imageAuthorization(userTango.getImageAuthorization())
-            .birthDate(userTango.getBirthDate())
+            .id(userSalle.getId())
+            .name(userSalle.getName())
+            .lastName(userSalle.getLastName())
+            .dni(userSalle.getDni())
+            .phone(userSalle.getPhone())
+            .email(userSalle.getEmail())
+            .tshirtSize(userSalle.getTshirtSize())
+            .healthCardNumber(userSalle.getHealthCardNumber())
+            .intolerances(userSalle.getIntolerances())
+            .chronicDiseases(userSalle.getChronicDiseases())
+            .imageAuthorization(userSalle.getImageAuthorization())
+            .birthDate(userSalle.getBirthDate())
             .rol(mainRole)
-            .gender(userTango.getGender())
-            .address(userTango.getAddress())
-            .city(userTango.getCity())
-            .motherFullName(userTango.getMotherFullName())
-            .fatherFullName(userTango.getFatherFullName())
-            .motherEmail(userTango.getMotherEmail())
-            .fatherEmail(userTango.getFatherEmail())
-            .fatherPhone(userTango.getFatherPhone())
-            .motherPhone(userTango.getMotherPhone())
+            .gender(userSalle.getGender())
+            .address(userSalle.getAddress())
+            .city(userSalle.getCity())
+            .motherFullName(userSalle.getMotherFullName())
+            .fatherFullName(userSalle.getFatherFullName())
+            .motherEmail(userSalle.getMotherEmail())
+            .fatherEmail(userSalle.getFatherEmail())
+            .fatherPhone(userSalle.getFatherPhone())
+            .motherPhone(userSalle.getMotherPhone())
             .build();
     }
 
-    public UserSelfDto buildSelfUserInfo(UserSalle userTango) throws SalleException {
-        List<Role> roles = userService.getUserRoles(userTango);
-        Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : roles.get(0);
+    public UserSelfDto buildSelfUserInfo(UserSalle userSalle) throws SalleException {
+        Role mainRole = authorityService.computeDisplayRole(userSalle.getId());
 
         return UserSelfDto.builder()
-            .id(userTango.getId())
-            .name(userTango.getName())
-            .lastName(userTango.getLastName())
-            .dni(userTango.getDni())
-            .phone(userTango.getPhone())
-            .email(userTango.getEmail())
-            .tshirtSize(userTango.getTshirtSize())
-            .healthCardNumber(userTango.getHealthCardNumber())
-            .intolerances(userTango.getIntolerances())
-            .chronicDiseases(userTango.getChronicDiseases())
-            .imageAuthorization(userTango.getImageAuthorization())
-            .birthDate(userTango.getBirthDate())
+            .id(userSalle.getId())
+            .name(userSalle.getName())
+            .lastName(userSalle.getLastName())
+            .dni(userSalle.getDni())
+            .phone(userSalle.getPhone())
+            .email(userSalle.getEmail())
+            .tshirtSize(userSalle.getTshirtSize())
+            .healthCardNumber(userSalle.getHealthCardNumber())
+            .intolerances(userSalle.getIntolerances())
+            .chronicDiseases(userSalle.getChronicDiseases())
+            .imageAuthorization(userSalle.getImageAuthorization())
+            .birthDate(userSalle.getBirthDate())
             .rol(mainRole)
-            .gender(userTango.getGender())
-            .address(userTango.getAddress())
-            .city(userTango.getCity())
-            .motherFullName(userTango.getMotherFullName())
-            .fatherFullName(userTango.getFatherFullName())
-            .motherEmail(userTango.getMotherEmail())
-            .fatherEmail(userTango.getFatherEmail())
-            .fatherPhone(userTango.getFatherPhone())
-            .motherPhone(userTango.getMotherPhone())
+            .gender(userSalle.getGender())
+            .address(userSalle.getAddress())
+            .city(userSalle.getCity())
+            .motherFullName(userSalle.getMotherFullName())
+            .fatherFullName(userSalle.getFatherFullName())
+            .motherEmail(userSalle.getMotherEmail())
+            .fatherEmail(userSalle.getFatherEmail())
+            .fatherPhone(userSalle.getFatherPhone())
+            .motherPhone(userSalle.getMotherPhone())
             .build();
     }
 
-    public UserPendingDto userPendingToDto(UserPending userTango) throws SalleException {
-        List<Role> roles = userService.getUserRoles(userTango);
+    public UserPendingDto userPendingToDto(UserPending userSalle) throws SalleException {
+        List<Role> roles = userService.getUserRoles(userSalle);
         Role mainRole = roles.isEmpty() ? Role.PARTICIPANT : roles.get(0);
 
         Center center = null;
         GroupSalle group = null;
 
-        if (userTango.getCenterId() != null) {
-            center = centerService.findById(userTango.getCenterId());
+        if (userSalle.getCenterId() != null) {
+            center = centerService.findById(userSalle.getCenterId());
         }
 
-        if (userTango.getGroupId() != null) {
-            group = groupService.findById(userTango.getGroupId());
+        if (userSalle.getGroupId() != null) {
+            group = groupService.findById(userSalle.getGroupId());
             center = group.getCenter();
         }
 
         return UserPendingDto.builder()
-                .id(userTango.getId())
-                .name(userTango.getName())
-                .lastName(userTango.getLastName())
-                .dni(userTango.getDni())
-                .phone(userTango.getPhone())
-                .email(userTango.getEmail())
-                .tshirtSize(userTango.getTshirtSize())
-                .healthCardNumber(userTango.getHealthCardNumber())
-                .intolerances(userTango.getIntolerances())
-                .chronicDiseases(userTango.getChronicDiseases())
-                .imageAuthorization(userTango.getImageAuthorization())
-                .birthDate(userTango.getBirthDate())
+                .id(userSalle.getId())
+                .name(userSalle.getName())
+                .lastName(userSalle.getLastName())
+                .dni(userSalle.getDni())
+                .phone(userSalle.getPhone())
+                .email(userSalle.getEmail())
+                .tshirtSize(userSalle.getTshirtSize())
+                .healthCardNumber(userSalle.getHealthCardNumber())
+                .intolerances(userSalle.getIntolerances())
+                .chronicDiseases(userSalle.getChronicDiseases())
+                .imageAuthorization(userSalle.getImageAuthorization())
+                .birthDate(userSalle.getBirthDate())
                 .rol(mainRole)
-                .gender(userTango.getGender())
-                .address(userTango.getAddress())
-                .city(userTango.getCity())
-                .motherFullName(userTango.getMotherFullName())
-                .fatherFullName(userTango.getFatherFullName())
-                .motherEmail(userTango.getMotherEmail())
-                .fatherEmail(userTango.getFatherEmail())
-                .fatherPhone(userTango.getFatherPhone())
-                .motherPhone(userTango.getMotherPhone())
+                .gender(userSalle.getGender())
+                .address(userSalle.getAddress())
+                .city(userSalle.getCity())
+                .motherFullName(userSalle.getMotherFullName())
+                .fatherFullName(userSalle.getFatherFullName())
+                .motherEmail(userSalle.getMotherEmail())
+                .fatherEmail(userSalle.getFatherEmail())
+                .fatherPhone(userSalle.getFatherPhone())
+                .motherPhone(userSalle.getMotherPhone())
                 .center(center != null ? center.getName() + " - " + center.getCity() : null)
                 .stage(group != null ? group.getStage() : null)
                 .build();
@@ -154,30 +154,30 @@ public class SalleConverters {
 
 
     public UserDto buildSelfUserInfo(UserGroup userGroup) throws SalleException {
-        UserSalle userTango = userGroup.getUser();
+        UserSalle userSalle = userGroup.getUser();
 
         return UserDto.builder()
-                .id(userTango.getId())
-                .name(userTango.getName())
-                .lastName(userTango.getLastName())
-                .dni(userTango.getDni())
-                .phone(userTango.getPhone())
-                .email(userTango.getEmail())
-                .tshirtSize(userTango.getTshirtSize())
-                .healthCardNumber(userTango.getHealthCardNumber())
-                .intolerances(userTango.getIntolerances())
-                .chronicDiseases(userTango.getChronicDiseases())
-                .imageAuthorization(userTango.getImageAuthorization())
-                .birthDate(userTango.getBirthDate())
-                .gender(userTango.getGender())
-                .address(userTango.getAddress())
-                .city(userTango.getCity())
-                .motherFullName(userTango.getMotherFullName())
-                .fatherFullName(userTango.getFatherFullName())
-                .motherEmail(userTango.getMotherEmail())
-                .fatherEmail(userTango.getFatherEmail())
-                .fatherPhone(userTango.getFatherPhone())
-                .motherPhone(userTango.getMotherPhone())
+                .id(userSalle.getId())
+                .name(userSalle.getName())
+                .lastName(userSalle.getLastName())
+                .dni(userSalle.getDni())
+                .phone(userSalle.getPhone())
+                .email(userSalle.getEmail())
+                .tshirtSize(userSalle.getTshirtSize())
+                .healthCardNumber(userSalle.getHealthCardNumber())
+                .intolerances(userSalle.getIntolerances())
+                .chronicDiseases(userSalle.getChronicDiseases())
+                .imageAuthorization(userSalle.getImageAuthorization())
+                .birthDate(userSalle.getBirthDate())
+                .gender(userSalle.getGender())
+                .address(userSalle.getAddress())
+                .city(userSalle.getCity())
+                .motherFullName(userSalle.getMotherFullName())
+                .fatherFullName(userSalle.getFatherFullName())
+                .motherEmail(userSalle.getMotherEmail())
+                .fatherEmail(userSalle.getFatherEmail())
+                .fatherPhone(userSalle.getFatherPhone())
+                .motherPhone(userSalle.getMotherPhone())
                 .userType(userGroup.getUserType())
                 .build();
     }
@@ -189,6 +189,52 @@ public class SalleConverters {
                 .groupId(group.getId().intValue())
                 .stage(group.getStage())
                 .user_type(userGroup.getUserType())
+                .build();
+    }
+
+    public CenterDto centerToDto(Center center) {
+
+        List<GroupDto> groupDtos = groupService.findByCenter(center).stream()
+                .map(this::groupToDto)
+                .toList();
+
+        return CenterDto.builder()
+                .id(center.getId())
+                .name(center.getName())
+                .city(center.getCity())
+                .groups(groupDtos)
+                .build();
+    }
+
+    public CenterDto userCenterToCenterDto(UserCenter userCenter) {
+        if (userCenter == null) return null;
+
+        Center center = userCenter.getCenter();
+
+        List<GroupDto> groupDtos = groupService.findByCenter(center).stream()
+                .map(this::groupToDto)
+                .toList();
+
+        return CenterDto.builder()
+                .id(center.getId())
+                .name(center.getName())
+                .city(center.getCity())
+                .groups(groupDtos)
+                .build();
+    }
+
+    public CenterDto centerToDtoWithGroups(Center center, List<GroupSalle> groups) {
+        if (center == null) return null;
+
+        List<GroupDto> groupDtos = groups != null
+                ? groups.stream().map(this::groupToDto).collect(Collectors.toList())
+                : Collections.emptyList();
+
+        return CenterDto.builder()
+                .id(center.getId())
+                .name(center.getName())
+                .city(center.getCity())
+                .groups(groupDtos)
                 .build();
     }
 

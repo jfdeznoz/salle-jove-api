@@ -16,6 +16,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,7 +26,6 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
-import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
@@ -58,16 +59,30 @@ public class SecurityConfig {
     private final CustomAuthenticationEntryPoint authEntryPoint;
     private final CustomAccessDeniedHandler accessDeniedHandler;
 
-    @Order(1)
     @Bean
-    JwtAuthenticationConverter rolesJwtAuthenticationConverter() {
-        var rolesConv = new JwtGrantedAuthoritiesConverter();
-        rolesConv.setAuthoritiesClaimName("roles");
-        rolesConv.setAuthorityPrefix("ROLE_");
+    @Order(1)
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        var conv = new JwtAuthenticationConverter();
+        conv.setJwtGrantedAuthoritiesConverter(jwt -> {
+            var out = new java.util.ArrayList<GrantedAuthority>();
 
-        var jwtConv = new JwtAuthenticationConverter();
-        jwtConv.setJwtGrantedAuthoritiesConverter(rolesConv);
-        return jwtConv;
+            // 1) roles globales (claim "roles") -> ROLE_*
+            var rolesClaim = (java.util.List<?>) jwt.getClaims().getOrDefault("roles", java.util.List.of());
+            rolesClaim.stream()
+                    .map(Object::toString)
+                    .map(r -> new SimpleGrantedAuthority("ROLE_" + r))
+                    .forEach(out::add);
+
+            // 2) authorities contextuales (claim "authz") -> tal cual
+            var authzClaim = (java.util.List<?>) jwt.getClaims().getOrDefault("authz", java.util.List.of());
+            authzClaim.stream()
+                    .map(Object::toString) // "CENTER:5:GROUP_LEADER", "GROUP:12:ANIMATOR"
+                    .map(SimpleGrantedAuthority::new)
+                    .forEach(out::add);
+
+            return out;
+        });
+        return conv;
     }
 
     // 1) /sign-in/**
@@ -107,7 +122,7 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .authenticationEntryPoint(authEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler)
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(rolesJwtAuthenticationConverter()))
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
                 )
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(new JwtAccessTokenFilter(rsaKeyRecord, jwtTokenUtils), UsernamePasswordAuthenticationFilter.class)

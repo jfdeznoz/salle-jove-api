@@ -224,20 +224,6 @@ public class EventService {
 
         if(optionalEvent.isPresent()){
             Event event = optionalEvent.get();
-
-            UserSalle currentUser = authService.getCurrentUser();
-            String roles = currentUser.getRoles();
-
-            if (event.getIsGeneral()) {
-                if (!roles.contains("ROLE_ADMIN")) {
-                    throw new SalleException(ErrorCodes.BLOCK_EVENT_ERROR_ADMIN);
-                }
-            } else {
-                if (!roles.contains("ROLE_ADMIN") && !roles.contains("ROLE_PASTORAL_DELEGATE")) {
-                    throw new SalleException(ErrorCodes.BLOCK_EVENT_ERROR);
-                }
-            }
-
             event.setIsBlocked(blocked);
             return eventRepository.save(event);
         }else{

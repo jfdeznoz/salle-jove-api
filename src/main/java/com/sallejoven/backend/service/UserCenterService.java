@@ -35,6 +35,14 @@ public class UserCenterService {
     }
 
     @Transactional
+    public UserCenter findByUserAndCenter(Long userId, Long centerId) throws SalleException {
+        int year = academicStateService.getVisibleYear();
+
+        return userCenterRepo.findByUser_IdAndCenter_IdAndYearAndDeletedAtIsNull(userId, centerId, year)
+                .orElseThrow(() -> new SalleException(ErrorCodes.USER_CENTER_NOT_FOUND));
+    }
+
+    @Transactional
     public UserCenter addCenterRole(Long userId, Long centerId, Integer userType) throws SalleException {
         if (userType == null || (userType != 2 && userType != 3)) {
             throw new SalleException(ErrorCodes.USER_TYPE_CENTER_NOT_VALID);

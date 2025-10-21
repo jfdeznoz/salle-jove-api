@@ -1,21 +1,10 @@
 package com.sallejoven.backend.service;
 
-import com.sallejoven.backend.model.entity.Event;
 import com.sallejoven.backend.model.entity.EventGroup;
-import com.sallejoven.backend.model.entity.EventUser;
 import com.sallejoven.backend.model.entity.GroupSalle;
-import com.sallejoven.backend.model.entity.UserGroup;
-import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.repository.EventGroupRepository;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.Collection;
 import java.util.List;
 
 @RequiredArgsConstructor
@@ -52,6 +41,15 @@ public class EventGroupService {
 
     public void softDeleteByEventId(Long eventId) {
         eventGroupRepository.softDeleteByEventId(eventId);
+    }
+
+    public List<EventGroup> getEventGroupsByEventAndCenter(Long eventId, Long centerId) {
+        return eventGroupRepository.findByEventIdAndCenterId(eventId, centerId);
+    }
+
+    public List<EventGroup> getEventGroupsByEventAndCenters(Long eventId, List<Long> centerIds) {
+        if (centerIds == null || centerIds.isEmpty()) return List.of();
+        return eventGroupRepository.findByEventIdAndCenterIds(eventId, centerIds);
     }
 
     /*@Transactional

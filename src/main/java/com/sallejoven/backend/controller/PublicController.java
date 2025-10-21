@@ -42,26 +42,12 @@ public class PublicController {
     public ResponseEntity<List<CenterDto>> getAllCentersWithGroups() {
         List<Center> centers = centerService.getAllCentersWithGroups();
 
-        List<CenterDto> result = centers.stream().map(center -> {
-            List<GroupSalle> groups = centerService.getGroupsForCenter(center);
-
-            List<GroupDto> groupDtos = groups.stream().map(group ->
-                GroupDto.builder()
-                    .groupId(Math.toIntExact(group.getId()))
-                    .stage(group.getStage())
-                    .centerId(Math.toIntExact(center.getId()))
-                    .centerName(center.getName())
-                    .cityName(center.getCity())
-                    .build()
-            ).collect(Collectors.toList());
-
-            return CenterDto.builder()
-                    .id(center.getId())
-                    .name(center.getName())
-                    .city(center.getCity())
-                    .groups(groupDtos)
-                    .build();
-        }).collect(Collectors.toList());
+        List<CenterDto> result = centers.stream()
+                .map(center -> {
+                    List<GroupSalle> groups = centerService.getGroupsForCenter(center);
+                    return salleConverters.centerToDtoWithGroups(center, groups);
+                })
+                .collect(Collectors.toList());
 
         return ResponseEntity.ok(result);
     }

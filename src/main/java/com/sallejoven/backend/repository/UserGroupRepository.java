@@ -92,12 +92,30 @@ public interface UserGroupRepository extends JpaRepository<UserGroup, Long> {
 
     List<UserGroup> findByYearAndUserTypeAndDeletedAtIsNull(int year, int userType);
 
+    List<UserGroup> findByUser_IdAndYearAndDeletedAtIsNull(Long userId, Integer year);
+
     boolean existsByUser_IdAndYearAndDeletedAtIsNull(Long userId, Integer year);
+
 
     Optional<UserGroup> findByUser_IdAndGroup_IdAndYearAndDeletedAtIsNull(
             Long userId,
             Long groupId,
             Integer year
+    );
+
+    List<UserGroup> findByUser_IdAndYearAndDeletedAtIsNullAndUserType(
+            Long userId,
+            Integer year,
+            Integer userType
+    );
+
+    boolean existsByUser_IdAndYearAndDeletedAtIsNullAndUserType(Long userId, Integer year, Integer userType);
+
+    boolean existsByUser_IdAndGroup_IdAndYearAndDeletedAtIsNullAndUserType(
+            Long userId,
+            Long groupId,
+            Integer year,
+            Integer userType
     );
 
     @Query(value = """

@@ -323,20 +323,4 @@ public class UserService {
                 + user.getName() + " " + user.getLastName());
         }
     }
-
-    /*@Override
-    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        UserSalle user = userRepository.findByEmail(username)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
-
-        // Convertir los roles del usuario en GrantedAuthority para Spring Security
-        List<GrantedAuthority> authorities = Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + user.getRole()));
-
-        return new org.springframework.security.core.userdetails.User(
-                user.getEmail(),
-                user.getPassword(),
-                authorities
-        );
-    }*/
-
 }

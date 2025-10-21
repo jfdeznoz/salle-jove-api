@@ -2,26 +2,23 @@ package com.sallejoven.backend.controller;
 
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.dto.CenterDto;
-import com.sallejoven.backend.model.dto.GroupDto;
 import com.sallejoven.backend.model.dto.UserCenterDto;
 import com.sallejoven.backend.model.dto.UserCenterGroupsDto;
 import com.sallejoven.backend.model.entity.Center;
-import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserCenter;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.Role;
-import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.service.AcademicStateService;
 import com.sallejoven.backend.service.AuthService;
 import com.sallejoven.backend.service.CenterService;
-import com.sallejoven.backend.service.GroupService;
 import com.sallejoven.backend.service.UserCenterService;
 import com.sallejoven.backend.service.UserService;
 import com.sallejoven.backend.utils.SalleConverters;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.security.Principal;
 import java.util.List;
@@ -34,37 +31,36 @@ import java.util.stream.Collectors;
 public class CenterController {
 
     private final CenterService centerService;
-    private final GroupService groupService;
+    //private final GroupService groupService;
     private final UserService userService;
     private final AuthService authService;
     private final SalleConverters salleConverters;
     private final AcademicStateService academicStateService;
     private final UserCenterService userCenterService;
 
-    @GetMapping
-    public ResponseEntity<List<CenterDto>> listAll() {
-        List<Center> centers = centerService.getAllCentersWithGroups();
-        List<CenterDto> dtos = centers.stream().map(center -> {
-            var groups = centerService.getGroupsForCenter(center);
-            var groupDtos = groups.stream().map(g ->
-                GroupDto.builder()
-                        .groupId(Math.toIntExact(g.getId()))
-                        .centerId(Math.toIntExact(center.getId()))
-                        .stage(g.getStage())
-                        .centerName(center.getName())
-                        .cityName(center.getCity())
-                        .build()
-            ).collect(Collectors.toList());
-            return CenterDto.builder()
-                    .id(center.getId())
-                    .city(center.getCity())
-                    .name(center.getName())
-                    .groups(groupDtos)
-                    .build();
-        }).toList();
+    @PreAuthorize("@authz.isAnyManagerType()")
+    @GetMapping("/me-list")
+    public ResponseEntity<List<CenterDto>> listMyCenters() throws SalleException {
+        UserSalle me = authService.getCurrentUser();
+        List<Role> roles = authService.getCurrentUserRoles();
+
+        if (roles.contains(Role.ADMIN)) {
+            List<Center> centers = centerService.getAllCentersWithGroups();
+            List<CenterDto> dtos = centers.stream()
+                    .map(salleConverters::centerToDto)
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(dtos);
+        }
+
+        List<UserCenter> list = userCenterService.findByUserForCurrentYear(me.getId());
+        List<CenterDto> dtos = list.stream()
+                .map(salleConverters::userCenterToCenterDto)
+                .collect(Collectors.toList());
+
         return ResponseEntity.ok(dtos);
     }
 
+    /*
     @GetMapping("/{centerId}/groups")
     public ResponseEntity<List<GroupDto>> listGroups(
             @PathVariable Long centerId) throws SalleException {
@@ -86,8 +82,9 @@ public class CenterController {
         ).toList();
 
         return ResponseEntity.ok(dtos);
-    }
+    }*/
 
+    @PreAuthorize("@authz.canViewUserGroups(#userId)")
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<UserCenterGroupsDto>> userCenters(@PathVariable Long userId) throws SalleException {
         UserSalle user = userService.findByUserId(userId);
@@ -104,6 +101,7 @@ public class CenterController {
         return ResponseEntity.ok(dtos);
     }
 
+    @PreAuthorize("isAuthenticated()")
     @GetMapping("/me")
     public ResponseEntity<List<UserCenterGroupsDto>> myCenters(Principal principal) throws SalleException {
         UserSalle me = userService.findByEmail(principal.getName());
@@ -122,6 +120,7 @@ public class CenterController {
         return ResponseEntity.ok(dtos);
     }
 
+    @PreAuthorize("@authz.canViewUserCenters(#userId)")
     @GetMapping("/user/{userId}/center")
     public ResponseEntity<List<UserCenterDto>> getUserCenters(@PathVariable Long userId) throws SalleException {
         List<UserCenter> list = userCenterService.findByUserForCurrentYear(userId);
@@ -137,6 +136,7 @@ public class CenterController {
         return ResponseEntity.ok(dtos);
     }
 
+    @PreAuthorize("@authz.canManageCenterAsDelegate(#centerId)")
     @PostMapping("/user/{userId}/center/{centerId}")
     public ResponseEntity<UserCenterDto> addCenterRole(
             @PathVariable Long userId,
@@ -148,6 +148,7 @@ public class CenterController {
         return ResponseEntity.ok(salleConverters.userCenterToDto(uc));
     }
 
+    @PreAuthorize("@authz.canManageUserCenterAsDelegate(#userCenterId)")
     @PutMapping("/user-center/{userCenterId}")
     public ResponseEntity<UserCenterDto> changeCenterRole(
             @PathVariable Long userCenterId,
@@ -158,9 +159,21 @@ public class CenterController {
         return ResponseEntity.ok(salleConverters.userCenterToDto(uc));
     }
 
+    @PreAuthorize("@authz.canManageUserCenterAsDelegate(#userCenterId)")
     @DeleteMapping("/user-center/{userCenterId}")
     public ResponseEntity<Void> deleteCenterRole(@PathVariable Long userCenterId) throws SalleException {
         userCenterService.softDelete(userCenterId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PreAuthorize("@authz.canManageCenterAsDelegate(#centerId)")
+    @DeleteMapping("/user/{userId}/center/{centerId}")
+    public ResponseEntity<UserCenterDto> deleteCenterRole(
+            @PathVariable Long userId,
+            @PathVariable Long centerId
+    ) throws SalleException {
+        UserCenter uc = userCenterService.findByUserAndCenter(userId, centerId);
+        userCenterService.softDelete(uc.getId());
         return ResponseEntity.noContent().build();
     }
 
