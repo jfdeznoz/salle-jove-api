@@ -11,7 +11,10 @@ import com.sallejoven.backend.repository.projection.SeguroRow;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.OffsetDateTime;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 
 import static java.time.LocalDateTime.now;
@@ -112,47 +115,46 @@ public class UserGroupService {
 
     @Transactional
     public void moveUserBetweenGroups(UserSalle user, Long fromGroupId, Long toGroupId) throws SalleException {
-
         if (fromGroupId.equals(toGroupId)) return;
+
+        UserGroup source = user.getGroups().stream()
+                .filter(ug -> ug.getGroup().getId().equals(fromGroupId))
+                .max(Comparator.comparing(UserGroup::getYear))
+                .orElseThrow(() -> new SalleException(ErrorCodes.USER_GROUP_NOT_ASSIGNED));
+
+        Integer year = source.getYear();
+        Integer type = source.getUserType();
 
         GroupSalle to = groupService.findById(toGroupId);
 
-        // 1) localizar membership origen (user + fromGroup)
-        UserGroup source = user.getGroups().stream()
-                .filter(m -> m.getGroup().getId().equals(fromGroupId))
-                .findFirst()
-                .orElseThrow(() -> new SalleException(ErrorCodes.USER_GROUP_NOT_ASSIGNED));
-
-        // 2) conservar tipo
-        Integer type = source.getUserType();
-
-        // 3) quitar membership origen (orphanRemoval=true la borrará en BD si tu mapeo lo tiene)
-        //user.getGroups().remove(source);
-
-        // 4) crear/actualizar membership destino con mismo tipo
-        UserGroup dest = user.getGroups().stream()
-                .filter(m -> m.getGroup().getId().equals(toGroupId))
-                .findFirst()
+        UserGroup dest = userGroupRepository
+                .findByUser_IdAndGroup_IdAndYear(user.getId(), toGroupId, year)
+                .map(ug -> {
+                    if (ug.getDeletedAt() != null) ug.setDeletedAt(null);
+                    return ug;
+                })
                 .orElseGet(() -> {
                     UserGroup ug = UserGroup.builder()
-                            .user(user)
+                            .user(user)       // owning side
                             .group(to)
+                            .year(year)
                             .userType(type)
-                            .year(source.getYear())
                             .build();
-                    user.getGroups().add(ug);
+                    user.getGroups().add(ug); // inverse side (necesario para cascade)
                     return ug;
                 });
 
+        // Por si hubiera cambiado el tipo
         dest.setUserType(type);
 
-       // 5) persistir cambios en memberships
-        UserSalle updated = userRepository.save(user);
-
+        // 3) Soft-delete del SOURCE (no lo quites de la colección; no queremos borrar físico)
         source.setDeletedAt(now());
-        userGroupRepository.save(source);
 
-        // 6) inscribir al usuario (vía su UserGroup destino) en los eventos futuros del nuevo grupo
+        // 4) Persistencia:
+        //    Con cascade {PERSIST, MERGE} en UserSalle.groups te vale UNA sola save del user.
+        userRepository.save(user);
+
+        // 5) Asignar eventos futuros del nuevo grupo (idempotente con UNIQUE(event, user_group_id))
         eventUserService.assignFutureGroupEventsToUser(user, to);
     }
 
