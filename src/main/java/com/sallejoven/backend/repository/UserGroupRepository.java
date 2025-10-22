@@ -103,6 +103,12 @@ public interface UserGroupRepository extends JpaRepository<UserGroup, Long> {
             Integer year
     );
 
+    Optional<UserGroup> findByUser_IdAndGroup_IdAndYear(
+            Long userId,
+            Long groupId,
+            Integer year
+    );
+
     List<UserGroup> findByUser_IdAndYearAndDeletedAtIsNullAndUserType(
             Long userId,
             Integer year,
