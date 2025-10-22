@@ -96,8 +96,8 @@ public class UserController {
 
     @PreAuthorize("@authz.hasCenterRole(#centerId, 'PASTORAL_DELEGATE','GROUP_LEADER')")
     @GetMapping("/catechist/center/{centerId}")
-    public ResponseEntity<List<UserSelfDto>> getUserByCenterId(@PathVariable Long centerId, @RequestParam(required = false) String role) {
-        List<UserSalle> users = userService.getUsersByCenterId(centerId, role);
+    public ResponseEntity<List<UserSelfDto>> getUserByCenterId(@PathVariable Long centerId) throws SalleException {
+        List<UserSalle> users = userService.getCatechistsByCenter(centerId);
         List<UserSelfDto> result = users.stream().map(user -> {
             try {
                 return salleConverters.buildSelfUserInfo(user);

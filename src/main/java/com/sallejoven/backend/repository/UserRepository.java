@@ -48,19 +48,6 @@ public interface UserRepository extends JpaRepository<UserSalle, Long> {
     """)
     List<UserSalle> findUsersByCenterId(@Param("centerId") Long centerId);
 
-    @Query("""
-      SELECT DISTINCT u
-      FROM UserSalle u
-      JOIN u.groups ug
-      WHERE ug.group.center.id = :centerId
-        AND u.roles LIKE :role
-        AND u.deletedAt IS NULL
-    """)
-    List<UserSalle> findUsersByCenterIdAndRole(@Param("centerId") Long centerId, @Param("role") String role);
-
-    @Query("SELECT u FROM UserSalle u WHERE u.roles LIKE %:role1% OR u.roles LIKE %:role2% AND u.deletedAt IS NULL")
-    List<UserSalle> findAllByRoles(@Param("role1") String role1, @Param("role2") String role2);
-
     @Query(value = """
     SELECT u.*
     FROM user_salle u
@@ -86,4 +73,18 @@ public interface UserRepository extends JpaRepository<UserSalle, Long> {
     ORDER BY u.name NULLS LAST, u.last_name NULLS LAST
     """, nativeQuery = true)
     List<UserSalle> searchUsersNormalized(@Param("normalized") String normalized);
+
+    @Query("""
+        select distinct u
+        from UserSalle u
+        join UserGroup ug on ug.user.id = u.id
+        join ug.group g
+        where u.deletedAt is null
+          and ug.deletedAt is null
+          and ug.year = :year
+          and ug.userType = 1
+          and g.center.id = :centerId
+    """)
+    List<UserSalle> findAnimatorsByCenterAndYear(@Param("centerId") Long centerId,
+                                                 @Param("year") int year);
 }

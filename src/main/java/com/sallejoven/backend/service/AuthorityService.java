@@ -21,6 +21,28 @@ public class AuthorityService {
     private final UserCenterRepository userCenterRepo;
     private final UserGroupRepository userGroupRepo;
 
+    public List<String> buildAuthoritiesForUser(Long userId, boolean isAdmin) throws SalleException {
+        int year = academicStateService.getVisibleYear();
+        List<String> out = new ArrayList<>();
+
+        if (isAdmin) {
+            out.add("ROLE_ADMIN");
+        }
+
+        userCenterRepo.findByUser_IdAndYearAndDeletedAtIsNull(userId, year)
+                .forEach(uc -> {
+                    String role = (uc.getUserType() != null && uc.getUserType() == 3)
+                            ? "PASTORAL_DELEGATE"
+                            : "GROUP_LEADER"; // contrato: 2 o 3
+                    out.add("CENTER:" + uc.getCenter().getId() + ":" + role + ":" + year);
+                });
+
+        userGroupRepo.findByUser_IdAndYearAndDeletedAtIsNullAndUserType(userId, year, 1)
+                .forEach(ug -> out.add("GROUP:" + ug.getGroup().getId() + ":ANIMATOR:" + year));
+
+        return out;
+    }
+
     public List<String> buildContextAuthorities(Long userId) throws SalleException {
         int year = academicStateService.getVisibleYear();
         List<String> out = new ArrayList<>();

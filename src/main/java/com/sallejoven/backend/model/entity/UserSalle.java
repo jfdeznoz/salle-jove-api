@@ -77,7 +77,7 @@ public class UserSalle {
     private String address;
 
     @Column(nullable = false)
-    private String roles;
+    private Boolean isAdmin;
 
     @JsonIgnore
     @ToString.Exclude

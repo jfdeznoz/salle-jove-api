@@ -33,6 +33,7 @@ public class UserService {
     private final GroupService groupService;
     private final AcademicStateService academicStateService;
     private final EventService eventService;
+    private final UserCenterService userCenterService;
 
     public UserSalle findByEmail(String email) throws SalleException {
         return userRepository.findByEmail(email).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
@@ -86,6 +87,11 @@ public class UserService {
 
     @Transactional
     public UserSalle saveUser(UserSalleRequest req) throws SalleException {
+        // 0) Normalización y derivación
+        final String role = normalizeRole(req.getRol());   // "ROLE_*" (si viene null → ROLE_PARTICIPANT)
+        final boolean isAdmin = "ROLE_ADMIN".equals(role);
+        int userType = mapUserTypeFromRequest(role);       // 0..3 normalmente
+
         // 1) Construir y persistir usuario base
         UserSalle user = UserSalle.builder()
                 .name(req.getName())
@@ -100,14 +106,14 @@ public class UserService {
                 .imageAuthorization(req.getImageAuthorization())
                 .birthDate(req.getBirthDate())
                 .password(passwordEncoder.encode("password"))
-                .roles(req.getRol() != null ? "ROLE_" + req.getRol() : null)
+                .isAdmin(isAdmin)                     // ← **nuevo**
                 .gender(req.getGender())
                 .address(req.getAddress())
                 .city(req.getCity())
                 .build();
 
         if (user.getGroups() == null) {
-            user.setGroups(new HashSet<>());
+            user.setGroups(new java.util.HashSet<>());
         }
 
         UserSalle saved = userRepository.save(user);
@@ -116,31 +122,31 @@ public class UserService {
         final Integer centerId = req.getCenterId();
         final Integer eventId  = req.getEventId();
         final Integer groupId  = req.getGroupId();
-        int userType = mapUserTypeFromRequest(req.getRol());
 
-        // Validación: eventId sin groupId
+        // Si es admin: no asignamos roles de centro/grupo
+        if (isAdmin) {
+            return saved;
+        }
+
+        // Validación: eventId sin groupId no tiene sentido
         if (eventId != null && groupId == null) {
             throw new SalleException(ErrorCodes.GROUP_NOT_FOUND, "Se requiere groupId para inscribir en un evento.");
         }
 
-        // responsable salle joven o delegado
-        if (centerId != null && eventId == null) {
-            List<GroupSalle> centerGroups = groupService.findGroupsByCenterId(centerId.longValue());
-            if (centerGroups != null) {
-                for (GroupSalle g : centerGroups) {
-                    ensureMembership(saved, g, userType);
-                    saved = userRepository.save(saved);
-                    eventUserService.assignFutureGroupEventsToUser(saved, g);
-                }
-            }
+        // --- Caso A) Alta por centro (PD / GL) y NO es un alta puntual de evento ---
+        if (centerId != null && eventId == null && usesCenterOnly(role)) {
+            // Asigna el rol de centro explícito (2=GL, 3=PD)
+            userCenterService.addCenterRole(saved.getId(), centerId.longValue(), userType);
+            userRepository.save(saved);
             return saved;
         }
 
-        //Usuario añadido solo para un evento
+        // --- Caso B) Alta puntual a un evento (requiere grupo) ---
         if (eventId != null && groupId != null) {
             GroupSalle group = groupService.findById(groupId.longValue());
 
-            if (isAnimator(req.getRol())) {
+            // Tu especial: si se crea "como animador" para evento puntual, usas 5
+            if (isAnimator(role)) {
                 userType = 5;
             }
 
@@ -150,11 +156,11 @@ public class UserService {
             Event event = eventService.findById(eventId.longValue())
                     .orElseThrow(() -> new SalleException(ErrorCodes.EVENT_NOT_FOUND));
 
-            eventUserService.assignEventToUserGroups(event, List.of(ug));
+            eventUserService.assignEventToUserGroups(event, java.util.List.of(ug));
             return saved;
         }
 
-        // Usuario normal que se añade a un grupo
+        // --- Caso C) Alta normal a un grupo ---
         if (groupId != null) {
             GroupSalle group = groupService.findById(groupId.longValue());
             ensureMembership(saved, group, userType);
@@ -163,14 +169,32 @@ public class UserService {
             return saved;
         }
 
+        // Sin centro/grupo/evento → solo usuario base
         return saved;
     }
 
-    private boolean isAnimator(String rolText) {
-        if (rolText == null) return false;
-        String r = rolText.trim().toUpperCase();
-        if (r.startsWith("ROLE_")) r = r.substring(5);
-        return "ANIMATOR".equals(r);
+    /* ===== helpers iguales a los de RegistrationService ===== */
+
+    private String normalizeRole(String rolText) {
+        String r = (rolText == null || rolText.isBlank()) ? "PARTICIPANT" : rolText.trim().toUpperCase();
+        return r.startsWith("ROLE_") ? r : "ROLE_" + r;
+    }
+
+    private boolean usesCenterOnly(String role) {
+        return role.endsWith("GROUP_LEADER") || role.endsWith("PASTORAL_DELEGATE");
+    }
+    private boolean isAnimator(String role) {
+        return role.endsWith("ANIMATOR");
+    }
+
+    private int mapUserTypeFromRequest(String role) {
+        String r = role.startsWith("ROLE_") ? role.substring(5) : role;
+        return switch (r) {
+            case "GROUP_LEADER"      -> 2;
+            case "PASTORAL_DELEGATE" -> 3;
+            case "ANIMATOR"          -> 1;
+            default                  -> 0; // PARTICIPANT
+        };
     }
 
     private UserGroup ensureMembership(UserSalle user, GroupSalle group, int userType) throws SalleException {
@@ -200,20 +224,6 @@ public class UserService {
 
         user.getGroups().add(membership);
         return membership;
-    }
-
-    /** Mapea el rol textual del request al código user_type (0..3). */
-    private int mapUserTypeFromRequest(String rolText) {
-        if (rolText == null) return 0; // PARTICIPANT por defecto
-        String r = rolText.trim().toUpperCase();
-        if (r.startsWith("ROLE_")) r = r.substring(5);
-
-        return switch (r) {
-            case "GROUP_LEADER"      -> 2;
-            case "ANIMATOR"          -> 1;
-            case "PASTORAL_DELEGATE" -> 3;
-            default                  -> 0; // PARTICIPANT
-        };
     }
 
     public void addUserToGroup(Long userId, Long groupId, Long userType) throws SalleException {
@@ -281,22 +291,13 @@ public class UserService {
         return userRepository.findUsersByGroupId(groupId);
     }
 
-    public List<UserSalle> getUsersByCenterId(Long centerId, String role) {
-        if (role == null || role.isBlank()) {
+    public List<UserSalle> getUsersByCenterId(Long centerId) {
             return userRepository.findUsersByCenterId(centerId);
-        } else {
-            return userRepository.findUsersByCenterIdAndRole(centerId, role);
-        }
     }
-     
 
-    public List<Role> getUserRoles(UserSalle userSalle) throws SalleException {
-        return Arrays.stream(userSalle.getRoles().split(","))
-                .map(String::trim)
-                .map(role -> role.replace("ROLE_", ""))
-                .map(String::toUpperCase)
-                .map(Role::valueOf)
-                .toList();
+    public List<UserSalle> getCatechistsByCenter(Long centerId) throws SalleException {
+        int year = academicStateService.getVisibleYear();
+        return userRepository.findAnimatorsByCenterAndYear(centerId, year);
     }
 
     public List<Role> getUserRoles(UserPending userSalle) throws SalleException {
@@ -307,10 +308,6 @@ public class UserService {
                 .map(Role::valueOf)
                 .toList();
     }
-
-    public List<UserSalle> findAllByRoles() {
-        return userRepository.findAllByRoles("ROLE_PARTICIPANT", "ROLE_ANIMATOR");
-    }    
 
     @Transactional
     public void removeUserFromGroup(UserSalle user, GroupSalle group) {

@@ -45,6 +45,10 @@ spring:
             enable: true
 
 jwt:
+  issuer: "salle-joven"         # nombre lógico del emisor
+  access-ttl: 15m               # duración access token (lógica: 15 min)
+  refresh-ttl: 15d
+  cookie-secure: false
   rsa-private-key: classpath:certs/privateKey.pem
   rsa-public-key: classpath:certs/publicKey.pem
 

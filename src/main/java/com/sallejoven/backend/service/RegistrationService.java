@@ -100,10 +100,14 @@ public class RegistrationService {
         if (userRepository.existsByEmail(p.getEmail())) {
             throw new SalleException(ErrorCodes.EMAIL_ALREADY_EXISTS);
         }
-
         if (p.getDni() != null && !p.getDni().isBlank() && userRepository.existsByDni(p.getDni())) {
             throw new SalleException(ErrorCodes.DNI_ALREADY_EXISTS);
         }
+
+        final String role = normalizeRole(p.getRoles());       // "ROLE_*"
+        final int userType = mapUserTypeFromRequest(role);     // 0..3
+
+        final boolean isAdmin = role.equals("ROLE_ADMIN");
 
         UserSalle user = UserSalle.builder()
                 .name(p.getName())
@@ -119,7 +123,7 @@ public class RegistrationService {
                 .address(p.getAddress())
                 .imageAuthorization(p.getImageAuthorization())
                 .birthDate(p.getBirthDate())
-                .roles(p.getRoles())
+                .isAdmin(isAdmin)
                 .password(p.getPassword())
                 .gender(p.getGender())
                 .motherFullName(p.getMotherFullName())
@@ -133,24 +137,25 @@ public class RegistrationService {
         if (user.getGroups() == null) user.setGroups(new HashSet<>());
         user = userRepository.save(user);
 
-        final String role = normalizeRole(p.getRoles());
-        final int userType = mapUserTypeFromRequest(role);
+        // 4) Si el pending no es de ADMIN, seguimos asignando rol de centro o grupo
+        if (!isAdmin) {
+            if (usesCenterOnly(role)) {
+                if (p.getCenterId() == null) throw new SalleException(ErrorCodes.CENTER_NOT_FOUND);
+                userCenterService.addCenterRole(user.getId(), p.getCenterId(), userType);
+                userRepository.save(user);
+            } else {
+                if (p.getGroupId() == null) throw new SalleException(ErrorCodes.GROUP_NOT_FOUND);
+                GroupSalle group = groupService.findById(p.getGroupId());
 
-        if (usesCenterOnly(role)) {
-            if (p.getCenterId() == null) throw new SalleException(ErrorCodes.CENTER_NOT_FOUND);
-            userCenterService.addCenterRole(user.getId(), p.getCenterId(), userType);
-            userRepository.save(user);
-        } else {
-            if (p.getGroupId() == null) throw new SalleException(ErrorCodes.GROUP_NOT_FOUND);
-            GroupSalle group = groupService.findById(p.getGroupId());
+                UserGroup ug = ensureMembership(user, group, userType);
+                userRepository.save(user);
 
-            UserGroup ug = ensureMembership(user, group, userType);
-            userRepository.save(user);
-
-            eventUserService.assignFutureGroupEventsToUser(user, group);
+                eventUserService.assignFutureGroupEventsToUser(user, group);
+            }
         }
 
         userPendingRepository.deleteById(pendingId);
+
         return user;
     }
 

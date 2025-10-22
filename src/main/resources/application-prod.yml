@@ -45,6 +45,10 @@ spring:
             enable: true
 
 jwt:
+  issuer: "salle-joven"
+  access-ttl: 1m
+  refresh-ttl: 15d
+  cookie-secure: true
   rsa-private-key: classpath:certs/privateKey.pem
   rsa-public-key: classpath:certs/publicKey.pem
 

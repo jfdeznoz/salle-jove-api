@@ -21,7 +21,6 @@ import com.sallejoven.backend.service.AuthorityService;
 import com.sallejoven.backend.service.CenterService;
 import com.sallejoven.backend.service.GroupService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.dto.EventDto;
@@ -34,8 +33,6 @@ import com.sallejoven.backend.model.entity.EventUser;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.Role;
-import com.sallejoven.backend.repository.GroupRepository;
-import com.sallejoven.backend.service.AuthService;
 import com.sallejoven.backend.service.UserService;
 
 

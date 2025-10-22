@@ -16,11 +16,8 @@ public class UserInfoConfig implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        // Solo importa si es ADMIN o no. El resto son contextuales vía authz.
-        if ("ROLE_ADMIN".equalsIgnoreCase(userInfoEntity.getRoles())) {
-            return List.of(new SimpleGrantedAuthority("ROLE_ADMIN"));
-        }
-        return List.of();
+        boolean isAdmin = Boolean.TRUE.equals(userInfoEntity.getIsAdmin());
+        return isAdmin ? List.of(new SimpleGrantedAuthority("ROLE_ADMIN")) : List.of();
     }
 
     @Override

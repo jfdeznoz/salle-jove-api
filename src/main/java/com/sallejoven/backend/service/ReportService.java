@@ -192,7 +192,7 @@ public class ReportService {
     }
 
     private ByteArrayOutputStream generateCamisetasReport(Event event,
-                                                         List<EventUser> participants) throws IOException {
+                                                          List<EventUser> participants) throws IOException {
         Workbook wb    = new XSSFWorkbook();
         Sheet    sheet = wb.createSheet("Camisetas");
         String[] sizes = {"XS","S","M","L","XL","XXL","XXXL"};
@@ -235,28 +235,23 @@ public class ReportService {
             cq.setCellStyle(center);
         }
 
-        // --- Conteo por colegio, talla y rol ---
+        // --- Conteo por colegio, talla y rol (0=alumno, 1=catequista) ---
         Map<String, int[][]> bySchool = new LinkedHashMap<>();
         for (EventUser eu : participants) {
             if (eu.getStatus() != 1) continue;
-            UserSalle u = eu.getUserGroup().getUser();
-            String   school = getSchool(u);
+
+            UserSalle u   = eu.getUserGroup().getUser();
+            GroupSalle g  = eu.getUserGroup().getGroup();
+            String school = getSchoolForEventUser(eu);
             bySchool.putIfAbsent(school, new int[sizes.length][2]);
 
             TshirtSizeEnum ts = TshirtSizeEnum.fromIndex(u.getTshirtSize());
             if (ts == null) continue;
             int sizeIdx = ts.ordinal();
 
-            List<Role> roles = Arrays.stream(u.getRoles().split(","))
-                    .map(String::trim)
-                    .map(r -> r.startsWith("ROLE_") ? r.substring(5) : r)
-                    .map(Role::valueOf)
-                    .collect(Collectors.toList());
-            Role top = roles.stream()
-                    .min(Comparator.comparingInt(Role::ordinal))
-                    .orElse(Role.PARTICIPANT);
+            Integer ut = eu.getUserGroup().getUserType();
+            int roleIdx = (ut != null && (ut == 1 || ut == 2 || ut == 3 || ut == 5)) ? 1 : 0;
 
-            int roleIdx = (top == Role.PARTICIPANT) ? 0 : 1;
             bySchool.get(school)[sizeIdx][roleIdx]++;
         }
 
@@ -266,13 +261,21 @@ public class ReportService {
             r.createCell(0).setCellValue(e.getKey());
             int[][] cnt = e.getValue();
             for (int i = 0; i < sizes.length; i++) {
-                r.createCell(2 + i).setCellValue(cnt[i][0]);
-                r.createCell(10 + i).setCellValue(cnt[i][1]);
+                r.createCell(2 + i).setCellValue(cnt[i][0]);   // catecúmenos
+                r.createCell(10 + i).setCellValue(cnt[i][1]);  // catequistas
             }
         }
 
         for (int c = 0; c <= 16; c++) sheet.autoSizeColumn(c);
         return ExcelReportUtils.toByteArray(wb);
+    }
+
+    private String getSchoolForEventUser(EventUser eu) {
+        GroupSalle g = eu.getUserGroup() != null ? eu.getUserGroup().getGroup() : null;
+        if (g == null || g.getCenter() == null) return "";
+        Center center = g.getCenter();
+        return (center.getName() == null ? "" : center.getName())
+                + " (" + (center.getCity() == null ? "" : center.getCity()) + ")";
     }
 
     private ByteArrayOutputStream generateIntoleranciasReport(List<EventUser> participants) throws IOException {
@@ -344,7 +347,7 @@ public class ReportService {
                 row.createCell(0).setCellValue(u.getName() + " " + u.getLastName());
                 row.createCell(1).setCellValue(Optional.ofNullable(u.getEmail()).orElse(""));
                 row.createCell(2).setCellValue(getSchool(u));
-                row.createCell(2).setCellValue(getStageName(group));
+                row.createCell(3).setCellValue(getStageName(group));
                 row.createCell(4).setCellValue(Optional.ofNullable(u.getFatherPhone()).orElse(""));
                 row.createCell(5).setCellValue(Optional.ofNullable(u.getMotherPhone()).orElse(""));
                 row.createCell(6).setCellValue(Optional.ofNullable(u.getIntolerances()).orElse(""));
