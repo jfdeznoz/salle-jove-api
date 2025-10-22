@@ -11,10 +11,10 @@ import com.sallejoven.backend.repository.projection.SeguroRow;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+
+import static java.time.LocalDateTime.now;
 
 @Service
 @RequiredArgsConstructor
@@ -127,7 +127,7 @@ public class UserGroupService {
         Integer type = source.getUserType();
 
         // 3) quitar membership origen (orphanRemoval=true la borrará en BD si tu mapeo lo tiene)
-        user.getGroups().remove(source);
+        //user.getGroups().remove(source);
 
         // 4) crear/actualizar membership destino con mismo tipo
         UserGroup dest = user.getGroups().stream()
@@ -148,6 +148,9 @@ public class UserGroupService {
 
        // 5) persistir cambios en memberships
         UserSalle updated = userRepository.save(user);
+
+        source.setDeletedAt(now());
+        userGroupRepository.save(source);
 
         // 6) inscribir al usuario (vía su UserGroup destino) en los eventos futuros del nuevo grupo
         eventUserService.assignFutureGroupEventsToUser(user, to);
@@ -197,7 +200,7 @@ public class UserGroupService {
         UserGroup ug = userGroupRepository
                 .findByUser_IdAndGroup_IdAndYearAndDeletedAtIsNull(userId, groupId, year)
                 .orElseThrow(() -> new SalleException(ErrorCodes.USER_GROUP_NOT_ASSIGNED));
-        ug.setDeletedAt(LocalDateTime.now());
+        ug.setDeletedAt(now());
 
         eventUserService.softDeleteByUserGroupIds(List.of(ug.getId()));
     }
