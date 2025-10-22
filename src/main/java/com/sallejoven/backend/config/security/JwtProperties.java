@@ -14,8 +14,8 @@ public class JwtProperties {
     // getters/setters
     /** Defaults que se usan si no están en application.yml */
     private String issuer = "salle-joven";
-    private Duration accessTtl = Duration.ofMinutes(1);
-    private Duration refreshTtl = Duration.ofDays(15);
+    private Duration accessTtl = Duration.ofMinutes(30);
+    private Duration refreshTtl = Duration.ofDays(7);
     private boolean cookieSecure = true;
 
     private String rsaPrivateKey; // e.g. "classpath:certs/privateKey.pem"
