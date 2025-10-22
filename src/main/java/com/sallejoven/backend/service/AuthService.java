@@ -1,13 +1,13 @@
 package com.sallejoven.backend.service;
 
-import java.util.Arrays;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import com.sallejoven.backend.config.security.JwtProperties;
 import com.sallejoven.backend.model.types.ErrorCodes;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -31,6 +31,7 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseCookie;
 
 @Service
 @RequiredArgsConstructor
@@ -42,6 +43,9 @@ public class AuthService {
     private final JwtTokenGenerator jwtTokenGenerator;
     private final RefreshTokenRepository refreshTokenRepo;
     private final UserRepository userRepository;
+    private final AuthorityService authorityService;
+    private final JwtProperties jwtProps;
+
 
     public String getCurrentUserEmail(){
         var context = SecurityContextHolder.getContext();
@@ -54,14 +58,26 @@ public class AuthService {
     }
 
     public List<Role> getCurrentUserRoles() throws SalleException {
-        UserSalle currentUser = getCurrentUser();
-    
-        return Arrays.stream(currentUser.getRoles().split(","))
-                .map(String::trim)
-                .map(role -> role.replace("ROLE_", ""))
-                .map(String::toUpperCase)
-                .map(Role::valueOf)
-                .toList();
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return List.of(Role.PARTICIPANT);
+
+        Set<String> authorities = auth.getAuthorities()
+                .stream().map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toSet());
+
+        if (authorities.contains("ROLE_ADMIN")) {
+            return List.of(Role.ADMIN);
+        }
+        boolean isPD = authorities.stream().anyMatch(a -> a.contains(":PASTORAL_DELEGATE:"));
+        if (isPD) return List.of(Role.PASTORAL_DELEGATE);
+
+        boolean isGL = authorities.stream().anyMatch(a -> a.contains(":GROUP_LEADER:"));
+        if (isGL) return List.of(Role.GROUP_LEADER);
+
+        boolean isAnimator = authorities.stream().anyMatch(a -> a.contains(":ANIMATOR:"));
+        if (isAnimator) return List.of(Role.ANIMATOR);
+
+        return List.of(Role.PARTICIPANT);
     }
 
     public AuthResponseDto getJwtTokensAfterAuthentication(Authentication authentication, HttpServletResponse response) {
@@ -79,11 +95,11 @@ public class AuthService {
             log.info("[AuthService:userSignInAuth] Access token for user:{}, has been generated",userInfoEntity.getEmail());
             saveUserRefreshToken(userInfoEntity,refreshToken);
 
-            creatRefreshTokenCookie(response,refreshToken);
+            setRefreshCookie(response, refreshToken, jwtProps.isCookieSecure());
 
             return  AuthResponseDto.builder()
                     .accessToken(accessToken)
-                    .accessTokenExpiry(15 * 60)
+                    .accessTokenExpiry(accessTtlSeconds())
                     .userName(userInfoEntity.getEmail())
                     .tokenType(TokenType.Bearer)
                     .build();
@@ -95,52 +111,96 @@ public class AuthService {
         }
     }
 
-    public Object getAccessTokenUsingRefreshToken(String authorizationHeader) {
- 
-        if(!authorizationHeader.startsWith(TokenType.Bearer.name())){
-            return new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,"Please verify your token type");
-        }
+    // AuthService.java
+    public Object getAccessTokenUsingRefreshToken(String authorizationHeader, HttpServletResponse response) throws SalleException {
 
+        if (authorizationHeader == null || !authorizationHeader.startsWith(TokenType.Bearer.name())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid header");
+        }
         final String refreshToken = authorizationHeader.substring(7);
 
+        // 1) Validar + extraer subject
+        String emailFromJwt;
+        try {
+            emailFromJwt = jwtTokenGenerator.validateAndExtractSubjectFromRefresh(refreshToken);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token");
+        }
+
+        // 2) Verificar en BD que no está revocado
         var refreshTokenEntity = refreshTokenRepo.findByToken(refreshToken)
-                .filter(tokens-> !tokens.isRevoked())
-                .orElseThrow(()-> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,"Refresh token revoked"));
+                .filter(tokens -> !tokens.isRevoked())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh token revoked"));
 
-        UserSalle userInfoEntity = refreshTokenEntity.getUser();
-        
-        Authentication authentication =  createAuthenticationObject(userInfoEntity);
+        UserSalle user = refreshTokenEntity.getUser();
+        if (!user.getEmail().equalsIgnoreCase(emailFromJwt)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token subject mismatch");
+        }
 
-        String accessToken = jwtTokenGenerator.generateAccessToken(authentication);
+        // 3) Construir Authentication con authorities (isAdmin + contextuales)
+        List<GrantedAuthority> auths = new java.util.ArrayList<>();
+        if (Boolean.TRUE.equals(user.getIsAdmin())) {
+            auths.add(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"));
+        }
+        var contextual = authorityService.buildContextAuthorities(user.getId());
+        contextual.forEach(a -> auths.add(new org.springframework.security.core.authority.SimpleGrantedAuthority(a)));
+        Authentication authForTokens =
+                new UsernamePasswordAuthenticationToken(user.getEmail(), "N/A", auths);
 
-        return  AuthResponseDto.builder()
+        // 4) Nuevo access token
+        String accessToken = jwtTokenGenerator.generateAccessToken(authForTokens);
+
+        // ----- PASO C: Rotación de refresh -----
+        // 5) Revocar el refresh usado
+        refreshTokenEntity.setRevoked(true);
+        refreshTokenRepo.save(refreshTokenEntity);
+
+        // 6) Emitir nuevo refresh, persistirlo y setear cookie HttpOnly
+        String newRefresh = jwtTokenGenerator.generateRefreshToken(authForTokens);
+        saveUserRefreshToken(user, newRefresh);
+        setRefreshCookie(response, newRefresh, jwtProps.isCookieSecure());
+
+        // 7) Responder con el nuevo access
+        return AuthResponseDto.builder()
                 .accessToken(accessToken)
-                .accessTokenExpiry(5 * 60)
-                .userName(userInfoEntity.getEmail())
+                .accessTokenExpiry(accessTtlSeconds())   // <-- en ambos sitios
+                .userName(user.getEmail())
                 .tokenType(TokenType.Bearer)
                 .build();
     }
 
-    private static Authentication createAuthenticationObject(UserSalle userInfoEntity) {
-         String username = userInfoEntity.getEmail();
-         String password = userInfoEntity.getPassword();
-         String roles = userInfoEntity.getRoles();
- 
-         String[] roleArray = roles.split(",");
-         GrantedAuthority[] authorities = Arrays.stream(roleArray)
-                 .map(role -> (GrantedAuthority) role::trim)
-                 .toArray(GrantedAuthority[]::new);
- 
-         return new UsernamePasswordAuthenticationToken(username, password, Arrays.asList(authorities));
+    private Authentication createAuthenticationObject(UserSalle user) {
+        List<String> authStrings;
+        try {
+            authStrings = authorityService.buildAuthoritiesForUser(user.getId(), user.getIsAdmin());
+        } catch (SalleException e) {
+            authStrings = List.of();
+        }
+
+        var authorities = authStrings.stream()
+                .map(org.springframework.security.core.authority.SimpleGrantedAuthority::new)
+                .collect(Collectors.toList());
+
+        return new UsernamePasswordAuthenticationToken(
+                user.getEmail(),
+                user.getPassword(),
+                authorities
+        );
     }
 
-    private Cookie creatRefreshTokenCookie(HttpServletResponse response, String refreshToken) {
-        Cookie refreshTokenCookie = new Cookie("refresh_token",refreshToken);
-        refreshTokenCookie.setHttpOnly(true);
-        refreshTokenCookie.setSecure(true);
-        refreshTokenCookie.setMaxAge(15 * 24 * 60 * 60 );
-        response.addCookie(refreshTokenCookie);
-        return refreshTokenCookie;
+    // AuthService.java (helper)
+    private void setRefreshCookie(HttpServletResponse response, String refreshToken, boolean secure) {
+        String sameSite = secure ? "None" : "Lax"; // HTTPS -> None; HTTP local -> Lax
+
+        ResponseCookie rc = ResponseCookie.from("refresh_token", refreshToken)
+                .httpOnly(true)
+                .secure(secure)
+                .path("/")                 // MUY IMPORTANTE
+                .sameSite(sameSite)        // Lax en local HTTP, None en prod HTTPS
+                .maxAge(jwtProps.getRefreshTtl()) // o segundos
+                .build();
+
+        response.addHeader("Set-Cookie", rc.toString());
     }
 
     private void saveUserRefreshToken(UserSalle userInfoEntity, String refreshToken) {
@@ -174,5 +234,9 @@ public class AuthService {
             log.error("[AuthService:registerUser]Exception while registering the user due to :"+e.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,e.getMessage());
         }
+    }
+
+    private int accessTtlSeconds() {
+        return (int) jwtProps.getAccessTtl().toSeconds(); // p.ej. 900
     }
 }

@@ -44,12 +44,11 @@ public class EventService {
 
     public Page<Event> findAll(int page, int size, boolean isPast, Boolean isGeneral) throws SalleException {
         UserSalle user = authService.getCurrentUser();
-        boolean isAdmin = user.getRoles().contains("ROLE_ADMIN");
 
         LocalDate today = ZonedDateTime.now(ZoneId.of("Europe/Madrid")).toLocalDate();
         Pageable pageable = PageRequest.of(page, size);
 
-        if (isAdmin) {
+        if (user.getIsAdmin()) {
             return eventRepository.findAdminFilteredEvents(isGeneral, isPast, today, pageable);
         }
 

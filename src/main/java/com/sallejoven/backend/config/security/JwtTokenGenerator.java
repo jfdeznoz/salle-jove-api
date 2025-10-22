@@ -6,6 +6,7 @@ import java.util.List;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
@@ -21,8 +22,10 @@ import lombok.extern.slf4j.Slf4j;
 public class JwtTokenGenerator {
 
     private final JwtEncoder jwtEncoder;
+    private final JwtDecoder jwtDecoder;
     private final UserRepository userRepo;
     private final AuthorityService authorityService;
+    private final JwtProperties jwtProps;
 
     public String generateAccessToken(Authentication authentication) {
         log.info("[JwtTokenGenerator] Creating access token for {}", authentication.getName());
@@ -44,12 +47,13 @@ public class JwtTokenGenerator {
         }
 
         JwtClaimsSet claims = JwtClaimsSet.builder()
-                .issuer("atquil")
+                .issuer(jwtProps.getIssuer())
                 .issuedAt(Instant.now())
-                .expiresAt(Instant.now().plus(15, ChronoUnit.MINUTES))
+                .expiresAt(Instant.now().plus(jwtProps.getAccessTtl()))
                 .subject(authentication.getName())
                 .claim("roles", roles)   // globales, si los usas (p.ej. ["ADMIN"])
                 .claim("authz", authz)   // contextuales: ["CENTER:5:GROUP_LEADER", "GROUP:12:ANIMATOR", ...]
+                .claim("token_type", "access") // <-- opcional, ayuda en depuración
                 .build();
 
         return jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
@@ -57,13 +61,28 @@ public class JwtTokenGenerator {
 
     public String generateRefreshToken(Authentication authentication) {
         JwtClaimsSet claims = JwtClaimsSet.builder()
-                .issuer("atquil")
+                .issuer(jwtProps.getIssuer())
                 .issuedAt(Instant.now())
-                .expiresAt(Instant.now().plus(15, ChronoUnit.DAYS))
+                .expiresAt(Instant.now().plus(jwtProps.getRefreshTtl()))
                 .subject(authentication.getName())
                 .claim("roles", List.of("REFRESH"))
+                .claim("token_type", "refresh")
                 .build();
 
         return jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
+    }
+
+    public String validateAndExtractSubjectFromRefresh(String refreshToken) {
+        var jwt = jwtDecoder.decode(refreshToken); // valida firma y exp automáticamente
+        var type = jwt.getClaimAsString("token_type");
+        // fallback por si queda compatibilidad antigua:
+        var legacy = jwt.getClaimAsStringList("roles");
+
+        boolean ok = "refresh".equals(type)
+                || (legacy != null && legacy.contains("REFRESH"));
+        if (!ok) {
+            throw new IllegalArgumentException("Token no es de tipo refresh");
+        }
+        return jwt.getSubject();
     }
 }
