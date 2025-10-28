@@ -38,7 +38,11 @@ public class RequestEvent {
 
     private MultipartFile file;
 
+    private MultipartFile pdf;
+
     private String place;
 
     private Boolean isGeneral;
+
+    private Long centerId;
 }

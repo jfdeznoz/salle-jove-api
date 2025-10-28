@@ -5,6 +5,7 @@ import com.sallejoven.backend.model.entity.Center;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserPending;
 import com.sallejoven.backend.model.entity.UserSalle;
+import com.sallejoven.backend.model.requestDto.RequestEvent;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.repository.EventGroupRepository;
 import com.sallejoven.backend.repository.GroupRepository;
@@ -216,6 +217,28 @@ public class AuthzBean {
             if (as.contains("CENTER:" + centerId + ":" + r + ":" + year)) return true;
         }
         return false;
+    }
+
+    public boolean canCreateEvent(RequestEvent req) {
+        var as = auths();
+        if (isAdmin(as)) return true;
+
+        if (req == null) return false;
+
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) return false;
+
+        // Eventos generales: solo admin (cámbialo a isAnyManagerType() si quieres permitir PD/GL globalmente)
+        if (Boolean.TRUE.equals(req.getIsGeneral())) {
+            return false;
+        }
+
+        // Evento local: debe venir centerId y el usuario debe ser PD o GL de ese centro en el año visible
+        Long centerId = req.getCenterId();
+        if (centerId == null) return false;
+
+        return as.contains("CENTER:" + centerId + ":PASTORAL_DELEGATE:" + year)
+                || as.contains("CENTER:" + centerId + ":GROUP_LEADER:" + year);
     }
 
     public boolean canManageEventForEditOrDelete(Long eventId) {

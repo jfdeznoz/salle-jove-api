@@ -2,23 +2,19 @@ package com.sallejoven.backend.service;
 
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.Center;
-import com.sallejoven.backend.model.entity.Event;
 import com.sallejoven.backend.model.entity.EventGroup;
 import com.sallejoven.backend.model.entity.GroupSalle;
+import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
-import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.repository.GroupRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
+import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @RequiredArgsConstructor
 @Service
@@ -105,5 +101,35 @@ public class GroupService {
     public GroupSalle getByCenterAndStageOrThrow(Long centerId, int stage) throws SalleException {
         return groupRepository.findByCenterIdAndStage(centerId, stage)
                 .orElseThrow(() -> new SalleException(ErrorCodes.PROMOTION_TARGET_GROUP_NOT_FOUND));
+    }
+
+    public List<GroupSalle> findEffectiveGroupsForUser(UserSalle user) throws SalleException {
+        int year = academicStateService.getVisibleYear();
+        Set<String> auths = authorityService.getCurrentAuth();
+
+        // 1) Grupos por centros si es PD/GL
+        var centerIds = authorityService.extractCenterIdsForYear(auths, year); // ya lo usas en findAllByEvent
+        List<GroupSalle> groupsByCenters = centerIds.isEmpty()
+                ? List.of()
+                : groupRepository.findByCenterIdIn(centerIds.stream().toList());
+
+        // 2) Grupos activos del usuario en el año visible
+        List<GroupSalle> userActiveGroups = user.getGroups() == null ? List.of()
+                : user.getGroups().stream()
+                .filter(this::isActive)               // deletedAt == null
+                .filter(ug -> ug.getYear() != null && ug.getYear() == year)
+                .map(UserGroup::getGroup)
+                .filter(Objects::nonNull)
+                .toList();
+
+        // 3) Unión sin duplicados
+        return Stream.concat(groupsByCenters.stream(), userActiveGroups.stream())
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
+    private boolean isActive(UserGroup ug) {
+        return ug != null && ug.getDeletedAt() == null && ug.getGroup() != null;
     }
 }

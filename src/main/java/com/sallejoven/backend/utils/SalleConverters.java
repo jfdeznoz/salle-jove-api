@@ -13,12 +13,14 @@ import com.sallejoven.backend.model.dto.UserCenterGroupsDto;
 import com.sallejoven.backend.model.dto.UserDto;
 import com.sallejoven.backend.model.dto.UserGroupDto;
 import com.sallejoven.backend.model.dto.UserPendingDto;
+import com.sallejoven.backend.model.entity.EventGroup;
 import com.sallejoven.backend.model.entity.UserCenter;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserPending;
 import com.sallejoven.backend.model.enums.UserType;
 import com.sallejoven.backend.service.AuthorityService;
 import com.sallejoven.backend.service.CenterService;
+import com.sallejoven.backend.service.EventGroupService;
 import com.sallejoven.backend.service.GroupService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -44,6 +46,7 @@ public class SalleConverters {
     private final CenterService centerService;
     private final GroupService groupService;
     private final AuthorityService authorityService;
+    private final EventGroupService eventGroupService;
 
     public UserSelfDto buildSelfUserInfo(String userEmail) throws SalleException {
         UserSalle userSalle = userService.findByEmail(userEmail);
@@ -256,6 +259,7 @@ public class SalleConverters {
     }
 
     public EventDto eventToDto(Event event){
+        String centerName = resolveEventCenterName(event);
 
         return EventDto.builder()
                 .eventId(event.getId().intValue())
@@ -268,7 +272,27 @@ public class SalleConverters {
                 .place(event.getPlace())
                 .isGeneral(event.getIsGeneral())
                 .isBlocked(event.getIsBlocked())
+                .centerName(centerName)
+                .pdf(event.getPdf())
                 .build();
+    }
+
+    private String resolveEventCenterName(Event event) {
+        if (Boolean.TRUE.equals(event.getIsGeneral())) return null;
+
+        EventGroup eg = eventGroupService.findFirstActiveByEventId(event.getId());
+        if (eg == null || eg.getGroupSalle() == null) return null;
+
+        Center c = eg.getGroupSalle().getCenter();
+        if (c == null) return null;
+
+        return formatCenterName(c);
+    }
+
+    private String formatCenterName(Center c) {
+        String name = c.getName() != null ? c.getName() : "";
+        String city = c.getCity();
+        return city != null && !city.isBlank() ? name + " (" + city + ")" : name;
     }
 
     public ParticipantDto participantDto(EventUser eventUser) throws SalleException {
@@ -277,7 +301,7 @@ public class SalleConverters {
         Integer userType = userGroup.getUserType();
 
         return ParticipantDto.builder()
-                .userId(userSalle.getId())
+                .id(userSalle.getId())
                 .name(userSalle.getName())
                 .lastName(userSalle.getLastName())
 

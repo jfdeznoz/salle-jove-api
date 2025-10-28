@@ -57,7 +57,7 @@ public class EventController {
         return event.map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
-    @PreAuthorize("@authz.isAnyManagerType()")
+    @PreAuthorize("@authz.canCreateEvent(#requestEvent)")
     @PostMapping(value = "/", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<EventDto> createEvent(@ModelAttribute RequestEvent requestEvent) throws IOException, SalleException {
         Event eventCreated = eventService.saveEvent(requestEvent);
@@ -66,10 +66,16 @@ public class EventController {
 
     @PreAuthorize("@authz.canManageEventForEditOrDelete(#eventId)")
     @PutMapping(value = "/{eventId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<EventDto> editEvent(@ModelAttribute RequestEvent requestEvent) throws IOException, SalleException {
-        Event eventCreated = eventService.editEvent(requestEvent);
-        
-        return ResponseEntity.ok(salleConverters.eventToDto(eventCreated));
+    public ResponseEntity<EventDto> editEvent(@PathVariable Long eventId,
+                                              @ModelAttribute RequestEvent requestEvent)
+            throws IOException, SalleException {
+
+        if (requestEvent.getId() == null) {
+            requestEvent.setId(eventId);
+        }
+
+        var updated = eventService.editEvent(requestEvent);
+        return ResponseEntity.ok(salleConverters.eventToDto(updated));
     }
 
     @PreAuthorize("@authz.canManageEventForEditOrDelete(#eventId)")
@@ -82,10 +88,10 @@ public class EventController {
         return ResponseEntity.notFound().build();
     }
 
-    @PreAuthorize("@authz.canManageEventGroupParticipants(T(java.lang.Long).valueOf(#eventId), T(java.lang.Long).valueOf(#groupId))")
+    @PreAuthorize("@authz.canManageEventGroupParticipants(#eventId, #groupId)")
     @GetMapping("/participants")
-        public ResponseEntity<List<ParticipantDto>> getParticipantsByGroupAndEvent(@RequestParam Integer eventId,
-                                                                                   @RequestParam Integer groupId) {
+        public ResponseEntity<List<ParticipantDto>> getParticipantsByGroupAndEvent(@RequestParam Long eventId,
+                                                                                   @RequestParam Long groupId) {
         List<EventUser> eventUsers = eventUserService.findByEventIdAndGroupId(eventId, groupId);
         return ResponseEntity.ok(eventUsers.stream().map(t -> {
             try {
@@ -96,10 +102,10 @@ public class EventController {
         }).collect(Collectors.toList()));
     }
 
-    @PreAuthorize("@authz.canManageEventGroupParticipants(T(java.lang.Long).valueOf(#eventId), T(java.lang.Long).valueOf(#groupId))")
+    @PreAuthorize("@authz.canManageEventGroupParticipants(#eventId, #groupId)")
     @PostMapping("/{eventId}/groups/{groupId}/participants")
     public ResponseEntity<Void> updateAttendance(@PathVariable Long eventId,
-                                                 @PathVariable Integer groupId,
+                                                 @PathVariable Long groupId,
                                                  @RequestBody AttendanceUpdateRequest request) throws SalleException {
         eventUserService.updateParticipantsAttendance(eventId, request.getParticipants(), groupId);
         return ResponseEntity.ok().build();

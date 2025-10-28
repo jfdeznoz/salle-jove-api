@@ -7,6 +7,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
+import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -15,7 +16,6 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface EventUserRepository extends JpaRepository<EventUser, Long> {
-
     @Query("""
         SELECT eu
         FROM EventUser eu
@@ -27,10 +27,10 @@ public interface EventUserRepository extends JpaRepository<EventUser, Long> {
           AND eu.deletedAt IS NULL
           AND u.deletedAt IS NULL
     """)
-    List<EventUser> findByEventIdAndGroupId(@Param("eventId") Integer eventId,
-                                            @Param("groupId") Integer groupId);
+    List<EventUser> findByEventIdAndGroupId(@Param("eventId") Long eventId,
+                                            @Param("groupId") Long groupId);
 
-    @Query("""
+    /*@Query("""
         SELECT DISTINCT eu
         FROM EventUser eu
         JOIN eu.userGroup ug
@@ -42,7 +42,7 @@ public interface EventUserRepository extends JpaRepository<EventUser, Long> {
           AND eu.status    = 1
         ORDER BY g.center.name ASC, g.stage ASC
     """)
-    List<EventUser> findConfirmedByEventIdOrdered(@Param("eventId") Long eventId);
+    List<EventUser> findConfirmedByEventIdOrdered(@Param("eventId") Long eventId);*/
 
     @Query("""
         SELECT eu
@@ -113,4 +113,30 @@ public interface EventUserRepository extends JpaRepository<EventUser, Long> {
     @Modifying
     @Query("UPDATE EventUser eu SET eu.deletedAt = :when WHERE eu.userGroup.id IN :ugIds AND eu.deletedAt IS NULL")
     int softDeleteByUserGroupIdIn(@Param("ugIds") List<Long> ugIds, @Param("when") LocalDateTime when);
+
+    // 1) IDs únicos (sin ORDER BY)
+    @Query("""
+    select distinct eu.id
+    from EventUser eu
+      join eu.userGroup ug
+      join ug.user u
+      join ug.group g
+    where eu.event.id  = :eventId
+      and eu.deletedAt is null
+      and u.deletedAt  is null
+      and eu.status    = 1
+""")
+    List<Long> findConfirmedIds(@Param("eventId") Long eventId);
+
+    @Query("""
+        select eu
+        from EventUser eu
+          join fetch eu.userGroup ug
+          join fetch ug.user u
+          join fetch ug.group g
+          join fetch g.center c
+        where eu.id in :ids
+        order by c.name asc, g.stage asc, coalesce(u.lastName,''), coalesce(u.name,''), eu.id
+    """)
+    List<EventUser> findByIdInFetchOrdered(@Param("ids") List<Long> ids);
 }
