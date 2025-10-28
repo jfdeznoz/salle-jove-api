@@ -19,7 +19,8 @@ public enum ErrorCodes {
     USER_CENTER_NOT_FOUND("No se ha encontrado el user center", "E015"),
     USER_TYPE_NOT_VALID("El tipo de usuario no es correcto", "E016"),
     EMAIL_ALREADY_EXISTS("Ya existe un usuario con este email", "E017"),
-    DNI_ALREADY_EXISTS("Ya existe un usuario con este dni", "E018");
+    DNI_ALREADY_EXISTS("Ya existe un usuario con este dni", "E018"),
+    INVALID_FILE_TYPE("Sólo se permiten archivos PDF", "E019");
 
     private final String message;
     private final String errorCode;

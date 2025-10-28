@@ -72,7 +72,6 @@ public class ReportService {
         return url;
     }
 
-
     private String withPrefix(String path) {
         if (s3Prefix == null || s3Prefix.isBlank()) return normalize(path);
         String p = s3Prefix;
@@ -92,7 +91,7 @@ public class ReportService {
         
         List<EventUser> participants = eventUserService.findConfirmedByEventIdOrdered(eventId);
         int currentYear = academicStateService.getVisibleYear();
-        String folder = currentYear + "reports/event_" + eventId;
+        String folder = withPrefix(currentYear + "/reports/event_" + eventId);
 
         Map<String, byte[]> attachments = new LinkedHashMap<>();
         List<String>      urls        = new ArrayList<>();
@@ -359,7 +358,7 @@ public class ReportService {
                 } else {
                     cellTalla.setCellValue("");
                 }
-                row.createCell(9).setCellValue(u.getImageAuthorization() ? "Sí" : "No");
+                row.createCell(9).setCellValue(Boolean.TRUE.equals(u.getImageAuthorization()) ? "Sí" : "No");
             }
         });
         for (Sheet s : wb) for (int c = 0; c < 10; c++) s.autoSizeColumn(c);

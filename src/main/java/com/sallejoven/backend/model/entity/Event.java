@@ -46,6 +46,9 @@ public class Event {
     @Column(name = "file_name")
     private String fileName;
 
+    @Column(name = "pdf")
+    private String pdf;
+
     private String place;
 
     @Column(name = "stages", columnDefinition = "INT[]")

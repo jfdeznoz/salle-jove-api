@@ -2,6 +2,7 @@ package com.sallejoven.backend.repository;
 
 import com.sallejoven.backend.model.entity.EventGroup;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -32,6 +33,8 @@ public interface EventGroupRepository extends JpaRepository<EventGroup, Long> {
     @Transactional
     @Query("UPDATE EventGroup eg SET eg.deletedAt = CURRENT_TIMESTAMP WHERE eg.event.id = :eventId")
     void softDeleteByEventId(@Param("eventId") Long eventId);
+
+    Optional<EventGroup> findFirstByEvent_IdAndDeletedAtIsNullOrderByIdAsc(Long eventId);
 
     @Query("""
         SELECT eg

@@ -37,15 +37,18 @@ public class EventUserService {
         eventUserRepository.save(user);
     }
 
+
     public Optional<EventUser> findById(Long id) {
         return eventUserRepository.findById(id);
     }
 
     public List<EventUser> findConfirmedByEventIdOrdered(Long eventId) {
-        return eventUserRepository.findConfirmedByEventIdOrdered(eventId);
+        var ids = eventUserRepository.findConfirmedIds(eventId);
+        if (ids.isEmpty()) return List.of();
+        return eventUserRepository.findByIdInFetchOrdered(ids);
     }
 
-    public List<EventUser> findByEventIdAndGroupId(Integer eventId, Integer groupId) {
+    public List<EventUser> findByEventIdAndGroupId(Long eventId, Long groupId) {
         return eventUserRepository.findByEventIdAndGroupId(eventId, groupId);
     }
 
@@ -124,11 +127,10 @@ public class EventUserService {
     }
 
     @Transactional
-    public void updateParticipantsAttendance(Long eventId, List<AttendanceUpdateDto> updates, Integer groupId)
+    public void updateParticipantsAttendance(Long eventId, List<AttendanceUpdateDto> updates, Long groupId)
             throws SalleException {
 
         if (groupId == null) throw new SalleException(ErrorCodes.GROUP_NOT_FOUND);
-        final Long groupIdL = groupId.longValue();
 
         for (AttendanceUpdateDto dto : updates) {
             dto.validate();
@@ -136,7 +138,7 @@ public class EventUserService {
             if (userId == null) throw new SalleException(ErrorCodes.USER_NOT_FOUND);
 
             int updated = updateAttendanceForUserInGroup(
-                    eventId, userId, groupIdL, dto.getAttends());
+                    eventId, userId, groupId, dto.getAttends());
 
             if (updated == 0) {
                 throw new SalleException(ErrorCodes.EVENT_USER_NOT_FOUND);

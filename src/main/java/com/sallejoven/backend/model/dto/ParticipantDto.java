@@ -17,7 +17,7 @@ import java.util.Date;
 @NoArgsConstructor
 public class ParticipantDto {
 
-    private Long userId;
+    private Long id;
 
     private String name;
 

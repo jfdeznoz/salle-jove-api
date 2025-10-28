@@ -3,6 +3,7 @@ package com.sallejoven.backend.repository;
 import com.sallejoven.backend.model.entity.Center;
 import com.sallejoven.backend.model.entity.GroupSalle;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,5 +25,7 @@ public interface GroupRepository extends JpaRepository<GroupSalle, Long> {
     List<GroupSalle> findByCenterId(Long centerId);
 
     Optional<GroupSalle> findByCenterIdAndStage(Long centerId, Integer stage);
+
+    List<GroupSalle> findByCenterIdIn(Collection<Long> centerIds);
 
 }

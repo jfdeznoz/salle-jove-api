@@ -12,7 +12,13 @@ import java.util.List;
 public class EventGroupService {
 
     private final EventGroupRepository eventGroupRepository;
-    
+
+    public EventGroup findFirstActiveByEventId(Long eventId) {
+        return eventGroupRepository
+                .findFirstByEvent_IdAndDeletedAtIsNullOrderByIdAsc(eventId)
+                .orElse(null);
+    }
+
     public List<EventGroup> saveAllEventGroup(List<EventGroup> eventGroups) {
         return eventGroupRepository.saveAll(eventGroups);
     }

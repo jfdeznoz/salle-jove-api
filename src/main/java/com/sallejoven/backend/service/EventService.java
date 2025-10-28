@@ -11,13 +11,16 @@ import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.repository.EventRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
+import java.text.Normalizer;
 import java.time.LocalDate;
+import java.time.Year;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Arrays;
@@ -38,6 +41,9 @@ public class EventService {
     private final UserGroupService userGroupService;
     private final GroupService groupService;
 
+    @Value("${salle.aws.prefix:}")
+    private String s3Prefix;
+
     public Optional<Event> findById(Long id) {
         return eventRepository.findById(id);
     }
@@ -48,7 +54,7 @@ public class EventService {
         LocalDate today = ZonedDateTime.now(ZoneId.of("Europe/Madrid")).toLocalDate();
         Pageable pageable = PageRequest.of(page, size);
 
-        if (user.getIsAdmin()) {
+        if (Boolean.TRUE.equals(user.getIsAdmin())) {
             return eventRepository.findAdminFilteredEvents(isGeneral, isPast, today, pageable);
         }
 
@@ -56,31 +62,31 @@ public class EventService {
             return eventRepository.findGeneralEvents(isPast, today, pageable);
         }
 
-        List<GroupSalle> groups = user.getGroups().stream()
-                .map(UserGroup::getGroup)
-                .distinct()
-                .toList();
+        List<GroupSalle> effectiveGroups = groupService.findEffectiveGroupsForUser(user);
 
         if (Boolean.FALSE.equals(isGeneral)) {
-            return eventRepository.findEventsByGroupsAndPastStatus(groups, isPast, today, pageable);
+            return eventRepository.findEventsByGroupsAndPastStatus(effectiveGroups, isPast, today, pageable);
         }
 
-        return eventRepository.findGeneralOrUserLocalEvents(groups, isPast, today, pageable);
+        return eventRepository.findGeneralOrUserLocalEvents(effectiveGroups, isPast, today, pageable);
     }
 
     @Transactional
     public Event saveEvent(RequestEvent requestEvent) throws IOException, SalleException {
         List<Integer> stages = requestEvent.getStages();
-        List<UserGroup> targetUserGroups = getTargetUserGroups(requestEvent, stages);
 
-        List<GroupSalle> groups = targetUserGroups.stream()
-                .map(ug -> ug.getGroup())
-                .distinct()
-                .toList();
+        List<GroupSalle> groups = getTargetGroupsForEvents(requestEvent, stages);
+        List<Long> groupIds = groups.stream().map(GroupSalle::getId).toList();
+
+        List<UserGroup> targetUserGroups = userGroupService.findByGroupIds(groupIds);
 
         Event event = buildEventEntity(requestEvent, stages);
-        handleFileUpload(requestEvent.getFile(), event);
         event = eventRepository.save(event);
+
+        boolean changed = handleUploads(requestEvent.getFile(), requestEvent.getPdf(), event);
+        if (changed) {
+            event = eventRepository.save(event);
+        }
 
         saveEventGroups(event, groups);
 
@@ -89,20 +95,29 @@ public class EventService {
         return event;
     }
 
-    private List<UserGroup> getTargetUserGroups(RequestEvent requestEvent, List<Integer> stages) throws SalleException {
+    private List<GroupSalle> getTargetGroupsForEvents(RequestEvent requestEvent, List<Integer> stages)
+            throws SalleException {
         if (Boolean.TRUE.equals(requestEvent.getIsGeneral())) {
-            // Todos los user_groups cuyos grupos estén en esos stages (en todos los centros)
-            return userGroupService.findByStages(stages);
-        } else {
-            // Eventos locales: centro del usuario actual (por su primera membership)
-            UserSalle user = authService.getCurrentUser();
-            Set<UserGroup> memberships = user.getGroups(); // Set<UserGroup>
-            if (memberships == null || memberships.isEmpty()) {
-                throw new SalleException(ErrorCodes.USER_GROUP_NOT_FOUND);
-            }
-            Long centerId = memberships.iterator().next().getGroup().getCenter().getId();
-            return userGroupService.findByCenterAndStages(centerId, stages);
+            // todos los grupos de esos stages, independientemente de si tienen usuarios
+            return groupService.findAllByStages(stages);
         }
+        Long centerId = requestEvent.getCenterId();
+        if (centerId == null) throw new SalleException(ErrorCodes.CENTER_NOT_FOUND);
+        // grupos del centro + stages
+        return groupService.findAllByStagesAndCenter(stages,centerId);
+    }
+
+    private List<UserGroup> getTargetUserGroupsForEvents(RequestEvent requestEvent, List<Integer> stages) throws SalleException {
+        if (Boolean.TRUE.equals(requestEvent.getIsGeneral())) {
+            return userGroupService.findByStages(stages);
+        }
+
+        Long centerId = requestEvent.getCenterId();
+        if (centerId == null) {
+            throw new SalleException(ErrorCodes.CENTER_NOT_FOUND);
+        }
+
+        return userGroupService.findByCenterAndStages(centerId, stages);
     }
 
     private Event buildEventEntity(RequestEvent requestEvent, List<Integer> stages) {
@@ -132,18 +147,85 @@ public class EventService {
         existingEvent.setStages(requestEvent.getStages().toArray(new Integer[0]));
         existingEvent.setPlace(requestEvent.getPlace());
 
-        MultipartFile file = requestEvent.getFile();
+        handleUploads(requestEvent.getFile(), requestEvent.getPdf(), existingEvent);
+
+        existingEvent = eventRepository.save(existingEvent);
+
+        syncEventGroups(existingEvent, currentStages);
+
+        return existingEvent;
+    }
+
+    private boolean handleUploads(MultipartFile file, MultipartFile pdf, Event event) throws IOException, SalleException {
+        boolean changed = false;
+
         if (file != null && !file.isEmpty()) {
-            String folderPath = "events/event_" + existingEvent.getId();
-            String uploadedUrl = s3Service.uploadFile(file, folderPath);
-            existingEvent.setFileName(uploadedUrl);
+            changed |= uploadImageIfPresent(file, event);
         }
 
-        Event updatedEvent = eventRepository.save(existingEvent);
+        if (pdf != null && !pdf.isEmpty()) {
+            changed |= uploadPdfIfPresent(pdf, event);
+        }
 
-        syncEventGroups(updatedEvent, currentStages);
+        return changed;
+    }
 
-        return updatedEvent;
+    private boolean uploadImageIfPresent(MultipartFile file, Event event) throws IOException {
+        String before = event.getFileName();
+        handleFileUpload(file, event);
+        return !safeEq(before, event.getFileName());
+    }
+
+    private boolean uploadPdfIfPresent(MultipartFile pdf, Event event) throws IOException, SalleException {
+        validatePdf(pdf);
+
+        String before = event.getPdf();
+
+        final String folderPath = buildBaseFolder(event);
+        final String uploadedUrl = s3Service.uploadFile(pdf, folderPath);
+        event.setPdf(uploadedUrl);
+
+        return !safeEq(before, uploadedUrl);
+    }
+
+    private void validatePdf(MultipartFile pdf) throws SalleException {
+        if (pdf == null || pdf.isEmpty()) return;
+
+        String contentType = pdf.getContentType();
+        String originalName = pdf.getOriginalFilename();
+
+        boolean mimeOk = (contentType != null) && contentType.equalsIgnoreCase("application/pdf");
+        boolean extOk  = (originalName != null) && originalName.toLowerCase().endsWith(".pdf");
+
+        if (!mimeOk && !extOk) {
+            // Usa el ErrorCodes que prefieras si no tienes INVALID_FILE_TYPE
+            throw new SalleException(ErrorCodes.INVALID_FILE_TYPE, "Solo se permiten archivos PDF");
+        }
+    }
+
+    private String buildBaseFolder(Event event) {
+        final int year = (event.getEventDate() != null)
+                ? event.getEventDate().getYear()
+                : Year.now(ZoneId.of("Europe/Madrid")).getValue();
+
+        final String scopeSegment = Boolean.TRUE.equals(event.getIsGeneral())
+                ? "general"
+                : slugify(event.getName());
+
+        final String rawFolder = year + "/events/" + scopeSegment + "/event_" + event.getId();
+        return withPrefix(rawFolder);
+    }
+
+    private void handleFileUpload(MultipartFile file, Event event) throws IOException {
+        if (file != null && !file.isEmpty()) {
+            final String folderPath = buildBaseFolder(event);
+            final String uploadedUrl = s3Service.uploadFile(file, folderPath);
+            event.setFileName(uploadedUrl);
+        }
+    }
+
+    private static boolean safeEq(String a, String b) {
+        return (a == null && b == null) || (a != null && a.equals(b));
     }
 
     public void syncEventGroups(Event event, List<Integer> currentStages) throws SalleException {
@@ -199,12 +281,29 @@ public class EventService {
         eventRepository.softDeleteEvent(eventId);
     }
 
-    private void handleFileUpload(MultipartFile file, Event event) throws IOException {
-        if (file != null && !file.isEmpty()) {
-            String folderPath = "events/event_" + event.getId();
-            String uploadedUrl = s3Service.uploadFile(file, folderPath);
-            event.setFileName(uploadedUrl);
-        }
+    private String slugify(String input) {
+        if (input == null || input.isBlank()) return "evento";
+        String s = Normalizer.normalize(input, Normalizer.Form.NFD)
+                .replaceAll("\\p{InCombiningDiacriticalMarks}+", "");
+        s = s.toLowerCase()
+                .replaceAll("[^a-z0-9\\s_-]", "")
+                .replaceAll("[\\s]+", "-")
+                .replaceAll("-{2,}", "-")
+                .replaceAll("^[-_]+|[-_]+$", "");
+        return s.isBlank() ? "evento" : s;
+    }
+
+    private String withPrefix(String path) {
+        if (s3Prefix == null || s3Prefix.isBlank()) return normalize(path);
+        String prefix = s3Prefix.endsWith("/") ? s3Prefix : s3Prefix + "/";
+        return normalize(prefix + path);
+    }
+
+    private String normalize(String path) {
+        String p = path.replaceAll("/{2,}", "/");
+        if (p.startsWith("/")) p = p.substring(1);
+        if (p.endsWith("/")) p = p.substring(0, p.length() - 1);
+        return p;
     }
 
     private void saveEventGroups(Event event, List<GroupSalle> groups) {
