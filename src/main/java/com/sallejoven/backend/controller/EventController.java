@@ -2,13 +2,17 @@ package com.sallejoven.backend.controller;
 
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.dto.EventDto;
+import com.sallejoven.backend.model.dto.InitiateEventResp;
 import com.sallejoven.backend.model.dto.ParticipantDto;
+import com.sallejoven.backend.model.dto.PresignedPutDTO;
 import com.sallejoven.backend.model.entity.Event;
 import com.sallejoven.backend.model.entity.EventUser;
 import com.sallejoven.backend.model.requestDto.AttendanceUpdateRequest;
+import com.sallejoven.backend.model.requestDto.FinalizeUploadsReq;
 import com.sallejoven.backend.model.requestDto.RequestEvent;
 import com.sallejoven.backend.service.EventService;
 import com.sallejoven.backend.service.EventUserService;
+import com.sallejoven.backend.service.S3V2Service;
 import com.sallejoven.backend.utils.SalleConverters;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -26,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -40,6 +45,7 @@ public class EventController {
     private final EventService eventService;
     private final EventUserService eventUserService;
     private final SalleConverters salleConverters;
+    private final S3V2Service s3v2Service;
 
     @GetMapping("/paged")
     public ResponseEntity<Page<EventDto>> getAllEvents(@RequestParam(defaultValue = "0") int page,
@@ -58,23 +64,86 @@ public class EventController {
     }
 
     @PreAuthorize("@authz.canCreateEvent(#requestEvent)")
-    @PostMapping(value = "/", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<EventDto> createEvent(@ModelAttribute RequestEvent requestEvent) throws IOException, SalleException {
-        Event eventCreated = eventService.saveEvent(requestEvent);
-        return ResponseEntity.ok(salleConverters.eventToDto(eventCreated));
+    @PostMapping(value = "/", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<InitiateEventResp> createEvent(@RequestBody RequestEvent requestEvent)
+            throws IOException, SalleException {
+
+        Event ev = eventService.saveEvent(requestEvent);
+
+        final boolean wantImg = requestEvent.getImageUpload() != null
+                && !requestEvent.getImageUpload().isBlank();
+
+        final boolean wantPdf = Boolean.TRUE.equals(requestEvent.getWantPdfUpload());
+
+        final boolean isGeneral = Boolean.TRUE.equals(requestEvent.getIsGeneral());
+        final Long centerId = isGeneral ? null : requestEvent.getCenterId();
+
+        var presigneds = s3v2Service.buildPresignedForEventUploads(
+                isGeneral,
+                centerId,
+                ev.getEventDate(),
+                ev.getId(),
+                wantImg,                              // <- calculado
+                wantPdf,
+                requestEvent.getImageUpload()         // <- nombre original o null
+        );
+
+        var body = new InitiateEventResp(
+                salleConverters.eventToDto(ev),
+                presigneds.image(),
+                presigneds.pdf()
+        );
+        return ResponseEntity.ok(body);
     }
 
     @PreAuthorize("@authz.canManageEventForEditOrDelete(#eventId)")
-    @PutMapping(value = "/{eventId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<EventDto> editEvent(@PathVariable Long eventId,
-                                              @ModelAttribute RequestEvent requestEvent)
-            throws IOException, SalleException {
+    @PutMapping(value = "/{eventId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<InitiateEventResp> editEventInitiate(
+            @PathVariable Long eventId,
+            @RequestBody RequestEvent requestEvent
+    ) throws IOException, SalleException {
 
+        // Asegura coherencia de IDs
         if (requestEvent.getId() == null) {
             requestEvent.setId(eventId);
         }
 
-        var updated = eventService.editEvent(requestEvent);
+        Event ev = eventService.editEvent(requestEvent);
+
+        final String imageName = requestEvent.getImageUpload() == null
+                ? null
+                : requestEvent.getImageUpload().trim();
+
+        final boolean wantImg = imageName != null && !imageName.isBlank();
+        final boolean wantPdf = Boolean.TRUE.equals(requestEvent.getWantPdfUpload());
+
+        final boolean isGeneral = Boolean.TRUE.equals(ev.getIsGeneral());
+        final Long centerId = isGeneral ? null : requestEvent.getCenterId();
+
+        var presigneds = s3v2Service.buildPresignedForEventUploads(
+                isGeneral,
+                centerId,
+                ev.getEventDate(),
+                ev.getId(),
+                wantImg,
+                wantPdf,
+                imageName // nombre original o null
+        );
+
+        var body = new InitiateEventResp(
+                salleConverters.eventToDto(ev),
+                presigneds.image(),
+                presigneds.pdf()
+        );
+
+        return ResponseEntity.ok(body);
+    }
+
+    @PreAuthorize("@authz.canManageEventForEditOrDelete(#eventId)")
+    @PostMapping(value = "/{eventId}/finalize", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<EventDto> finalizeUploads(@PathVariable Long eventId,
+                                                    @RequestBody FinalizeUploadsReq req) {
+        Event updated = eventService.finalizeUploads(eventId, req.imageKey(), req.pdfKey());
         return ResponseEntity.ok(salleConverters.eventToDto(updated));
     }
 

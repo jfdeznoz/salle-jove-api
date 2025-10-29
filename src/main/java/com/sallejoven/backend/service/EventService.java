@@ -9,6 +9,7 @@ import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.requestDto.RequestEvent;
 import com.sallejoven.backend.model.types.ErrorCodes;
 import com.sallejoven.backend.repository.EventRepository;
+import jakarta.annotation.Nullable;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,6 +41,8 @@ public class EventService {
     private final AuthService authService;
     private final UserGroupService userGroupService;
     private final GroupService groupService;
+    private final S3V2Service s3v2Service;
+
 
     @Value("${salle.aws.prefix:}")
     private String s3Prefix;
@@ -76,20 +79,14 @@ public class EventService {
         List<Integer> stages = requestEvent.getStages();
 
         List<GroupSalle> groups = getTargetGroupsForEvents(requestEvent, stages);
-        List<Long> groupIds = groups.stream().map(GroupSalle::getId).toList();
-
-        List<UserGroup> targetUserGroups = userGroupService.findByGroupIds(groupIds);
 
         Event event = buildEventEntity(requestEvent, stages);
         event = eventRepository.save(event);
 
-        boolean changed = handleUploads(requestEvent.getFile(), requestEvent.getPdf(), event);
-        if (changed) {
-            event = eventRepository.save(event);
-        }
-
         saveEventGroups(event, groups);
 
+        List<Long> groupIds = groups.stream().map(GroupSalle::getId).toList();
+        List<UserGroup> targetUserGroups = userGroupService.findByGroupIds(groupIds);
         eventUserService.assignEventToUserGroups(event, targetUserGroups);
 
         return event;
@@ -147,7 +144,7 @@ public class EventService {
         existingEvent.setStages(requestEvent.getStages().toArray(new Integer[0]));
         existingEvent.setPlace(requestEvent.getPlace());
 
-        handleUploads(requestEvent.getFile(), requestEvent.getPdf(), existingEvent);
+        //handleUploads(requestEvent.getFile(), requestEvent.getPdf(), existingEvent);
 
         existingEvent = eventRepository.save(existingEvent);
 
@@ -328,6 +325,36 @@ public class EventService {
             throw new SalleException(ErrorCodes.EVENT_NOT_FOUND);
         }
 
+    }
+
+    @Transactional
+    public Event finalizeUploads(Long eventId, @Nullable String imageKey, @Nullable String pdfKey) {
+        Event ev = eventRepository.findById(eventId)
+                .orElseThrow(() -> new IllegalArgumentException("Evento no encontrado: " + eventId));
+
+        if (imageKey != null && !imageKey.isBlank()) {
+            String oldUrl = ev.getFileName();
+            if (oldUrl != null && !oldUrl.isBlank()) {
+                String oldKey = s3v2Service.keyFromUrl(oldUrl);
+                if (oldKey != null && !oldKey.isBlank() && !oldKey.equals(imageKey)) {
+                    s3v2Service.deleteObject(oldKey);
+                }
+            }
+            ev.setFileName(s3v2Service.publicUrl(imageKey));
+        }
+
+        if (pdfKey != null && !pdfKey.isBlank()) {
+            String oldUrl = ev.getPdf();
+            if (oldUrl != null && !oldUrl.isBlank()) {
+                String oldKey = s3v2Service.keyFromUrl(oldUrl);
+                if (oldKey != null && !oldKey.isBlank() && !oldKey.equals(pdfKey)) {
+                    s3v2Service.deleteObject(oldKey);
+                }
+            }
+            ev.setPdf(s3v2Service.publicUrl(pdfKey));
+        }
+
+        return eventRepository.save(ev);
     }
 
 }

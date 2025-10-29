@@ -1,5 +1,6 @@
 package com.sallejoven.backend.model.requestDto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -27,22 +28,22 @@ public class RequestEvent {
     private String description;
 
     @NotNull
-    @DateTimeFormat(pattern = "dd/MM/yyyy")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "dd/MM/yyyy")
     private LocalDate eventDate;
 
     @NotNull
-    @DateTimeFormat(pattern = "dd/MM/yyyy")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "dd/MM/yyyy")
     private LocalDate endDate;
 
     private List<Integer> stages;
-
-    private MultipartFile file;
-
-    private MultipartFile pdf;
 
     private String place;
 
     private Boolean isGeneral;
 
     private Long centerId;
+
+    private String imageUpload;
+
+    private Boolean wantPdfUpload;
 }
