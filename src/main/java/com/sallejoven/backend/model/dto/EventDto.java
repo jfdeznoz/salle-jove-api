@@ -35,6 +35,8 @@ public class EventDto {
 
     private Boolean isBlocked;
 
+    private Integer centerId;
+
     private String centerName;
 
     private String pdf;

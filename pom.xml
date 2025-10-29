@@ -90,12 +90,12 @@
         <dependency>
             <groupId>com.amazonaws</groupId>
             <artifactId>aws-java-sdk-s3</artifactId>
-            <version>1.12.666</version>
+            <version>1.12.792</version>
         </dependency>
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>s3</artifactId>
-            <version>2.20.108</version> <!-- o la última versión disponible -->
+            <version>2.29.0</version>
         </dependency>
         <dependency>
             <groupId>commons-io</groupId>

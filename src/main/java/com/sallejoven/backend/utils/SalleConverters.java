@@ -259,7 +259,13 @@ public class SalleConverters {
     }
 
     public EventDto eventToDto(Event event){
-        String centerName = resolveEventCenterName(event);
+        Center center = resolveEventCenter(event);
+
+        Integer centerId = (center != null && center.getId() != null)
+                ? center.getId().intValue()
+                : null;
+
+        String centerName = (center != null) ? formatCenterName(center) : null;
 
         return EventDto.builder()
                 .eventId(event.getId().intValue())
@@ -272,27 +278,28 @@ public class SalleConverters {
                 .place(event.getPlace())
                 .isGeneral(event.getIsGeneral())
                 .isBlocked(event.getIsBlocked())
-                .centerName(centerName)
+                .centerId(centerId)          // 👈 ahora sí
+                .centerName(centerName)      // 👈 consistente con centerId
                 .pdf(event.getPdf())
                 .build();
-    }
-
-    private String resolveEventCenterName(Event event) {
-        if (Boolean.TRUE.equals(event.getIsGeneral())) return null;
-
-        EventGroup eg = eventGroupService.findFirstActiveByEventId(event.getId());
-        if (eg == null || eg.getGroupSalle() == null) return null;
-
-        Center c = eg.getGroupSalle().getCenter();
-        if (c == null) return null;
-
-        return formatCenterName(c);
     }
 
     private String formatCenterName(Center c) {
         String name = c.getName() != null ? c.getName() : "";
         String city = c.getCity();
-        return city != null && !city.isBlank() ? name + " (" + city + ")" : name;
+        return (city != null && !city.isBlank()) ? name + " (" + city + ")" : name;
+    }
+
+    private Center resolveEventCenter(Event event) {
+        if (Boolean.TRUE.equals(event.getIsGeneral())) return null;
+
+        EventGroup eg = eventGroupService.findFirstActiveByEventId(event.getId());
+        if (eg == null) return null;
+
+        GroupSalle g = eg.getGroupSalle();
+        if (g == null) return null;
+
+        return g.getCenter();
     }
 
     public ParticipantDto participantDto(EventUser eventUser) throws SalleException {
