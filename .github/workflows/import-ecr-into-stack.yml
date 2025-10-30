@@ -10,25 +10,20 @@ permissions:
 env:
   AWS_REGION: eu-north-1
   STACK_NAME: SalleJovenFargate
-  # Ajusta tu VPC real (ya me diste esta):
   VPC_ID: vpc-09f408a62930f6f1d
-  # ARN QUE ME ACABAS DE PASAR:
   ECR_ARN: arn:aws:ecr:eu-north-1:659925004462:repository/sallejoven-api
 
 jobs:
   import-ecr:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Use Node.js 20
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install CDK app deps
+      - name: Install deps
         working-directory: infra-ecs
         run: npm ci
 
@@ -38,30 +33,44 @@ jobs:
           role-to-assume: arn:aws:iam::659925004462:role/github-cdk-deploy
           aws-region: ${{ env.AWS_REGION }}
 
-      # Asegura bootstrap (idempotente)
-      - name: CDK bootstrap
+      - name: Ensure jq is present
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: CDK bootstrap (idempotent)
         working-directory: infra-ecs
         run: npx cdk bootstrap -c stage=prod --require-approval never
 
-      # Synthesize para comprobar Logical IDs (ApiEcrRepo debe existir en la plantilla)
-      - name: CDK synth (preview logical IDs)
+      # 1) Synth y extraer el Logical ID real del recurso ECR
+      - name: CDK synth to JSON
         working-directory: infra-ecs
-        run: npx cdk synth -c stage=prod -c useExistingVpc=true -c vpcId=${{ env.VPC_ID }}
+        run: npx cdk synth ${{ env.STACK_NAME }} -c stage=prod -c useExistingVpc=true -c vpcId=${{ env.VPC_ID }} --quiet > cdk.out/template.json
 
-      # Preparamos el import-map JSON en runtime (sin commitearlo)
-      - name: Create import-map.json
+      - name: Detect ECR logical id
+        working-directory: infra-ecs
+        id: detect
+        run: |
+          ECR_LID=$(jq -r '.Resources | to_entries[] | select(.value.Type=="AWS::ECR::Repository") | .key' cdk.out/template.json)
+          if [ -z "$ECR_LID" ]; then
+            echo "No ECR logical id found in synthesized template" >&2
+            exit 1
+          fi
+          echo "ECR_LID=$ECR_LID" >> $GITHUB_ENV
+          echo "Detected logical id: $ECR_LID"
+
+      # 2) Construir el resource-mapping con ese Logical ID
+      - name: Create mapping file
         working-directory: infra-ecs
         run: |
-          cat > import-map.json << 'JSON'
+          cat > resource-mapping.json <<JSON
           {
             "${{ env.STACK_NAME }}": {
-              "ApiEcrRepo": "${{ env.ECR_ARN }}"
+              "${{ env.ECR_LID }}": "${{ env.ECR_ARN }}"
             }
           }
           JSON
-          cat import-map.json
+          cat resource-mapping.json
 
-      # Importa el ECR existente al recurso lógico ApiEcrRepo del stack
+      # 3) Importar el repo existente
       - name: CDK import (adopt ECR)
         working-directory: infra-ecs
-        run: npx cdk import --import-map import-map.json -c stage=prod -c useExistingVpc=true -c vpcId=${{ env.VPC_ID }}
+        run: npx cdk import --resource-mapping resource-mapping.json -c stage=prod -c useExistingVpc=true -c vpcId=${{ env.VPC_ID }}
