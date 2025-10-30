@@ -15,7 +15,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // VPC existente (lookup)
+    // VPC existente
     const vpc = ec2.Vpc.fromLookup(this, 'Vpc', {
       vpcId: 'vpc-09f408a62930f6f1d',
     });
@@ -23,7 +23,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
     // Cluster ECS
     const cluster = new ecs.Cluster(this, 'Cluster', { vpc });
 
-    // ECR existente (NO se crea con CDK → evita AlreadyExists)
+    // ECR existente por nombre
     const repo = ecr.Repository.fromRepositoryName(this, 'ApiEcrRepo', 'sallejoven-api');
 
     // ====== PARAMS ======
@@ -32,28 +32,25 @@ export class SalleJovenFargateStack extends cdk.Stack {
     const CONTAINER_PORT = 5000;
     const HEALTH_PATH = '/actuator/health';
 
-    // Secret con { username, password }
+    // Secret DB (username/password)
     const dbSecret = secretsmanager.Secret.fromSecretNameV2(this, 'DbSecret', 'prod/sallejoven/db');
 
     // ====== SECURITY GROUPS ======
-    // ALB SG
     const albSg = new ec2.SecurityGroup(this, 'AlbSg', {
       vpc,
       allowAllOutbound: true,
       description: 'ALB SG (80/443 from internet)',
     });
-    albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'HTTP from anywhere');
-    albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'HTTPS from anywhere');
+    albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80));
+    albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443));
 
-    // Service SG (solo tráfico desde ALB al puerto de la app)
     const serviceSg = new ec2.SecurityGroup(this, 'ServiceSg', {
       vpc,
       allowAllOutbound: true,
       description: 'Fargate Service SG (ingress only from ALB)',
     });
-    serviceSg.addIngressRule(albSg, ec2.Port.tcp(CONTAINER_PORT), 'App port from ALB');
+    serviceSg.addIngressRule(albSg, ec2.Port.tcp(CONTAINER_PORT));
 
-    // Permitir ECS → RDS:5432
     const rdsSg = ec2.SecurityGroup.fromSecurityGroupId(this, 'RdsSg', RDS_SG_ID, { mutable: false });
     new ec2.CfnSecurityGroupIngress(this, 'RdsFromService5432', {
       groupId: rdsSg.securityGroupId,
@@ -76,7 +73,6 @@ export class SalleJovenFargateStack extends cdk.Stack {
     if (CERT_ARN && CERT_ARN.startsWith('arn:aws:acm:')) {
       const cert = acm.Certificate.fromCertificateArn(this, 'AlbCert', CERT_ARN);
 
-      // HTTPS (443)
       listenerHttps = alb.addListener('HttpsListener', {
         port: 443,
         certificates: [cert],
@@ -84,19 +80,20 @@ export class SalleJovenFargateStack extends cdk.Stack {
         open: true,
       });
 
-      // HTTP (80) → redirect a HTTPS
       const httpListener = alb.addListener('HttpRedirect', {
         port: 80,
         protocol: elbv2.ApplicationProtocol.HTTP,
         open: true,
       });
-      httpListener.addAction('RedirectToHttps', elbv2.ListenerAction.redirect({
-        protocol: 'HTTPS',
-        port: '443',
-        permanent: true,
-      }));
+      // 👇 FIX: addAction recibe { action: ... }
+      httpListener.addAction('RedirectToHttps', {
+        action: elbv2.ListenerAction.redirect({
+          protocol: 'HTTPS',
+          port: '443',
+          permanent: true,
+        }),
+      });
     } else {
-      // Solo HTTP (80) si no hay cert
       listenerHttps = alb.addListener('HttpListener', {
         port: 80,
         protocol: elbv2.ApplicationProtocol.HTTP,
@@ -109,7 +106,6 @@ export class SalleJovenFargateStack extends cdk.Stack {
       retention: logs.RetentionDays.ONE_MONTH,
     });
 
-    // ExecutionRole con permisos para pull de ECR y logs (policy gestionada)
     const execRole = new iam.Role(this, 'TaskExecutionRole', {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
       managedPolicies: [
@@ -123,7 +119,6 @@ export class SalleJovenFargateStack extends cdk.Stack {
       executionRole: execRole,
     });
 
-    // Permisos para leer el Secret (execution role y task role, por seguridad)
     dbSecret.grantRead(execRole);
     dbSecret.grantRead(taskDef.taskRole);
 
@@ -151,18 +146,18 @@ export class SalleJovenFargateStack extends cdk.Stack {
       cluster,
       taskDefinition: taskDef,
       desiredCount: 1,
-      assignPublicIp: true,                  // usamos subredes públicas (sin NAT)
+      assignPublicIp: true,
       securityGroups: [serviceSg],
       circuitBreaker: { enable: true, rollback: true },
       vpcSubnets: { subnets: vpc.publicSubnets },
     });
 
-    // ====== TARGET GROUP + HEALTH CHECK ======
+    // ====== TARGET GROUP ======
     const tg = new elbv2.ApplicationTargetGroup(this, 'TargetGroup', {
       vpc,
       protocol: elbv2.ApplicationProtocol.HTTP,
       port: CONTAINER_PORT,
-      targetType: elbv2.TargetType.IP,      // Fargate = IP
+      targetType: elbv2.TargetType.IP,
       targets: [service],
       healthCheck: {
         path: HEALTH_PATH,
@@ -173,7 +168,6 @@ export class SalleJovenFargateStack extends cdk.Stack {
         unhealthyThresholdCount: 5,
       },
     });
-
     listenerHttps.addTargetGroups('ApiTg', { targetGroups: [tg] });
 
     // ====== OUTPUTS ======
