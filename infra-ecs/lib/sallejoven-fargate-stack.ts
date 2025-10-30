@@ -34,7 +34,6 @@ export class SalleJovenFargateStack extends cdk.Stack {
      * ========================= */
     const CERT_ARN = 'arn:aws:acm:eu-north-1:659925004462:certificate/23c87695-563f-4904-b380-a453435bbd24';
     const RDS_SG_ID = 'sg-08d1b1505131491f6';
-    const ECR_REPO_NAME = 'sallejoven-api';
     const CONTAINER_PORT = 5000;
     const HEALTH_PATH = '/actuator/health';
 
