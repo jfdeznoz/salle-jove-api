@@ -1,0 +1,67 @@
+name: "One-time: Import ECR into CDK Stack"
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-north-1
+  STACK_NAME: SalleJovenFargate
+  # Ajusta tu VPC real (ya me diste esta):
+  VPC_ID: vpc-09f408a62930f6f1d
+  # ARN QUE ME ACABAS DE PASAR:
+  ECR_ARN: arn:aws:ecr:eu-north-1:659925004462:repository/sallejoven-api
+
+jobs:
+  import-ecr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install CDK app deps
+        working-directory: infra-ecs
+        run: npm ci
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::659925004462:role/github-cdk-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Asegura bootstrap (idempotente)
+      - name: CDK bootstrap
+        working-directory: infra-ecs
+        run: npx cdk bootstrap -c stage=prod --require-approval never
+
+      # Synthesize para comprobar Logical IDs (ApiEcrRepo debe existir en la plantilla)
+      - name: CDK synth (preview logical IDs)
+        working-directory: infra-ecs
+        run: npx cdk synth -c stage=prod -c useExistingVpc=true -c vpcId=${{ env.VPC_ID }}
+
+      # Preparamos el import-map JSON en runtime (sin commitearlo)
+      - name: Create import-map.json
+        working-directory: infra-ecs
+        run: |
+          cat > import-map.json << 'JSON'
+          {
+            "${{ env.STACK_NAME }}": {
+              "ApiEcrRepo": "${{ env.ECR_ARN }}"
+            }
+          }
+          JSON
+          cat import-map.json
+
+      # Importa el ECR existente al recurso lógico ApiEcrRepo del stack
+      - name: CDK import (adopt ECR)
+        working-directory: infra-ecs
+        run: npx cdk import --import-map import-map.json -c stage=prod -c useExistingVpc=true -c vpcId=${{ env.VPC_ID }}
