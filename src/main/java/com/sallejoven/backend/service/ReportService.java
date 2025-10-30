@@ -58,7 +58,7 @@ public class ReportService {
         String fileName   = "informe_seguro_salle_joven.xlsx";
         String fullPath   = folderPath + "/" + fileName;
 
-        String url = s3Service.uploadFileReport(seguroReport, folderPath, fileName);
+        String url = ""; //s3Service.uploadFileReport(seguroReport, folderPath, fileName);
 
         Map<String, byte[]> attachments = new LinkedHashMap<>();
         attachments.put(fileName, seguroReport.toByteArray());
@@ -86,7 +86,7 @@ public class ReportService {
         return p;
     }
 
-    public List<String> generateEventReports(Long eventId, List<ReportType> types, boolean overwrite) throws Exception {
+    /*public List<String> generateEventReports(Long eventId, List<ReportType> types, boolean overwrite) throws Exception {
         Event event = eventService.findById(eventId).orElseThrow(() -> new IllegalArgumentException("Evento no encontrado ID: " + eventId));
         
         List<EventUser> participants = eventUserService.findConfirmedByEventIdOrdered(eventId);
@@ -149,7 +149,7 @@ public class ReportService {
         emailService.sendEmailWithAttachments(email, subject, body, attachments);
 
         return urls;
-    }
+    }*/
 
     private ByteArrayOutputStream generateSeguroReport(List<SeguroRow> rows) throws IOException {
         Workbook wb    = new XSSFWorkbook();

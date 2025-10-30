@@ -1,16 +1,6 @@
 package com.sallejoven.backend.service;
 
-import com.amazonaws.AmazonServiceException;
-import com.amazonaws.HttpMethod;
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.regions.Regions;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.AmazonS3Exception;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -48,6 +38,8 @@ public class S3Service {
     /**
      * Sube un MultipartFile a S3 y devuelve su URL pública.
      */
+
+    /*
     public String uploadFile(MultipartFile file, String folderPath) throws IOException {
         AmazonS3 s3client = getClient();
 
@@ -68,9 +60,7 @@ public class S3Service {
         }
     }
 
-    /**
-     * Sube un ByteArrayOutputStream como archivo y devuelve una URL prefirmada.
-     */
+
     public String uploadFileReport(ByteArrayOutputStream stream, String folderPath, String filename) throws IOException {
         AmazonS3 s3client = getClient();
 
@@ -124,17 +114,12 @@ public class S3Service {
         }
     }    
 
-    /**
-     * Comprueba si existe un objeto en S3 con la clave dada.
-     */
     public boolean exists(String key) {
         AmazonS3 s3client = getClient();
         return s3client.doesObjectExist(bucketName, key);
     }
 
-    /**
-     * Devuelve la URL pública construida a partir del bucketUrl y la clave.
-     */
+
     public String getFileUrl(String key) {
         return bucketUrl + key;
     }
@@ -164,5 +149,5 @@ public class S3Service {
         return "bin";
     }
 
-
+*/
 }

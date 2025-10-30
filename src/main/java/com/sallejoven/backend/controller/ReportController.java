@@ -1,6 +1,8 @@
 package com.sallejoven.backend.controller;
 
+import com.sallejoven.backend.model.dto.ReportQueueResult;
 import com.sallejoven.backend.model.types.ReportType;
+import com.sallejoven.backend.service.ReportQueueService;
 import com.sallejoven.backend.service.ReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -16,34 +18,40 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+// ReportController.java
 @RestController
 @RequestMapping("/api/reports")
 @RequiredArgsConstructor
 public class ReportController {
 
+    private final ReportQueueService reportQueueService;
     private final ReportService reportService;
 
     @PreAuthorize("@authz.canManageEventForEditOrDelete(#eventId)")
     @GetMapping("/event/{eventId}")
-    public ResponseEntity<Map<String, List<String>>> generateEventReports(@PathVariable Long eventId, @RequestParam("types") String typesCsv, 
-                                                                        @RequestParam(defaultValue = "false") boolean overwrite) throws Exception {
-        List<Integer> idxs = Arrays.stream(typesCsv.split(","))
+    public ResponseEntity<Map<String, Object>> enqueueEventReports(
+            @PathVariable Long eventId,
+            @RequestParam("types") String typesCsv,
+            @RequestParam(defaultValue = "false") boolean overwrite
+    ) throws Exception {
+
+        // parsea CSV -> enums
+        List<ReportType> types = Arrays.stream(typesCsv.split(","))
                 .map(String::trim)
                 .map(Integer::parseInt)
+                .map(i -> ReportType.values()[i])
                 .collect(Collectors.toList());
 
-        List<ReportType> enumTypes = idxs.stream()
-                .map(i -> {
-                    try {
-                        return ReportType.values()[i];
-                    } catch (ArrayIndexOutOfBoundsException e) {
-                        throw new IllegalArgumentException("Índice inválido de ReportType: " + i);
-                    }
-                })
-                .collect(Collectors.toList());
+        // encola el trabajo
+        ReportQueueResult res = reportQueueService.enqueueEventReports(eventId, types, overwrite);
 
-        List<String> urls = reportService.generateEventReports(eventId, enumTypes, overwrite);
-        return ResponseEntity.ok(Map.of("reportUrls", urls));
+        // 202 Accepted, devolvemos metadatos para que el front pueda consultar el result.json si quiere
+        return ResponseEntity.accepted().body(Map.of(
+                "jobId", res.jobId(),
+                "resultKey", res.resultKey(),         // p.ej. test/jobs/123/result.json
+                "outputPrefix", res.outputPrefix(),   // p.ej. 2025/reports/event_39
+                "environment", res.environment()      // local | prod
+        ));
     }
 
     @PreAuthorize("hasRole('ADMIN')")

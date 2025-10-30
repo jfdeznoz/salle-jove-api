@@ -54,11 +54,16 @@ jwt:
 
 salle:
   aws:
+    region: eu-north-1
     access-key: AKIAZTJUYOCXGIOQCX6Q
     secret-key: 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
     bucket-name: sallejoven-events
     bucket-url: https://sallejoven-events.s3.eu-north-1.amazonaws.com/
     prefix: ""
+  reports:
+    fromEmail: sallejovenapp@lasalleandalucia.net
+    environment: prod
+    queueUrl: https://sqs.eu-north-1.amazonaws.com/659925004462/report-jobs
   image-extensions-allowed: jpg,png,jpeg,webp
 
 app:

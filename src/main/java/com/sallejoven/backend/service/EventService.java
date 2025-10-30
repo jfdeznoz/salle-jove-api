@@ -178,11 +178,14 @@ public class EventService {
 
         String before = event.getPdf();
 
-        final String folderPath = buildBaseFolder(event);
+        /*final String folderPath = buildBaseFolder(event);
         final String uploadedUrl = s3Service.uploadFile(pdf, folderPath);
         event.setPdf(uploadedUrl);
 
         return !safeEq(before, uploadedUrl);
+
+         */
+        return true;
     }
 
     private void validatePdf(MultipartFile pdf) throws SalleException {
@@ -216,7 +219,7 @@ public class EventService {
     private void handleFileUpload(MultipartFile file, Event event) throws IOException {
         if (file != null && !file.isEmpty()) {
             final String folderPath = buildBaseFolder(event);
-            final String uploadedUrl = s3Service.uploadFile(file, folderPath);
+            final String uploadedUrl = ""; //s3Service.uploadFile(file, folderPath);
             event.setFileName(uploadedUrl);
         }
     }
