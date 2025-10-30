@@ -8,6 +8,7 @@ import {
   aws_certificatemanager as acm,
   aws_logs as logs,
   aws_secretsmanager as secretsmanager,
+  aws_iam as iam,
 } from 'aws-cdk-lib';
 
 export class SalleJovenFargateStack extends cdk.Stack {
@@ -126,12 +127,21 @@ export class SalleJovenFargateStack extends cdk.Stack {
       retention: logs.RetentionDays.ONE_MONTH,
     });
 
-    const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-      cpu: 256,          // 0.25 vCPU
-      memoryLimitMiB: 512,
+    const execRole = new iam.Role(this, 'TaskExecutionRole', {
+      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy'),
+      ],
     });
 
-    dbSecret.grantRead(taskDef.executionRole!);
+    const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
+      cpu: 256,
+      memoryLimitMiB: 512,
+      executionRole: execRole, // 👈 ahora es explícita
+    });
+
+    dbSecret.grantRead(execRole);
+    dbSecret.grantRead(taskDef.taskRole);
 
     const repository = repo;
 
