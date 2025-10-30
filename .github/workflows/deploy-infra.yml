@@ -16,6 +16,11 @@ concurrency:
   group: deploy-infra
   cancel-in-progress: false
 
+env:
+  AWS_REGION: eu-north-1
+  STACK_NAME: SalleJovenFargate
+  VPC_ID: vpc-09f408a62930f6f1d   # <-- tu VPC
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -42,15 +47,14 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::659925004462:role/github-cdk-deploy   # usa tu ARN
-          aws-region: eu-north-1
+          role-to-assume: arn:aws:iam::659925004462:role/github-cdk-deploy
+          aws-region: ${{ env.AWS_REGION }}
 
-      # Idempotente: si ya bootstrappeaste, no hace nada
-      - name: CDK bootstrap
+      - name: CDK bootstrap (idempotent)
         run: npx cdk bootstrap -c stage=prod --require-approval never
 
       - name: CDK synth
-        run: npx cdk synth -c stage=prod
+        run: npx cdk synth ${{ env.STACK_NAME }} -c stage=prod -c useExistingVpc=true -c vpcId=${{ env.VPC_ID }}
 
       - name: CDK deploy
-        run: npx cdk deploy -c stage=prod --require-approval never
+        run: npx cdk deploy ${{ env.STACK_NAME }} -c stage=prod -c useExistingVpc=true -c vpcId=${{ env.VPC_ID }} --require-approval never

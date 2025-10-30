@@ -24,10 +24,9 @@ export class SalleJovenFargateStack extends cdk.Stack {
     const repo = new ecr.Repository(this, 'ApiEcrRepo', {
       repositoryName: 'sallejoven-api',
       imageScanOnPush: true,
-      lifecycleRules: [
-        { maxImageCount: 10 } // conserva los últimos 10 tags
-      ]
+      lifecycleRules: [{ maxImageCount: 10 }],
     });
+    repo.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
 
     /* =========================
      *  0) PARAMS A RELLENAR
