@@ -1,0 +1,8 @@
+.git
+.gitignore
+target
+infra-ecs
+node_modules
+*.md
+*.log
+.DS_Store

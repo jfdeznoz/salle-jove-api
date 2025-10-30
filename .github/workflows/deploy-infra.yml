@@ -1,0 +1,56 @@
+name: Deploy Infra (CDK)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "infra-ecs/**"
+      - ".github/workflows/deploy-infra.yml"
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write   # OIDC
+  contents: read
+
+concurrency:
+  group: deploy-infra
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra-ecs
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            infra-ecs/package-lock.json
+            infra-ecs/package.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::659925004462:role/github-cdk-deploy   # usa tu ARN
+          aws-region: eu-north-1
+
+      # Idempotente: si ya bootstrappeaste, no hace nada
+      - name: CDK bootstrap
+        run: npx cdk bootstrap -c stage=prod --require-approval never
+
+      - name: CDK synth
+        run: npx cdk synth -c stage=prod
+
+      - name: CDK deploy
+        run: npx cdk deploy -c stage=prod --require-approval never

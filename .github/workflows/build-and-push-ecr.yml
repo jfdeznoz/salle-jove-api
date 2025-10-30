@@ -1,0 +1,64 @@
+name: Build & Push API Image to ECR
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "pom.xml"
+      - "src/**"
+      - "Dockerfile"
+      - ".github/workflows/build-and-push-ecr.yml"
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      # OIDC → asume tu rol sin secretos
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::659925004462:role/github-cdk-deploy
+          aws-region: eu-north-1
+
+      - name: Get AWS Account ID
+        id: acct
+        run: echo "ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_ENV
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & Push (linux/amd64)
+        env:
+          ECR_URI: ${{ env.ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/sallejoven-api
+        run: |
+          echo "ECR_URI=$ECR_URI"
+          docker buildx create --use --name builder || true
+          docker buildx build \
+            --platform linux/amd64 \
+            -t $ECR_URI:latest \
+            -t $ECR_URI:${GITHUB_SHA::7} \
+            --push \
+            .
+
+      - name: Output pushed image URIs
+        env:
+          ECR_URI: ${{ env.ACCOUNT_ID }}.dkr.ecr.eu-north-1.amazonaws.com/sallejoven-api
+        run: |
+          echo "Pushed: $ECR_URI:latest"
+          echo "Pushed: $ECR_URI:${GITHUB_SHA::7}"
