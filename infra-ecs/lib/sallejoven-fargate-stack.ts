@@ -8,6 +8,7 @@ import {
   aws_certificatemanager as acm,
   aws_logs as logs,
   aws_secretsmanager as secretsmanager,
+  aws_iam as iam,
 } from 'aws-cdk-lib';
 
 export class SalleJovenFargateStack extends cdk.Stack {
@@ -33,7 +34,6 @@ export class SalleJovenFargateStack extends cdk.Stack {
      * ========================= */
     const CERT_ARN = 'arn:aws:acm:eu-north-1:659925004462:certificate/23c87695-563f-4904-b380-a453435bbd24';
     const RDS_SG_ID = 'sg-08d1b1505131491f6';
-    const ECR_REPO_NAME = 'sallejoven-api';
     const CONTAINER_PORT = 5000;
     const HEALTH_PATH = '/actuator/health';
 
@@ -126,12 +126,21 @@ export class SalleJovenFargateStack extends cdk.Stack {
       retention: logs.RetentionDays.ONE_MONTH,
     });
 
-    const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-      cpu: 256,          // 0.25 vCPU
-      memoryLimitMiB: 512,
+    const execRole = new iam.Role(this, 'TaskExecutionRole', {
+      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy'),
+      ],
     });
 
-    dbSecret.grantRead(taskDef.executionRole!);
+    const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
+      cpu: 256,
+      memoryLimitMiB: 512,
+      executionRole: execRole, // 👈 ahora es explícita
+    });
+
+    dbSecret.grantRead(execRole);
+    dbSecret.grantRead(taskDef.taskRole);
 
     const repository = repo;
 
