@@ -30,7 +30,6 @@ import lombok.RequiredArgsConstructor;
 public class PublicController {
 
     private final CenterService centerService;
-    private final UserService userService;
     private final SalleConverters salleConverters;
 
     @GetMapping("/info")
