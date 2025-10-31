@@ -15,15 +15,15 @@ export class SalleJovenFargateStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // VPC existente
+    // ====== VPC EXISTENTE ======
     const vpc = ec2.Vpc.fromLookup(this, 'Vpc', {
       vpcId: 'vpc-09f408a62930f6f1d',
     });
 
-    // Cluster ECS
+    // ====== CLUSTER ECS ======
     const cluster = new ecs.Cluster(this, 'Cluster', { vpc });
 
-    // ECR existente por nombre
+    // ====== ECR EXISTENTE ======
     const repo = ecr.Repository.fromRepositoryName(this, 'ApiEcrRepo', 'sallejoven-api');
 
     // ====== PARAMS ======
@@ -32,7 +32,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
     const CONTAINER_PORT = 5000;
     const HEALTH_PATH = '/public/info';
 
-    // Secret DB (username/password)
+    // ====== SECRET DB ======
     const dbSecret = secretsmanager.Secret.fromSecretNameV2(this, 'DbSecret', 'prod/sallejoven/db');
 
     // ====== SECURITY GROUPS ======
@@ -85,7 +85,6 @@ export class SalleJovenFargateStack extends cdk.Stack {
         protocol: elbv2.ApplicationProtocol.HTTP,
         open: true,
       });
-      // 👇 FIX: addAction recibe { action: ... }
       httpListener.addAction('RedirectToHttps', {
         action: elbv2.ListenerAction.redirect({
           protocol: 'HTTPS',
@@ -150,15 +149,13 @@ export class SalleJovenFargateStack extends cdk.Stack {
       securityGroups: [serviceSg],
       circuitBreaker: { enable: true, rollback: true },
       vpcSubnets: { subnets: vpc.publicSubnets },
-      healthCheckGracePeriod: cdk.Duration.seconds(180), // 👈 clave para Spring lento
+      healthCheckGracePeriod: cdk.Duration.seconds(240), // Spring arranque lento
     });
 
-    // ====== TARGET GROUP ======
-    const tg = new elbv2.ApplicationTargetGroup(this, 'TargetGroup', {
-      vpc,
+    // ====== LISTENER TARGETS ======
+    const tg = listenerHttps.addTargets('ApiTargets', {
       protocol: elbv2.ApplicationProtocol.HTTP,
       port: CONTAINER_PORT,
-      targetType: elbv2.TargetType.IP,
       targets: [service],
       healthCheck: {
         path: HEALTH_PATH,
@@ -170,9 +167,8 @@ export class SalleJovenFargateStack extends cdk.Stack {
       },
     });
 
-    service.attachToApplicationTargetGroup(tg);
-
-    listenerHttps.addTargetGroups('ApiTg', { targetGroups: [tg] });
+    // Ajustes extra de target group
+    tg.setAttribute('deregistration_delay.timeout_seconds', '15');
 
     // ====== OUTPUTS ======
     new cdk.CfnOutput(this, 'AlbDns', { value: alb.loadBalancerDnsName });
