@@ -12,13 +12,13 @@ import {
 } from 'aws-cdk-lib';
 
 export interface SalleJovenFargateStackProps extends cdk.StackProps {
-  vpcId: string;                                    // vpc-09f408a62930f6f1d
-  certArn: string;                                  // arn:aws:acm:eu-north-1:...:certificate/...
-  rdsSecurityGroupId: string;                       // sg-08d1b1505131491f6
-  ecrRepoName: string;                              // sallejoven-api
-  containerPort?: number;                           // 5000 defecto
-  healthPath?: string;                              // /public/info defecto
-  usePublicSubnets?: boolean;                       // true defecto
+  vpcId: string;                  // vpc-09f408a62930f6f1d
+  certArn: string;                // arn:aws:acm:eu-north-1:...:certificate/...
+  rdsSecurityGroupId: string;     // sg-08d1b1505131491f6
+  ecrRepoName: string;            // sallejoven-api
+  containerPort?: number;         // 5000 por defecto
+  healthPath?: string;            // /public/info por defecto
+  usePublicSubnets?: boolean;     // true por defecto
 }
 
 export class SalleJovenFargateStack extends cdk.Stack {
@@ -37,7 +37,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
     const cluster = new ecs.Cluster(this, 'Cluster', {
       vpc,
       enableFargateCapacityProviders: true,
-      containerInsights: true,
+      // containerInsights: true, // habilítalo si tu versión CDK lo soporta como boolean
     });
 
     // ====== ECR ======
@@ -85,7 +85,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
 
     const cert = acm.Certificate.fromCertificateArn(this, 'AlbCert', props.certArn);
 
-    // HTTPS Listener
+    // HTTPS Listener (default action -> forward a TG explícito)
     const httpsListener = alb.addListener('HttpsListener', {
       port: 443,
       protocol: elbv2.ApplicationProtocol.HTTPS,
@@ -93,17 +93,19 @@ export class SalleJovenFargateStack extends cdk.Stack {
       open: true,
     });
 
-    // HTTP → HTTPS redirect
+    // HTTP → HTTPS redirect (corregido: addAction requiere { action: ... })
     const httpListener = alb.addListener('HttpListener', {
       port: 80,
       protocol: elbv2.ApplicationProtocol.HTTP,
       open: true,
     });
-    httpListener.addAction('RedirectToHttps', elbv2.ListenerAction.redirect({
-      protocol: 'HTTPS',
-      port: '443',
-      permanent: true,
-    }));
+    httpListener.addAction('RedirectToHttps', {
+      action: elbv2.ListenerAction.redirect({
+        protocol: 'HTTPS',
+        port: '443',
+        permanent: true,
+      }),
+    });
 
     // ====== LOGS ======
     const logGroup = new logs.LogGroup(this, 'ApiLogGroup', {
@@ -135,7 +137,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
       memoryLimitMiB: 512,
       executionRole,
       taskRole,
-      runtimePlatform: { // explícito por claridad
+      runtimePlatform: {
         operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
         cpuArchitecture: ecs.CpuArchitecture.X86_64,
       },
@@ -156,14 +158,8 @@ export class SalleJovenFargateStack extends cdk.Stack {
         SPRING_DATASOURCE_USERNAME: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
         SPRING_DATASOURCE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
       },
-      healthCheck: {
-        // Health check de Docker (complementario al del ALB). Opcional, pero útil.
-        command: ['CMD-SHELL', `curl -sf http://127.0.0.1:${CONTAINER_PORT}${HEALTH_PATH} || exit 1`],
-        interval: cdk.Duration.seconds(30),
-        timeout: cdk.Duration.seconds(5),
-        retries: 3,
-        startPeriod: cdk.Duration.seconds(90),
-      },
+      // Nota: si tu imagen no trae 'curl', evita healthCheck de contenedor.
+      // El ALB ya hará el health check HTTP contra la tarea.
     });
 
     container.addPortMappings({ containerPort: CONTAINER_PORT, protocol: ecs.Protocol.TCP });
@@ -181,15 +177,15 @@ export class SalleJovenFargateStack extends cdk.Stack {
       enableECSManagedTags: true,
       propagateTags: ecs.PropagatedTagSource.SERVICE,
       capacityProviderStrategies: [
-        { capacityProvider: 'FARGATE', weight: 1 }, // explícito
+        { capacityProvider: 'FARGATE', weight: 1 },
       ],
     });
 
     // ====== TARGET GROUP explícito (IP) ======
     const tg = new elbv2.ApplicationTargetGroup(this, 'ApiTg', {
       vpc,
-      targetType: elbv2.TargetType.IP,            // Fargate -> IP
-      protocol: elbv2.ApplicationProtocol.HTTP,   // tráﬁco interno ALB->task en claro (TLS termina en ALB)
+      targetType: elbv2.TargetType.IP,             // Fargate -> IP
+      protocol: elbv2.ApplicationProtocol.HTTP,    // TLS termina en el ALB
       port: CONTAINER_PORT,
       healthCheck: {
         path: HEALTH_PATH,
@@ -200,19 +196,15 @@ export class SalleJovenFargateStack extends cdk.Stack {
         unhealthyThresholdCount: 5,
       },
       deregistrationDelay: cdk.Duration.seconds(15),
-      slowStart: cdk.Duration.seconds(30),        // ayuda con warm-up de Spring
-      // stickinessCookieDuration: cdk.Duration.seconds(0), // desactivado por defecto
+      // slowStart: cdk.Duration.seconds(30),      // descomenta si quieres warm-up
     });
 
     // Registrar el servicio como target del TG
     tg.addTarget(service);
 
-    // Listener → TG
-    httpsListener.addTargetGroups('HttpsToApi', {
-      targetGroups: [tg],
-      // Opcionalmente: condiciones/rutas si más servicios
-      // conditions: [elbv2.ListenerCondition.pathPatterns(['/api/*'])],
-      priority: 1,
+    // Listener HTTPS → TG (default action, sin prioridades)
+    httpsListener.addAction('ForwardToApi', {
+      action: elbv2.ListenerAction.forward([tg]),
     });
 
     // ====== AUTOSCALING ======
@@ -227,7 +219,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
       requestsPerTarget: 100,
     });
 
-    // ====== OUTPUTS ====== gfsdfd
+    // ====== OUTPUTS ======
     new cdk.CfnOutput(this, 'AlbDns', { value: alb.loadBalancerDnsName });
     new cdk.CfnOutput(this, 'AlbArn', { value: alb.loadBalancerArn });
     new cdk.CfnOutput(this, 'TargetGroupArn', { value: tg.targetGroupArn });
