@@ -32,16 +32,25 @@ public class S3V2Service {
 
     @Value("${salle.aws.bucket-name}") private String bucket;
     @Value("${salle.aws.bucket-url}")  private String bucketUrl;
-    @Value("${salle.aws.prefix:}") private String basePrefix;
+    @Value("${salle.aws.prefix:}")     private String basePrefix;
 
-    public PresignedPut presignedPut(String key, @Nullable String contentType, @Nullable String contentDisposition, boolean publicRead, Duration ttl) {
-        var put = PutObjectRequest.builder()
+    public PresignedPut presignedPut(String key,
+                                     @Nullable String contentType,
+                                     @Nullable String contentDisposition,
+                                     boolean publicRead,
+                                     Duration ttl) {
+        PutObjectRequest.Builder putBuilder = PutObjectRequest.builder()
                 .bucket(bucket)
                 .key(key)
                 .contentType((contentType == null || contentType.isBlank()) ? null : contentType)
-                .contentDisposition((contentDisposition == null || contentDisposition.isBlank()) ? null : contentDisposition)
-                .acl(publicRead ? ObjectCannedACL.PUBLIC_READ : null)
-                .build();
+                .contentDisposition((contentDisposition == null || contentDisposition.isBlank()) ? null : contentDisposition);
+
+        // OJO: si el bucket está en BucketOwnerEnforced, NO se permiten ACLs y esto dará error.
+        if (publicRead) {
+            putBuilder.acl(ObjectCannedACL.PUBLIC_READ);
+        }
+
+        var put = putBuilder.build();
 
         var pre = presigner.presignPutObject(
                 PutObjectPresignRequest.builder()
@@ -69,8 +78,12 @@ public class S3V2Service {
     }
 
     public boolean exists(String key) {
-        try { s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build()); return true; }
-        catch (S3Exception e) { return false; }
+        try {
+            s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build());
+            return true;
+        } catch (S3Exception e) {
+            return false;
+        }
     }
 
     public void putBytes(String key, byte[] bytes, String contentType) {
@@ -88,7 +101,7 @@ public class S3V2Service {
         return folder.isEmpty() ? "" : folder + "/";
     }
 
-    public String eventFolder(boolean isGeneral, @Nullable Long centerId /*, @Nullable Long eventId */) {
+    public String eventFolder(boolean isGeneral, @Nullable Long centerId) {
         String scope = isGeneral ? "general/events" : "centers/" + centerId + "/events";
         String folder = join(basePrefix, scope);
         return folder.isEmpty() ? "" : folder + "/";
@@ -101,13 +114,11 @@ public class S3V2Service {
                 .collect(Collectors.joining("/"));
     }
 
-
     public String newKey(String prefix, @Nullable String suffix) {
         String file = UUID.randomUUID() + (suffix == null ? "" : suffix);
         if (prefix == null || prefix.isBlank()) return file;
         return (prefix.endsWith("/") ? prefix : prefix + "/") + file;
     }
-
 
     public record PresignedPut(String url, String key, Map<String,String> requiredHeaders) {}
 
@@ -128,32 +139,29 @@ public class S3V2Service {
 
         if (wantImage) {
             String ext = extFromFilename(imageOriginalName);
-            if (ext.isBlank()) ext = "jpg";            // fallback razonable
+            if (ext.isBlank()) ext = "jpg";
             String mime = mimeFromExt(ext);
 
-            String imgKey = newKey(folder, "." + ext); // …/event_{id}/<uuid>.<ext>
+            String imgKey = newKey(folder, "." + ext);
             String cd    = "inline; filename=\"" + sanitizeFilename(
                     (imageOriginalName == null || imageOriginalName.isBlank())
                             ? ("cover." + ext) : imageOriginalName) + "\"";
 
-            var imgPut = presignedPut(imgKey, mime, cd, false, Duration.ofMinutes(15));
+            var imgPut = presignedPut(imgKey, mime, cd, /*publicRead*/ false, Duration.ofMinutes(15));
             imgDto = new PresignedPutDTO(imgPut.url(), imgPut.key(), imgPut.requiredHeaders());
         }
 
         if (wantPdf) {
             String pdfKey = newKey(folder, ".pdf");
             String cd     = "inline; filename=\"documento.pdf\"";
-            var pdfPut = presignedPut(pdfKey, "application/pdf", cd, false, Duration.ofMinutes(15));
+            var pdfPut = presignedPut(pdfKey, "application/pdf", cd, /*publicRead*/ false, Duration.ofMinutes(15));
             pdfDto = new PresignedPutDTO(pdfPut.url(), pdfPut.key(), pdfPut.requiredHeaders());
         }
 
         return new UploadPresigneds(imgDto, pdfDto);
     }
 
-    public record UploadPresigneds(
-            @Nullable PresignedPutDTO image,
-            @Nullable PresignedPutDTO pdf
-    ) {}
+    public record UploadPresigneds(@Nullable PresignedPutDTO image, @Nullable PresignedPutDTO pdf) {}
 
     public void deleteObject(String key) {
         try {
@@ -175,7 +183,7 @@ public class S3V2Service {
         if (name == null) return "";
         int dot = name.lastIndexOf('.');
         if (dot <= 0 || dot == name.length() - 1) return "";
-        return name.substring(dot + 1).toLowerCase(); // sin punto
+        return name.substring(dot + 1).toLowerCase();
     }
 
     public static String mimeFromExt(String ext) {
@@ -194,5 +202,4 @@ public class S3V2Service {
         base = base.substring(base.lastIndexOf('/') + 1);
         return base.replaceAll("[\"\\r\\n]", "_");
     }
-
 }

@@ -58,7 +58,7 @@ public class ReportService {
         String fileName   = "informe_seguro_salle_joven.xlsx";
         String fullPath   = folderPath + "/" + fileName;
 
-        String url = s3Service.uploadFileReport(seguroReport, folderPath, fileName);
+        String url = ""; //s3Service.uploadFileReport(seguroReport, folderPath, fileName);
 
         Map<String, byte[]> attachments = new LinkedHashMap<>();
         attachments.put(fileName, seguroReport.toByteArray());
@@ -108,13 +108,13 @@ public class ReportService {
                                     .replaceAll("[^a-z0-9_\\-]", ""));
             String fullPath = folder + "/" + filename;
 
-            if (!overwrite && s3Service.exists(fullPath)) {
+            /*if (!overwrite && s3Service.exists(fullPath)) {
                 String  url       = s3Service.getFileUrl(fullPath);
                 byte[]  fileBytes = s3Service.downloadFile(fullPath);
                 attachments.put(filename, fileBytes);
                 urls.add(url);
                 continue;
-            }
+            }*/
 
             ByteArrayOutputStream baos;
             switch (type) {
@@ -137,7 +137,7 @@ public class ReportService {
                     throw new IllegalArgumentException("Tipo no soportado: " + type);
             }
 
-            String url = s3Service.uploadFileReport(baos, folder, filename);
+            String url = ""; //s3Service.uploadFileReport(baos, folder, filename);
             attachments.put(filename, baos.toByteArray());
             urls.add(url);
         }
