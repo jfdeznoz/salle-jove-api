@@ -227,7 +227,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
       requestsPerTarget: 100,
     });
 
-    // ====== OUTPUTS ======
+    // ====== OUTPUTS ====== gfsdfd
     new cdk.CfnOutput(this, 'AlbDns', { value: alb.loadBalancerDnsName });
     new cdk.CfnOutput(this, 'AlbArn', { value: alb.loadBalancerArn });
     new cdk.CfnOutput(this, 'TargetGroupArn', { value: tg.targetGroupArn });
