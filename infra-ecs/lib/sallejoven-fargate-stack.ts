@@ -15,30 +15,39 @@ export class SalleJovenFargateStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // === Infra base ===
-    const vpc = ec2.Vpc.fromLookup(this, 'Vpc', { vpcId: 'vpc-09f408a62930f6f1d' });
+    // ====== VPC EXISTENTE ======
+    const vpc = ec2.Vpc.fromLookup(this, 'Vpc', {
+      vpcId: 'vpc-09f408a62930f6f1d',
+    });
+
+    // ====== CLUSTER ECS ======
     const cluster = new ecs.Cluster(this, 'Cluster', { vpc });
+
+    // ====== ECR EXISTENTE ======
     const repo = ecr.Repository.fromRepositoryName(this, 'ApiEcrRepo', 'sallejoven-api');
 
-    // === Parámetros ===
+    // ====== PARAMS ======
     const CERT_ARN = 'arn:aws:acm:eu-north-1:659925004462:certificate/23c87695-563f-4904-b380-a453435bbd24';
     const RDS_SG_ID = 'sg-08d1b1505131491f6';
     const CONTAINER_PORT = 5000;
     const HEALTH_PATH = '/public/info';
 
-    // === Secrets ===
-    const dbSecret   = secretsmanager.Secret.fromSecretNameV2(this, 'DbSecret',   'prod/sallejoven/db');
-    const mailSecret = secretsmanager.Secret.fromSecretNameV2(this, 'MailSecret', 'prod/sallejoven/mail');
+    // ====== SECRET DB ======
+    const dbSecret = secretsmanager.Secret.fromSecretNameV2(this, 'DbSecret', 'prod/sallejoven/db');
 
-    // === Security Groups ===
+    // ====== SECURITY GROUPS ======
     const albSg = new ec2.SecurityGroup(this, 'AlbSg', {
-      vpc, allowAllOutbound: true, description: 'ALB SG (80/443 desde Internet)',
+      vpc,
+      allowAllOutbound: true,
+      description: 'ALB SG (80/443 from internet)',
     });
     albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80));
     albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443));
 
     const serviceSg = new ec2.SecurityGroup(this, 'ServiceSg', {
-      vpc, allowAllOutbound: true, description: 'Fargate Service SG (ingress solo desde ALB)',
+      vpc,
+      allowAllOutbound: true,
+      description: 'Fargate Service SG (ingress only from ALB)',
     });
     serviceSg.addIngressRule(albSg, ec2.Port.tcp(CONTAINER_PORT));
 
@@ -46,11 +55,13 @@ export class SalleJovenFargateStack extends cdk.Stack {
     new ec2.CfnSecurityGroupIngress(this, 'RdsFromService5432', {
       groupId: rdsSg.securityGroupId,
       sourceSecurityGroupId: serviceSg.securityGroupId,
-      ipProtocol: 'tcp', fromPort: 5432, toPort: 5432,
+      ipProtocol: 'tcp',
+      fromPort: 5432,
+      toPort: 5432,
       description: 'Allow ECS service to access Postgres on 5432',
     });
 
-    // === ALB + Listeners ===
+    // ====== ALB + LISTENERS ======
     const alb = new elbv2.ApplicationLoadBalancer(this, 'Alb', {
       vpc,
       internetFacing: true,
@@ -58,25 +69,38 @@ export class SalleJovenFargateStack extends cdk.Stack {
       vpcSubnets: { subnets: vpc.publicSubnets },
     });
 
-    const cert = acm.Certificate.fromCertificateArn(this, 'AlbCert', CERT_ARN);
-    const listenerHttps = alb.addListener('HttpsListener', {
-      port: 443,
-      certificates: [cert],
-      protocol: elbv2.ApplicationProtocol.HTTPS,
-      sslPolicy: elbv2.SslPolicy.TLS13_RES,
-      open: true,
-    });
+    let listenerHttps: elbv2.ApplicationListener;
+    if (CERT_ARN && CERT_ARN.startsWith('arn:aws:acm:')) {
+      const cert = acm.Certificate.fromCertificateArn(this, 'AlbCert', CERT_ARN);
 
-    const httpListener = alb.addListener('HttpRedirect', {
-      port: 80,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      open: true,
-    });
-    httpListener.addAction('RedirectToHttps', {
-      action: elbv2.ListenerAction.redirect({ protocol: 'HTTPS', port: '443', permanent: true }),
-    });
+      listenerHttps = alb.addListener('HttpsListener', {
+        port: 443,
+        certificates: [cert],
+        protocol: elbv2.ApplicationProtocol.HTTPS,
+        open: true,
+      });
 
-    // === Task Definition + Container ===
+      const httpListener = alb.addListener('HttpRedirect', {
+        port: 80,
+        protocol: elbv2.ApplicationProtocol.HTTP,
+        open: true,
+      });
+      httpListener.addAction('RedirectToHttps', {
+        action: elbv2.ListenerAction.redirect({
+          protocol: 'HTTPS',
+          port: '443',
+          permanent: true,
+        }),
+      });
+    } else {
+      listenerHttps = alb.addListener('HttpListener', {
+        port: 80,
+        protocol: elbv2.ApplicationProtocol.HTTP,
+        open: true,
+      });
+    }
+
+    // ====== TASK DEF + CONTAINER ======
     const logGroup = new logs.LogGroup(this, 'ApiLogGroup', {
       retention: logs.RetentionDays.ONE_MONTH,
     });
@@ -89,15 +113,13 @@ export class SalleJovenFargateStack extends cdk.Stack {
     });
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-      cpu: 512,
-      memoryLimitMiB: 1024,
+      cpu: 256,
+      memoryLimitMiB: 512,
       executionRole: execRole,
     });
 
     dbSecret.grantRead(execRole);
     dbSecret.grantRead(taskDef.taskRole);
-    mailSecret.grantRead(execRole);
-    mailSecret.grantRead(taskDef.taskRole);
 
     const container = taskDef.addContainer('ApiContainer', {
       image: ecs.ContainerImage.fromEcrRepository(repo, 'latest'),
@@ -108,20 +130,17 @@ export class SalleJovenFargateStack extends cdk.Stack {
         SPRING_JPA_HIBERNATE_DDL_AUTO: 'none',
         SPRING_DATASOURCE_URL:
           'jdbc:postgresql://database-salle.cju6gook2cqu.eu-north-1.rds.amazonaws.com:5432/postgres?sslmode=require',
-        JAVA_TOOL_OPTIONS: '-XX:MaxRAMPercentage=75 -XX:+UseStringDeduplication -XX:+ExitOnOutOfMemoryError',
-        AWS_REGION: 'eu-north-1',
       },
       secrets: {
         SPRING_DATASOURCE_USERNAME: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
         SPRING_DATASOURCE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
-        MAIL_USERNAME: ecs.Secret.fromSecretsManager(mailSecret, 'username'),
-        MAIL_PASSWORD: ecs.Secret.fromSecretsManager(mailSecret, 'password'),
       },
       essential: true,
     });
+
     container.addPortMappings({ containerPort: CONTAINER_PORT });
 
-    // === Service ===
+    // ====== SERVICE ======
     const service = new ecs.FargateService(this, 'Service', {
       cluster,
       taskDefinition: taskDef,
@@ -130,11 +149,10 @@ export class SalleJovenFargateStack extends cdk.Stack {
       securityGroups: [serviceSg],
       circuitBreaker: { enable: true, rollback: true },
       vpcSubnets: { subnets: vpc.publicSubnets },
-      // margen generoso para arranque de Spring/Liquibase
-      healthCheckGracePeriod: cdk.Duration.seconds(420),
+      healthCheckGracePeriod: cdk.Duration.seconds(240), // Spring arranque lento
     });
 
-    // === Regla del Listener + Target Group (sin crearlo a mano) ===
+    // ====== LISTENER TARGETS ======
     const tg = listenerHttps.addTargets('ApiTargets', {
       protocol: elbv2.ApplicationProtocol.HTTP,
       port: CONTAINER_PORT,
@@ -142,44 +160,28 @@ export class SalleJovenFargateStack extends cdk.Stack {
       healthCheck: {
         path: HEALTH_PATH,
         healthyHttpCodes: '200-399',
-        interval: cdk.Duration.seconds(30),
-        timeout: cdk.Duration.seconds(10),
+        interval: cdk.Duration.seconds(20),
+        timeout: cdk.Duration.seconds(5),
         healthyThresholdCount: 2,
-        unhealthyThresholdCount: 10,
+        unhealthyThresholdCount: 5,
       },
     });
 
-    // Draining más rápido
-    tg.setAttribute('deregistration_delay.timeout_seconds', '30');
+    // Ajustes extra de target group
+    tg.setAttribute('deregistration_delay.timeout_seconds', '15');
 
-    // === Auto Scaling (CPU + RequestCount usando el TG devuelto por addTargets) ===
-    const scalable = service.autoScaleTaskCount({ minCapacity: 1, maxCapacity: 2 });
-    scalable.scaleOnCpuUtilization('CpuScaling', {
-      targetUtilizationPercent: 60,
-      scaleInCooldown: cdk.Duration.seconds(120),
-      scaleOutCooldown: cdk.Duration.seconds(60),
-    });
-    scalable.scaleOnRequestCount('ReqScaling', {
-      targetGroup: tg,
-      requestsPerTarget: 100,
-    });
+     const scalable = service.autoScaleTaskCount({ minCapacity: 1, maxCapacity: 2 });
+        scalable.scaleOnCpuUtilization('CpuScaling', {
+          targetUtilizationPercent: 60,
+          scaleInCooldown: cdk.Duration.seconds(120),
+          scaleOutCooldown: cdk.Duration.seconds(60),
+        });
+        scalable.scaleOnRequestCount('ReqScaling', {
+          targetGroup: tg,
+          requestsPerTarget: 100,
+        });
 
-    // === Permisos S3 mínimos para presigned + head/put/delete/list ===
-    const bucketArn = 'arn:aws:s3:::sallejoven-events';
-    const bucketObjectsArn = `${bucketArn}/*`;
-    taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
-      actions: [
-        's3:GetObject','s3:PutObject','s3:DeleteObject','s3:AbortMultipartUpload',
-        's3:GetObjectAttributes','s3:GetObjectTagging','s3:GetObjectAcl','s3:PutObjectAcl'
-      ],
-      resources: [bucketObjectsArn],
-    }));
-    taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
-      actions: ['s3:ListBucket','s3:GetBucketLocation'],
-      resources: [bucketArn],
-    }));
-
-    // === Outputs ===
+    // ====== OUTPUTS ======
     new cdk.CfnOutput(this, 'AlbDns', { value: alb.loadBalancerDnsName });
     new cdk.CfnOutput(this, 'ServiceSgId', { value: serviceSg.securityGroupId });
     new cdk.CfnOutput(this, 'ClusterName', { value: cluster.clusterName });
