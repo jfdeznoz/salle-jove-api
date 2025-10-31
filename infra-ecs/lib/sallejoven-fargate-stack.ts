@@ -19,29 +19,23 @@ export class SalleJovenFargateStack extends cdk.Stack {
     const cluster = new ecs.Cluster(this, 'Cluster', { vpc });
     const repo = ecr.Repository.fromRepositoryName(this, 'ApiEcrRepo', 'sallejoven-api');
 
-    // ====== PARAMS ======
     const CERT_ARN = 'arn:aws:acm:eu-north-1:659925004462:certificate/23c87695-563f-4904-b380-a453435bbd24';
     const RDS_SG_ID = 'sg-08d1b1505131491f6';
     const CONTAINER_PORT = 5000;
     const HEALTH_PATH = '/public/info';
 
-    // Secrets
     const dbSecret   = secretsmanager.Secret.fromSecretNameV2(this, 'DbSecret',   'prod/sallejoven/db');
     const mailSecret = secretsmanager.Secret.fromSecretNameV2(this, 'MailSecret', 'prod/sallejoven/mail');
 
-    // ====== SECURITY GROUPS ======
+    // --- SGs ---
     const albSg = new ec2.SecurityGroup(this, 'AlbSg', {
-      vpc,
-      allowAllOutbound: true,
-      description: 'ALB SG (80/443 from internet)',
+      vpc, allowAllOutbound: true, description: 'ALB SG (80/443 from internet)',
     });
     albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80));
     albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443));
 
     const serviceSg = new ec2.SecurityGroup(this, 'ServiceSg', {
-      vpc,
-      allowAllOutbound: true,
-      description: 'Fargate Service SG (ingress only from ALB)',
+      vpc, allowAllOutbound: true, description: 'Fargate Service SG (ingress only from ALB)',
     });
     serviceSg.addIngressRule(albSg, ec2.Port.tcp(CONTAINER_PORT));
 
@@ -49,43 +43,29 @@ export class SalleJovenFargateStack extends cdk.Stack {
     new ec2.CfnSecurityGroupIngress(this, 'RdsFromService5432', {
       groupId: rdsSg.securityGroupId,
       sourceSecurityGroupId: serviceSg.securityGroupId,
-      ipProtocol: 'tcp',
-      fromPort: 5432,
-      toPort: 5432,
+      ipProtocol: 'tcp', fromPort: 5432, toPort: 5432,
       description: 'Allow ECS service to access Postgres on 5432',
     });
 
-    // ====== ALB + LISTENERS ======
+    // --- ALB + listeners ---
     const alb = new elbv2.ApplicationLoadBalancer(this, 'Alb', {
-      vpc,
-      internetFacing: true,
-      securityGroup: albSg,
-      vpcSubnets: { subnets: vpc.publicSubnets },
+      vpc, internetFacing: true, securityGroup: albSg, vpcSubnets: { subnets: vpc.publicSubnets },
     });
 
     const cert = acm.Certificate.fromCertificateArn(this, 'AlbCert', CERT_ARN);
     const listenerHttps = alb.addListener('HttpsListener', {
-      port: 443,
-      certificates: [cert],
-      protocol: elbv2.ApplicationProtocol.HTTPS,
-      sslPolicy: elbv2.SslPolicy.TLS13_RES,
-      open: true,
+      port: 443, certificates: [cert], protocol: elbv2.ApplicationProtocol.HTTPS,
+      sslPolicy: elbv2.SslPolicy.TLS13_RES, open: true,
     });
 
     const httpListener = alb.addListener('HttpRedirect', {
-      port: 80,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      open: true,
+      port: 80, protocol: elbv2.ApplicationProtocol.HTTP, open: true,
     });
     httpListener.addAction('RedirectToHttps', {
-      action: elbv2.ListenerAction.redirect({
-        protocol: 'HTTPS',
-        port: '443',
-        permanent: true,
-      }),
+      action: elbv2.ListenerAction.redirect({ protocol: 'HTTPS', port: '443', permanent: true }),
     });
 
-    // ====== TASK DEF + CONTAINER ======
+    // --- Task + container ---
     const logGroup = new logs.LogGroup(this, 'ApiLogGroup', {
       retention: logs.RetentionDays.ONE_MONTH,
     });
@@ -98,12 +78,9 @@ export class SalleJovenFargateStack extends cdk.Stack {
     });
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-      cpu: 512,
-      memoryLimitMiB: 1024,
-      executionRole: execRole,
+      cpu: 512, memoryLimitMiB: 1024, executionRole: execRole,
     });
 
-    // Secrets access (ambos roles)
     dbSecret.grantRead(execRole);
     dbSecret.grantRead(taskDef.taskRole);
     mailSecret.grantRead(execRole);
@@ -129,10 +106,9 @@ export class SalleJovenFargateStack extends cdk.Stack {
       },
       essential: true,
     });
-
     container.addPortMappings({ containerPort: CONTAINER_PORT });
 
-    // ====== SERVICE ======
+    // --- Service ---
     const service = new ecs.FargateService(this, 'Service', {
       cluster,
       taskDefinition: taskDef,
@@ -141,71 +117,57 @@ export class SalleJovenFargateStack extends cdk.Stack {
       securityGroups: [serviceSg],
       circuitBreaker: { enable: true, rollback: true },
       vpcSubnets: { subnets: vpc.publicSubnets },
-      healthCheckGracePeriod: cdk.Duration.seconds(240),
+      healthCheckGracePeriod: cdk.Duration.seconds(420), // más margen
     });
 
-    // ====== TARGET GROUP ======
-    // IMPORTANTE: no asociar aquí "targets: [service]" para evitar duplicados
+    // --- Target Group (más tolerante) ---
     const tg = new elbv2.ApplicationTargetGroup(this, 'TargetGroup', {
       vpc,
       protocol: elbv2.ApplicationProtocol.HTTP,
       port: CONTAINER_PORT,
       targetType: elbv2.TargetType.IP,
+      targets: [service],
       deregistrationDelay: cdk.Duration.seconds(30),
       healthCheck: {
         path: HEALTH_PATH,
         healthyHttpCodes: '200-399',
-        interval: cdk.Duration.seconds(20),
-        timeout: cdk.Duration.seconds(5),
+        interval: cdk.Duration.seconds(30),
+        timeout: cdk.Duration.seconds(10),
         healthyThresholdCount: 2,
-        unhealthyThresholdCount: 5,
+        unhealthyThresholdCount: 10,
       },
     });
 
-    // Asociación ÚNICA del Service al TG
-    service.attachToApplicationTargetGroup(tg);
-
-    // Listener -> TG
+    // **IMPORTANTE**: adjuntar el TG al Listener (regla) Y NO usar registerLoadBalancers.
     listenerHttps.addTargetGroups('ApiTg', { targetGroups: [tg] });
 
-    // ====== AUTO SCALING ======
-    const scalable = service.autoScaleTaskCount({
-      minCapacity: 1,
-      maxCapacity: 2, // cap de coste
-    });
-
+    // --- Auto Scaling ---
+    const scalable = service.autoScaleTaskCount({ minCapacity: 1, maxCapacity: 2 });
     scalable.scaleOnCpuUtilization('CpuScaling', {
       targetUtilizationPercent: 60,
       scaleInCooldown: cdk.Duration.seconds(120),
       scaleOutCooldown: cdk.Duration.seconds(60),
     });
-
     scalable.scaleOnRequestCount('ReqScaling', {
       targetGroup: tg,
       requestsPerTarget: 100,
     });
 
-    // ====== S3 PERMISSIONS (para presigned y operaciones directas) ======
+    // --- Permisos S3 mínimos para presigned + exists/head/put/delete/list ---
     const bucketArn = 'arn:aws:s3:::sallejoven-events';
     const bucketObjectsArn = `${bucketArn}/*`;
-
-    // Usa addToTaskRolePolicy (no addToPolicy) para evitar el error de IRole
-    taskDef.addToTaskRolePolicy(new iam.PolicyStatement({
+    taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
       actions: [
-        's3:GetObject',             // GET / HEAD
-        's3:PutObject',             // PUT
-        's3:DeleteObject',          // DELETE
-        's3:AbortMultipartUpload',  // multipart
+        's3:GetObject','s3:PutObject','s3:DeleteObject','s3:AbortMultipartUpload',
+        's3:GetObjectAttributes','s3:GetObjectTagging','s3:GetObjectAcl','s3:PutObjectAcl'
       ],
       resources: [bucketObjectsArn],
     }));
-
-    taskDef.addToTaskRolePolicy(new iam.PolicyStatement({
-      actions: ['s3:ListBucket'],
+    taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: ['s3:ListBucket','s3:GetBucketLocation'],
       resources: [bucketArn],
     }));
 
-    // ====== OUTPUTS ======
     new cdk.CfnOutput(this, 'AlbDns', { value: alb.loadBalancerDnsName });
     new cdk.CfnOutput(this, 'ServiceSgId', { value: serviceSg.securityGroupId });
     new cdk.CfnOutput(this, 'ClusterName', { value: cluster.clusterName });
