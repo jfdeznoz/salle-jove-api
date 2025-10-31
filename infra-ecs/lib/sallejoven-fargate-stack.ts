@@ -82,12 +82,11 @@ export class SalleJovenFargateStack extends cdk.Stack {
       }),
     });
 
-    // Logs
+    // Task + container
     const logGroup = new logs.LogGroup(this, 'ApiLogGroup', {
       retention: logs.RetentionDays.ONE_MONTH,
     });
 
-    // Roles
     const execRole = new iam.Role(this, 'TaskExecutionRole', {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
       managedPolicies: [
@@ -95,7 +94,6 @@ export class SalleJovenFargateStack extends cdk.Stack {
       ],
     });
 
-    // Task def
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
       cpu: 512,
       memoryLimitMiB: 1024,
@@ -117,7 +115,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
         SPRING_DATASOURCE_URL:
           'jdbc:postgresql://database-salle.cju6gook2cqu.eu-north-1.rds.amazonaws.com:5432/postgres?sslmode=require',
         JAVA_TOOL_OPTIONS: '-XX:MaxRAMPercentage=75 -XX:+UseStringDeduplication -XX:+ExitOnOutOfMemoryError',
-        SALLE_AWS_REGION: 'eu-north-1', // Spring -> salle.aws.region
+        AWS_REGION: 'eu-north-1',
       },
       secrets: {
         SPRING_DATASOURCE_USERNAME: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
@@ -141,7 +139,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
       healthCheckGracePeriod: cdk.Duration.seconds(240),
     });
 
-    // Target Group (+ draining)
+    // Target Group
     const tg = new elbv2.ApplicationTargetGroup(this, 'TargetGroup', {
       vpc,
       protocol: elbv2.ApplicationProtocol.HTTP,
@@ -161,28 +159,26 @@ export class SalleJovenFargateStack extends cdk.Stack {
     service.attachToApplicationTargetGroup(tg);
     listenerHttps.addTargetGroups('ApiTg', { targetGroups: [tg] });
 
-    // Auto Scaling (CPU + RequestCount)
+    // Auto Scaling
     const scalable = service.autoScaleTaskCount({
       minCapacity: 1,
       maxCapacity: 2,
     });
-
     scalable.scaleOnCpuUtilization('CpuScaling', {
       targetUtilizationPercent: 60,
       scaleInCooldown: cdk.Duration.seconds(120),
       scaleOutCooldown: cdk.Duration.seconds(60),
     });
-
     scalable.scaleOnRequestCount('ReqScaling', {
       targetGroup: tg,
       requestsPerTarget: 100,
     });
 
-    // Permisos S3 para presigned/operaciones
+    // ✅ Permisos S3 para S3Client y S3Presigner
     const bucketArn = 'arn:aws:s3:::sallejoven-events';
     const bucketObjectsArn = `${bucketArn}/*`;
 
-    taskDef.taskRole.addToPolicy(new iam.PolicyStatement({
+    taskDef.addToTaskRolePolicy(new iam.PolicyStatement({
       actions: [
         's3:GetObject',
         's3:PutObject',
@@ -192,12 +188,11 @@ export class SalleJovenFargateStack extends cdk.Stack {
       resources: [bucketObjectsArn],
     }));
 
-    taskDef.taskRole.addToPolicy(new iam.PolicyStatement({
+    taskDef.addToTaskRolePolicy(new iam.PolicyStatement({
       actions: ['s3:ListBucket'],
       resources: [bucketArn],
     }));
 
-    // Outputs
     new cdk.CfnOutput(this, 'AlbDns', { value: alb.loadBalancerDnsName });
     new cdk.CfnOutput(this, 'ServiceSgId', { value: serviceSg.securityGroupId });
     new cdk.CfnOutput(this, 'ClusterName', { value: cluster.clusterName });
