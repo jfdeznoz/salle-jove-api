@@ -15,27 +15,30 @@ export class SalleJovenFargateStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    // === Infra base ===
     const vpc = ec2.Vpc.fromLookup(this, 'Vpc', { vpcId: 'vpc-09f408a62930f6f1d' });
     const cluster = new ecs.Cluster(this, 'Cluster', { vpc });
     const repo = ecr.Repository.fromRepositoryName(this, 'ApiEcrRepo', 'sallejoven-api');
 
+    // === Parámetros ===
     const CERT_ARN = 'arn:aws:acm:eu-north-1:659925004462:certificate/23c87695-563f-4904-b380-a453435bbd24';
     const RDS_SG_ID = 'sg-08d1b1505131491f6';
     const CONTAINER_PORT = 5000;
     const HEALTH_PATH = '/public/info';
 
+    // === Secrets ===
     const dbSecret   = secretsmanager.Secret.fromSecretNameV2(this, 'DbSecret',   'prod/sallejoven/db');
     const mailSecret = secretsmanager.Secret.fromSecretNameV2(this, 'MailSecret', 'prod/sallejoven/mail');
 
-    // --- SGs ---
+    // === Security Groups ===
     const albSg = new ec2.SecurityGroup(this, 'AlbSg', {
-      vpc, allowAllOutbound: true, description: 'ALB SG (80/443 from internet)',
+      vpc, allowAllOutbound: true, description: 'ALB SG (80/443 desde Internet)',
     });
     albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80));
     albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443));
 
     const serviceSg = new ec2.SecurityGroup(this, 'ServiceSg', {
-      vpc, allowAllOutbound: true, description: 'Fargate Service SG (ingress only from ALB)',
+      vpc, allowAllOutbound: true, description: 'Fargate Service SG (ingress solo desde ALB)',
     });
     serviceSg.addIngressRule(albSg, ec2.Port.tcp(CONTAINER_PORT));
 
@@ -47,25 +50,33 @@ export class SalleJovenFargateStack extends cdk.Stack {
       description: 'Allow ECS service to access Postgres on 5432',
     });
 
-    // --- ALB + listeners ---
+    // === ALB + Listeners ===
     const alb = new elbv2.ApplicationLoadBalancer(this, 'Alb', {
-      vpc, internetFacing: true, securityGroup: albSg, vpcSubnets: { subnets: vpc.publicSubnets },
+      vpc,
+      internetFacing: true,
+      securityGroup: albSg,
+      vpcSubnets: { subnets: vpc.publicSubnets },
     });
 
     const cert = acm.Certificate.fromCertificateArn(this, 'AlbCert', CERT_ARN);
     const listenerHttps = alb.addListener('HttpsListener', {
-      port: 443, certificates: [cert], protocol: elbv2.ApplicationProtocol.HTTPS,
-      sslPolicy: elbv2.SslPolicy.TLS13_RES, open: true,
+      port: 443,
+      certificates: [cert],
+      protocol: elbv2.ApplicationProtocol.HTTPS,
+      sslPolicy: elbv2.SslPolicy.TLS13_RES,
+      open: true,
     });
 
     const httpListener = alb.addListener('HttpRedirect', {
-      port: 80, protocol: elbv2.ApplicationProtocol.HTTP, open: true,
+      port: 80,
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      open: true,
     });
     httpListener.addAction('RedirectToHttps', {
       action: elbv2.ListenerAction.redirect({ protocol: 'HTTPS', port: '443', permanent: true }),
     });
 
-    // --- Task + container ---
+    // === Task Definition + Container ===
     const logGroup = new logs.LogGroup(this, 'ApiLogGroup', {
       retention: logs.RetentionDays.ONE_MONTH,
     });
@@ -78,7 +89,9 @@ export class SalleJovenFargateStack extends cdk.Stack {
     });
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-      cpu: 512, memoryLimitMiB: 1024, executionRole: execRole,
+      cpu: 512,
+      memoryLimitMiB: 1024,
+      executionRole: execRole,
     });
 
     dbSecret.grantRead(execRole);
@@ -108,7 +121,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
     });
     container.addPortMappings({ containerPort: CONTAINER_PORT });
 
-    // --- Service ---
+    // === Service ===
     const service = new ecs.FargateService(this, 'Service', {
       cluster,
       taskDefinition: taskDef,
@@ -117,17 +130,15 @@ export class SalleJovenFargateStack extends cdk.Stack {
       securityGroups: [serviceSg],
       circuitBreaker: { enable: true, rollback: true },
       vpcSubnets: { subnets: vpc.publicSubnets },
-      healthCheckGracePeriod: cdk.Duration.seconds(420), // más margen
+      // margen generoso para arranque de Spring/Liquibase
+      healthCheckGracePeriod: cdk.Duration.seconds(420),
     });
 
-    // --- Target Group (más tolerante) ---
-    const tg = new elbv2.ApplicationTargetGroup(this, 'TargetGroup', {
-      vpc,
+    // === Regla del Listener + Target Group (sin crearlo a mano) ===
+    const tg = listenerHttps.addTargets('ApiTargets', {
       protocol: elbv2.ApplicationProtocol.HTTP,
       port: CONTAINER_PORT,
-      targetType: elbv2.TargetType.IP,
       targets: [service],
-      deregistrationDelay: cdk.Duration.seconds(30),
       healthCheck: {
         path: HEALTH_PATH,
         healthyHttpCodes: '200-399',
@@ -138,10 +149,10 @@ export class SalleJovenFargateStack extends cdk.Stack {
       },
     });
 
-    // **IMPORTANTE**: adjuntar el TG al Listener (regla) Y NO usar registerLoadBalancers.
-    listenerHttps.addTargetGroups('ApiTg', { targetGroups: [tg] });
+    // Draining más rápido
+    tg.setAttribute('deregistration_delay.timeout_seconds', '30');
 
-    // --- Auto Scaling ---
+    // === Auto Scaling (CPU + RequestCount usando el TG devuelto por addTargets) ===
     const scalable = service.autoScaleTaskCount({ minCapacity: 1, maxCapacity: 2 });
     scalable.scaleOnCpuUtilization('CpuScaling', {
       targetUtilizationPercent: 60,
@@ -153,7 +164,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
       requestsPerTarget: 100,
     });
 
-    // --- Permisos S3 mínimos para presigned + exists/head/put/delete/list ---
+    // === Permisos S3 mínimos para presigned + head/put/delete/list ===
     const bucketArn = 'arn:aws:s3:::sallejoven-events';
     const bucketObjectsArn = `${bucketArn}/*`;
     taskDef.taskRole.addToPrincipalPolicy(new iam.PolicyStatement({
@@ -168,6 +179,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
       resources: [bucketArn],
     }));
 
+    // === Outputs ===
     new cdk.CfnOutput(this, 'AlbDns', { value: alb.loadBalancerDnsName });
     new cdk.CfnOutput(this, 'ServiceSgId', { value: serviceSg.securityGroupId });
     new cdk.CfnOutput(this, 'ClusterName', { value: cluster.clusterName });
