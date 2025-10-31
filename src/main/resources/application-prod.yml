@@ -1,8 +1,5 @@
 spring:
   datasource:
-    url: jdbc:postgresql://database-salle.cju6gook2cqu.eu-north-1.rds.amazonaws.com:5432/postgres
-    username: postgres
-    password: 1719_StarCheck
     driver-class-name: org.postgresql.Driver
     hikari:
       connectionTimeout: 20000
@@ -35,8 +32,6 @@ spring:
   mail:
     host: smtp.gmail.com
     port: 587
-    username: sallejovenapp@lasalleandalucia.net
-    password: dzfk itqm jmku tdkj     # App Password generado en Google
     properties:
       mail:
         smtp:
@@ -54,8 +49,6 @@ jwt:
 
 salle:
   aws:
-    access-key: AKIAZTJUYOCXGIOQCX6Q
-    secret-key: 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
     bucket-name: sallejoven-events
     bucket-url: https://sallejoven-events.s3.eu-north-1.amazonaws.com/
     prefix: ""
@@ -66,6 +59,3 @@ app:
     notifications: true
   reset:
     base-url: "https://starchecksallejoven.com/#/reset-password"
-
-server:
-  port: 5000

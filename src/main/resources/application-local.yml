@@ -1,8 +1,5 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/sallejoven
-    username: postgres
-    password: root
     driver-class-name: org.postgresql.Driver
     hikari:
       connectionTimeout: 20000
@@ -35,8 +32,6 @@ spring:
   mail:
     host: smtp.gmail.com
     port: 587
-    username: jfdeznoz@gmail.com     # tu cuenta Gmail local
-    password: bhka rxso nzkp ucio    # App Password de Google
     properties:
       mail:
         smtp:
@@ -54,8 +49,6 @@ jwt:
 
 salle:
   aws:
-    access-key: AKIAZTJUYOCXGIOQCX6Q
-    secret-key: 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
     bucket-name: sallejoven-events
     bucket-url: https://sallejoven-events.s3.eu-north-1.amazonaws.com/
     prefix: "test/"
@@ -66,6 +59,3 @@ app:
     notifications: true
   reset:
     base-url: "http://localhost:50605/#/reset-password"
-
-server:
-  port: 8080

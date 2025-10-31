@@ -32,7 +32,7 @@ import java.util.UUID;
 @Slf4j
 @Service
 public class S3Service {
-
+/*
     @Value("${salle.aws.access-key}")
     private String accessKey;
 
@@ -45,9 +45,6 @@ public class S3Service {
     @Value("${salle.aws.bucket-url}")
     private String bucketUrl;
 
-    /**
-     * Sube un MultipartFile a S3 y devuelve su URL pública.
-     */
     public String uploadFile(MultipartFile file, String folderPath) throws IOException {
         AmazonS3 s3client = getClient();
 
@@ -68,9 +65,6 @@ public class S3Service {
         }
     }
 
-    /**
-     * Sube un ByteArrayOutputStream como archivo y devuelve una URL prefirmada.
-     */
     public String uploadFileReport(ByteArrayOutputStream stream, String folderPath, String filename) throws IOException {
         AmazonS3 s3client = getClient();
 
@@ -106,35 +100,29 @@ public class S3Service {
 
     public byte[] downloadFile(String key) {
         AmazonS3 s3client = getClient();
-    
+
         try (InputStream inputStream = s3client.getObject(bucketName, key).getObjectContent();
              ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-    
+
             byte[] buffer = new byte[1024];
             int length;
             while ((length = inputStream.read(buffer)) != -1) {
                 outputStream.write(buffer, 0, length);
             }
-    
+
             return outputStream.toByteArray();
-    
+
         } catch (IOException | AmazonS3Exception e) {
             log.error("Error downloading file from S3: {}", e.getMessage());
             throw new RuntimeException("Error downloading file from S3", e);
         }
-    }    
+    }
 
-    /**
-     * Comprueba si existe un objeto en S3 con la clave dada.
-     */
     public boolean exists(String key) {
         AmazonS3 s3client = getClient();
         return s3client.doesObjectExist(bucketName, key);
     }
 
-    /**
-     * Devuelve la URL pública construida a partir del bucketUrl y la clave.
-     */
     public String getFileUrl(String key) {
         return bucketUrl + key;
     }
@@ -163,6 +151,6 @@ public class S3Service {
         }
         return "bin";
     }
-
+*/
 
 }
