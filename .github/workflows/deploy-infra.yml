@@ -9,7 +9,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  id-token: write
+  id-token: write   # OIDC
   contents: read
 
 concurrency:
@@ -19,16 +19,7 @@ concurrency:
 env:
   AWS_REGION: eu-north-1
   STACK_NAME: SalleJovenFargate
-
-  # === TUS VALORES (puedes moverlos a 'vars' o 'secrets' del repo/org) ===
-  VPC_ID: vpc-09f408a62930f6f1d
-  CERT_ARN: arn:aws:acm:eu-north-1:659925004462:certificate/23c87695-563f-4904-b380-a453435bbd24
-  RDS_SG_ID: sg-08d1b1505131491f6
-  ECR_REPO_NAME: sallejoven-api
-
-  CONTAINER_PORT: "5000"
-  HEALTH_PATH: /public/info
-  USE_PUBLIC_SUBNETS: "true"
+  VPC_ID: vpc-09f408a62930f6f1d   # <-- tu VPC
 
 jobs:
   deploy:
@@ -59,29 +50,11 @@ jobs:
           role-to-assume: arn:aws:iam::659925004462:role/github-cdk-deploy
           aws-region: ${{ env.AWS_REGION }}
 
-      # Bootstrap SIN contextos (idempotente)
-      - name: CDK bootstrap
-        run: npx cdk bootstrap --require-approval never
+      - name: CDK bootstrap (idempotent)
+        run: npx cdk bootstrap -c stage=prod --require-approval never
 
       - name: CDK synth
-        run: >
-          npx cdk synth ${{ env.STACK_NAME }}
-          -c vpcId=${{ env.VPC_ID }}
-          -c certArn=${{ env.CERT_ARN }}
-          -c rdsSgId=${{ env.RDS_SG_ID }}
-          -c ecrRepoName=${{ env.ECR_REPO_NAME }}
-          -c containerPort=${{ env.CONTAINER_PORT }}
-          -c healthPath=${{ env.HEALTH_PATH }}
-          -c usePublicSubnets=${{ env.USE_PUBLIC_SUBNETS }}
+        run: npx cdk synth ${{ env.STACK_NAME }} -c stage=prod -c useExistingVpc=true -c vpcId=${{ env.VPC_ID }}
 
       - name: CDK deploy
-        run: >
-          npx cdk deploy ${{ env.STACK_NAME }}
-          -c vpcId=${{ env.VPC_ID }}
-          -c certArn=${{ env.CERT_ARN }}
-          -c rdsSgId=${{ env.RDS_SG_ID }}
-          -c ecrRepoName=${{ env.ECR_REPO_NAME }}
-          -c containerPort=${{ env.CONTAINER_PORT }}
-          -c healthPath=${{ env.HEALTH_PATH }}
-          -c usePublicSubnets=${{ env.USE_PUBLIC_SUBNETS }}
-          --require-approval never --progress events
+        run: npx cdk deploy ${{ env.STACK_NAME }} -c stage=prod -c useExistingVpc=true -c vpcId=${{ env.VPC_ID }} --require-approval never

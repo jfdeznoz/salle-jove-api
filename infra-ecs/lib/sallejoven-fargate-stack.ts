@@ -11,61 +11,48 @@ import {
   aws_iam as iam,
 } from 'aws-cdk-lib';
 
-export interface SalleJovenFargateStackProps extends cdk.StackProps {
-  vpcId: string;                  // vpc-09f408a62930f6f1d
-  certArn: string;                // arn:aws:acm:eu-north-1:...:certificate/...
-  rdsSecurityGroupId: string;     // sg-08d1b1505131491f6
-  ecrRepoName: string;            // sallejoven-api
-  containerPort?: number;         // 5000 por defecto
-  healthPath?: string;            // /public/info por defecto
-  usePublicSubnets?: boolean;     // true por defecto
-}
-
 export class SalleJovenFargateStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props: SalleJovenFargateStackProps) {
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // ====== PARAMS / DEFAULTS ======
-    const CONTAINER_PORT = props.containerPort ?? 5000;
-    const HEALTH_PATH    = props.healthPath ?? '/public/info';
-    const USE_PUBLIC     = props.usePublicSubnets ?? true;
-
-    // ====== VPC ======
-    const vpc = ec2.Vpc.fromLookup(this, 'Vpc', { vpcId: props.vpcId });
-
-    // ====== CLUSTER ======
-    const cluster = new ecs.Cluster(this, 'Cluster', {
-      vpc,
-      enableFargateCapacityProviders: true,
-      // containerInsights: true, // habilítalo si tu versión CDK lo soporta como boolean
+    // ====== VPC EXISTENTE ======
+    const vpc = ec2.Vpc.fromLookup(this, 'Vpc', {
+      vpcId: 'vpc-09f408a62930f6f1d',
     });
 
-    // ====== ECR ======
-    const repo = ecr.Repository.fromRepositoryName(this, 'ApiEcrRepo', props.ecrRepoName);
+    // ====== CLUSTER ECS ======
+    const cluster = new ecs.Cluster(this, 'Cluster', { vpc });
 
-    // ====== SECRETS (DB) ======
+    // ====== ECR EXISTENTE ======
+    const repo = ecr.Repository.fromRepositoryName(this, 'ApiEcrRepo', 'sallejoven-api');
+
+    // ====== PARAMS ======
+    const CERT_ARN = 'arn:aws:acm:eu-north-1:659925004462:certificate/23c87695-563f-4904-b380-a453435bbd24';
+    const RDS_SG_ID = 'sg-08d1b1505131491f6';
+    const CONTAINER_PORT = 5000;
+    const HEALTH_PATH = '/public/info';
+
+    // ====== SECRET DB ======
     const dbSecret = secretsmanager.Secret.fromSecretNameV2(this, 'DbSecret', 'prod/sallejoven/db');
 
-    // ====== SGs ======
+    // ====== SECURITY GROUPS ======
     const albSg = new ec2.SecurityGroup(this, 'AlbSg', {
       vpc,
       allowAllOutbound: true,
       description: 'ALB SG (80/443 from internet)',
     });
-    albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80),  'Allow HTTP');
-    albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Allow HTTPS');
+    albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80));
+    albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443));
 
     const serviceSg = new ec2.SecurityGroup(this, 'ServiceSg', {
       vpc,
-      allowAllOutbound: true, // necesario para salir a RDS/S3/etc
+      allowAllOutbound: true,
       description: 'Fargate Service SG (ingress only from ALB)',
     });
-    serviceSg.addIngressRule(albSg, ec2.Port.tcp(CONTAINER_PORT), 'ALB -> Service container port');
+    serviceSg.addIngressRule(albSg, ec2.Port.tcp(CONTAINER_PORT));
 
-    const rdsSg = ec2.SecurityGroup.fromSecurityGroupId(this, 'RdsSg', props.rdsSecurityGroupId, { mutable: false });
-
-    // Regla de acceso a RDS (no podemos usar addIngressRule sobre un SG inmutable)
-    new ec2.CfnSecurityGroupIngress(this, 'RdsIngressFromServiceOn5432', {
+    const rdsSg = ec2.SecurityGroup.fromSecurityGroupId(this, 'RdsSg', RDS_SG_ID, { mutable: false });
+    new ec2.CfnSecurityGroupIngress(this, 'RdsFromService5432', {
       groupId: rdsSg.securityGroupId,
       sourceSecurityGroupId: serviceSg.securityGroupId,
       ipProtocol: 'tcp',
@@ -74,78 +61,68 @@ export class SalleJovenFargateStack extends cdk.Stack {
       description: 'Allow ECS service to access Postgres on 5432',
     });
 
-    // ====== ALB ======
+    // ====== ALB + LISTENERS ======
     const alb = new elbv2.ApplicationLoadBalancer(this, 'Alb', {
       vpc,
       internetFacing: true,
       securityGroup: albSg,
-      vpcSubnets: USE_PUBLIC ? { subnets: vpc.publicSubnets } : undefined,
-      http2Enabled: true,
+      vpcSubnets: { subnets: vpc.publicSubnets },
     });
 
-    const cert = acm.Certificate.fromCertificateArn(this, 'AlbCert', props.certArn);
+    let listenerHttps: elbv2.ApplicationListener;
+    if (CERT_ARN && CERT_ARN.startsWith('arn:aws:acm:')) {
+      const cert = acm.Certificate.fromCertificateArn(this, 'AlbCert', CERT_ARN);
 
-    // HTTPS Listener (default action -> forward a TG explícito)
-    const httpsListener = alb.addListener('HttpsListener', {
-      port: 443,
-      protocol: elbv2.ApplicationProtocol.HTTPS,
-      certificates: [cert],
-      open: true,
-    });
+      listenerHttps = alb.addListener('HttpsListener', {
+        port: 443,
+        certificates: [cert],
+        protocol: elbv2.ApplicationProtocol.HTTPS,
+        open: true,
+      });
 
-    // HTTP → HTTPS redirect (corregido: addAction requiere { action: ... })
-    const httpListener = alb.addListener('HttpListener', {
-      port: 80,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      open: true,
-    });
-    httpListener.addAction('RedirectToHttps', {
-      action: elbv2.ListenerAction.redirect({
-        protocol: 'HTTPS',
-        port: '443',
-        permanent: true,
-      }),
-    });
+      const httpListener = alb.addListener('HttpRedirect', {
+        port: 80,
+        protocol: elbv2.ApplicationProtocol.HTTP,
+        open: true,
+      });
+      httpListener.addAction('RedirectToHttps', {
+        action: elbv2.ListenerAction.redirect({
+          protocol: 'HTTPS',
+          port: '443',
+          permanent: true,
+        }),
+      });
+    } else {
+      listenerHttps = alb.addListener('HttpListener', {
+        port: 80,
+        protocol: elbv2.ApplicationProtocol.HTTP,
+        open: true,
+      });
+    }
 
-    // ====== LOGS ======
+    // ====== TASK DEF + CONTAINER ======
     const logGroup = new logs.LogGroup(this, 'ApiLogGroup', {
       retention: logs.RetentionDays.ONE_MONTH,
-      removalPolicy: cdk.RemovalPolicy.RETAIN, // en prod retenemos
-      logGroupName: `/ecs/sallejoven/api`,     // nombre estable y reconocible
     });
 
-    // ====== ROLES ======
-    const executionRole = new iam.Role(this, 'TaskExecutionRole', {
+    const execRole = new iam.Role(this, 'TaskExecutionRole', {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy'),
       ],
     });
 
-    const taskRole = new iam.Role(this, 'TaskRole', {
-      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-      description: 'App task role (business permissions go here)',
-    });
-
-    // Permiso de lectura del secreto tanto a executionRole como a taskRole
-    dbSecret.grantRead(executionRole);
-    dbSecret.grantRead(taskRole);
-
-    // ====== TASK DEF ======
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
       cpu: 256,
       memoryLimitMiB: 512,
-      executionRole,
-      taskRole,
-      runtimePlatform: {
-        operatingSystemFamily: ecs.OperatingSystemFamily.LINUX,
-        cpuArchitecture: ecs.CpuArchitecture.X86_64,
-      },
+      executionRole: execRole,
     });
+
+    dbSecret.grantRead(execRole);
+    dbSecret.grantRead(taskDef.taskRole);
 
     const container = taskDef.addContainer('ApiContainer', {
       image: ecs.ContainerImage.fromEcrRepository(repo, 'latest'),
-      essential: true,
       logging: ecs.LogDrivers.awsLogs({ logGroup, streamPrefix: 'api' }),
       environment: {
         SERVER_PORT: String(CONTAINER_PORT),
@@ -158,35 +135,28 @@ export class SalleJovenFargateStack extends cdk.Stack {
         SPRING_DATASOURCE_USERNAME: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
         SPRING_DATASOURCE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
       },
-      // Nota: si tu imagen no trae 'curl', evita healthCheck de contenedor.
-      // El ALB ya hará el health check HTTP contra la tarea.
+      essential: true,
     });
 
-    container.addPortMappings({ containerPort: CONTAINER_PORT, protocol: ecs.Protocol.TCP });
+    container.addPortMappings({ containerPort: CONTAINER_PORT });
 
     // ====== SERVICE ======
     const service = new ecs.FargateService(this, 'Service', {
       cluster,
       taskDefinition: taskDef,
       desiredCount: 1,
-      assignPublicIp: USE_PUBLIC, // si usas subredes públicas
+      assignPublicIp: true,
       securityGroups: [serviceSg],
       circuitBreaker: { enable: true, rollback: true },
-      vpcSubnets: USE_PUBLIC ? { subnets: vpc.publicSubnets } : undefined,
-      healthCheckGracePeriod: cdk.Duration.seconds(240),
-      enableECSManagedTags: true,
-      propagateTags: ecs.PropagatedTagSource.SERVICE,
-      capacityProviderStrategies: [
-        { capacityProvider: 'FARGATE', weight: 1 },
-      ],
+      vpcSubnets: { subnets: vpc.publicSubnets },
+      healthCheckGracePeriod: cdk.Duration.seconds(240), // Spring arranque lento
     });
 
-    // ====== TARGET GROUP explícito (IP) ======
-    const tg = new elbv2.ApplicationTargetGroup(this, 'ApiTg', {
-      vpc,
-      targetType: elbv2.TargetType.IP,             // Fargate -> IP
-      protocol: elbv2.ApplicationProtocol.HTTP,    // TLS termina en el ALB
+    // ====== LISTENER TARGETS ======
+    const tg = listenerHttps.addTargets('ApiTargets', {
+      protocol: elbv2.ApplicationProtocol.HTTP,
       port: CONTAINER_PORT,
+      targets: [service],
       healthCheck: {
         path: HEALTH_PATH,
         healthyHttpCodes: '200-399',
@@ -195,34 +165,13 @@ export class SalleJovenFargateStack extends cdk.Stack {
         healthyThresholdCount: 2,
         unhealthyThresholdCount: 5,
       },
-      deregistrationDelay: cdk.Duration.seconds(15),
-      // slowStart: cdk.Duration.seconds(30),      // descomenta si quieres warm-up
     });
 
-    // Registrar el servicio como target del TG
-    tg.addTarget(service);
-
-    // Listener HTTPS → TG (default action, sin prioridades)
-    httpsListener.addAction('ForwardToApi', {
-      action: elbv2.ListenerAction.forward([tg]),
-    });
-
-    // ====== AUTOSCALING ======
-    const scalable = service.autoScaleTaskCount({ minCapacity: 1, maxCapacity: 2 });
-    scalable.scaleOnCpuUtilization('CpuScaling', {
-      targetUtilizationPercent: 60,
-      scaleInCooldown: cdk.Duration.seconds(120),
-      scaleOutCooldown: cdk.Duration.seconds(60),
-    });
-    scalable.scaleOnRequestCount('ReqScaling', {
-      targetGroup: tg,
-      requestsPerTarget: 100,
-    });
+    // Ajustes extra de target group
+    tg.setAttribute('deregistration_delay.timeout_seconds', '15');
 
     // ====== OUTPUTS ======
     new cdk.CfnOutput(this, 'AlbDns', { value: alb.loadBalancerDnsName });
-    new cdk.CfnOutput(this, 'AlbArn', { value: alb.loadBalancerArn });
-    new cdk.CfnOutput(this, 'TargetGroupArn', { value: tg.targetGroupArn });
     new cdk.CfnOutput(this, 'ServiceSgId', { value: serviceSg.securityGroupId });
     new cdk.CfnOutput(this, 'ClusterName', { value: cluster.clusterName });
     new cdk.CfnOutput(this, 'VpcId', { value: vpc.vpcId });
