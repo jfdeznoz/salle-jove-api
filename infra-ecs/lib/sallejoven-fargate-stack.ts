@@ -19,15 +19,17 @@ export class SalleJovenFargateStack extends cdk.Stack {
     const cluster = new ecs.Cluster(this, 'Cluster', { vpc });
     const repo = ecr.Repository.fromRepositoryName(this, 'ApiEcrRepo', 'sallejoven-api');
 
+    // ====== PARAMS ======
     const CERT_ARN = 'arn:aws:acm:eu-north-1:659925004462:certificate/23c87695-563f-4904-b380-a453435bbd24';
     const RDS_SG_ID = 'sg-08d1b1505131491f6';
     const CONTAINER_PORT = 5000;
     const HEALTH_PATH = '/public/info';
 
-    const dbSecret = secretsmanager.Secret.fromSecretNameV2(this, 'DbSecret', 'prod/sallejoven/db');
+    // Secrets
+    const dbSecret   = secretsmanager.Secret.fromSecretNameV2(this, 'DbSecret',   'prod/sallejoven/db');
     const mailSecret = secretsmanager.Secret.fromSecretNameV2(this, 'MailSecret', 'prod/sallejoven/mail');
 
-    // SGs
+    // ====== SECURITY GROUPS ======
     const albSg = new ec2.SecurityGroup(this, 'AlbSg', {
       vpc,
       allowAllOutbound: true,
@@ -53,7 +55,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
       description: 'Allow ECS service to access Postgres on 5432',
     });
 
-    // ALB + listeners
+    // ====== ALB + LISTENERS ======
     const alb = new elbv2.ApplicationLoadBalancer(this, 'Alb', {
       vpc,
       internetFacing: true,
@@ -69,6 +71,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
       sslPolicy: elbv2.SslPolicy.TLS13_RES,
       open: true,
     });
+
     const httpListener = alb.addListener('HttpRedirect', {
       port: 80,
       protocol: elbv2.ApplicationProtocol.HTTP,
@@ -82,7 +85,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
       }),
     });
 
-    // Task + container
+    // ====== TASK DEF + CONTAINER ======
     const logGroup = new logs.LogGroup(this, 'ApiLogGroup', {
       retention: logs.RetentionDays.ONE_MONTH,
     });
@@ -100,6 +103,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
       executionRole: execRole,
     });
 
+    // Secrets access (ambos roles)
     dbSecret.grantRead(execRole);
     dbSecret.grantRead(taskDef.taskRole);
     mailSecret.grantRead(execRole);
@@ -125,9 +129,10 @@ export class SalleJovenFargateStack extends cdk.Stack {
       },
       essential: true,
     });
+
     container.addPortMappings({ containerPort: CONTAINER_PORT });
 
-    // Service
+    // ====== SERVICE ======
     const service = new ecs.FargateService(this, 'Service', {
       cluster,
       taskDefinition: taskDef,
@@ -139,13 +144,13 @@ export class SalleJovenFargateStack extends cdk.Stack {
       healthCheckGracePeriod: cdk.Duration.seconds(240),
     });
 
-    // Target Group
+    // ====== TARGET GROUP ======
+    // IMPORTANTE: no asociar aquí "targets: [service]" para evitar duplicados
     const tg = new elbv2.ApplicationTargetGroup(this, 'TargetGroup', {
       vpc,
       protocol: elbv2.ApplicationProtocol.HTTP,
       port: CONTAINER_PORT,
       targetType: elbv2.TargetType.IP,
-      targets: [service],
       deregistrationDelay: cdk.Duration.seconds(30),
       healthCheck: {
         path: HEALTH_PATH,
@@ -156,34 +161,41 @@ export class SalleJovenFargateStack extends cdk.Stack {
         unhealthyThresholdCount: 5,
       },
     });
+
+    // Asociación ÚNICA del Service al TG
     service.attachToApplicationTargetGroup(tg);
+
+    // Listener -> TG
     listenerHttps.addTargetGroups('ApiTg', { targetGroups: [tg] });
 
-    // Auto Scaling
+    // ====== AUTO SCALING ======
     const scalable = service.autoScaleTaskCount({
       minCapacity: 1,
-      maxCapacity: 2,
+      maxCapacity: 2, // cap de coste
     });
+
     scalable.scaleOnCpuUtilization('CpuScaling', {
       targetUtilizationPercent: 60,
       scaleInCooldown: cdk.Duration.seconds(120),
       scaleOutCooldown: cdk.Duration.seconds(60),
     });
+
     scalable.scaleOnRequestCount('ReqScaling', {
       targetGroup: tg,
       requestsPerTarget: 100,
     });
 
-    // ✅ Permisos S3 para S3Client y S3Presigner
+    // ====== S3 PERMISSIONS (para presigned y operaciones directas) ======
     const bucketArn = 'arn:aws:s3:::sallejoven-events';
     const bucketObjectsArn = `${bucketArn}/*`;
 
+    // Usa addToTaskRolePolicy (no addToPolicy) para evitar el error de IRole
     taskDef.addToTaskRolePolicy(new iam.PolicyStatement({
       actions: [
-        's3:GetObject',
-        's3:PutObject',
-        's3:DeleteObject',
-        's3:AbortMultipartUpload',
+        's3:GetObject',             // GET / HEAD
+        's3:PutObject',             // PUT
+        's3:DeleteObject',          // DELETE
+        's3:AbortMultipartUpload',  // multipart
       ],
       resources: [bucketObjectsArn],
     }));
@@ -193,6 +205,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
       resources: [bucketArn],
     }));
 
+    // ====== OUTPUTS ======
     new cdk.CfnOutput(this, 'AlbDns', { value: alb.loadBalancerDnsName });
     new cdk.CfnOutput(this, 'ServiceSgId', { value: serviceSg.securityGroupId });
     new cdk.CfnOutput(this, 'ClusterName', { value: cluster.clusterName });
