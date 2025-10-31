@@ -150,6 +150,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
       securityGroups: [serviceSg],
       circuitBreaker: { enable: true, rollback: true },
       vpcSubnets: { subnets: vpc.publicSubnets },
+      healthCheckGracePeriod: cdk.Duration.seconds(180), // 👈 clave para Spring lento
     });
 
     // ====== TARGET GROUP ======
@@ -168,6 +169,9 @@ export class SalleJovenFargateStack extends cdk.Stack {
         unhealthyThresholdCount: 5,
       },
     });
+
+    service.attachToApplicationTargetGroup(tg);
+
     listenerHttps.addTargetGroups('ApiTg', { targetGroups: [tg] });
 
     // ====== OUTPUTS ======
