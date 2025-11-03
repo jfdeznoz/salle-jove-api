@@ -34,6 +34,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
 
     // ====== SECRET DB ======
     const dbSecret = secretsmanager.Secret.fromSecretNameV2(this, 'DbSecret', 'prod/sallejoven/db');
+    const mailSecret = secretsmanager.Secret.fromSecretNameV2(this, 'MailSecret', 'prod/sallejoven/mail');
 
     // ====== SECURITY GROUPS ======
     const albSg = new ec2.SecurityGroup(this, 'AlbSg', {
@@ -120,6 +121,8 @@ export class SalleJovenFargateStack extends cdk.Stack {
 
     dbSecret.grantRead(execRole);
     dbSecret.grantRead(taskDef.taskRole);
+    mailSecret.grantRead(execRole);
+    mailSecret.grantRead(taskDef.taskRole);
 
     const container = taskDef.addContainer('ApiContainer', {
       image: ecs.ContainerImage.fromEcrRepository(repo, 'latest'),
@@ -134,6 +137,8 @@ export class SalleJovenFargateStack extends cdk.Stack {
       secrets: {
         SPRING_DATASOURCE_USERNAME: ecs.Secret.fromSecretsManager(dbSecret, 'username'),
         SPRING_DATASOURCE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, 'password'),
+        SPRING_MAIL_USERNAME: ecs.Secret.fromSecretsManager(mailSecret, 'username'),
+        SPRING_MAIL_PASSWORD: ecs.Secret.fromSecretsManager(mailSecret, 'password'),
       },
       essential: true,
     });
