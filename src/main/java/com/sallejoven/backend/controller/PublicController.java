@@ -34,7 +34,7 @@ public class PublicController {
 
     @GetMapping("/info")
     public ResponseEntity<String> getPublicInfo() {
-        return ResponseEntity.ok("This is a public endpoint accessible by anyone.");
+        return ResponseEntity.ok("This is a public endpoint accessible by anyone.(2)");
     }
 
     @GetMapping("/centers")

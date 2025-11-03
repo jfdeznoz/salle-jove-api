@@ -1,18 +1,20 @@
 spring:
   datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/sallejoven}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:root}
     driver-class-name: org.postgresql.Driver
     hikari:
-      connectionTimeout: 20000
-      minimumIdle: 5
-      maximumPoolSize: 10
-    platform: postgres
-
+      connection-timeout: 20000
+      minimum-idle: 5
+      maximum-pool-size: 10
   jpa:
     hibernate:
       ddl-auto: update
     properties:
       hibernate:
         format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
 
   jackson:
     serialization:
@@ -32,6 +34,8 @@ spring:
   mail:
     host: smtp.gmail.com
     port: 587
+    username: jfdeznoz@gmail.com
+    password: bhka rxso nzkp ucio
     properties:
       mail:
         smtp:
