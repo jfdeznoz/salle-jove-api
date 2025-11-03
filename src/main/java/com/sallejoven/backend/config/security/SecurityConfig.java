@@ -107,7 +107,7 @@ public class SecurityConfig {
                         .authenticationEntryPoint(authEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler)
                 )
-                .httpBasic(AbstractHttpConfigurer::disable)
+                .httpBasic(httpBasic -> {})
                 .formLogin(AbstractHttpConfigurer::disable)
                 .build();
     }
