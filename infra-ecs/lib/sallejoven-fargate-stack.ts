@@ -157,6 +157,56 @@ export class SalleJovenFargateStack extends cdk.Stack {
       healthCheckGracePeriod: cdk.Duration.seconds(240), // Spring arranque lento
     });
 
+    // ====== AUTOSCALING ======
+    const scaling = service.autoScaleTaskCount({
+      minCapacity: 1,
+      maxCapacity: 4,// ====== SERVICE ======
+                         const service = new ecs.FargateService(this, 'Service', {
+                           cluster,
+                           taskDefinition: taskDef,
+                           desiredCount: 1,
+                           assignPublicIp: true,
+                           securityGroups: [serviceSg],
+                           circuitBreaker: { enable: true, rollback: true },
+                           vpcSubnets: { subnets: vpc.publicSubnets },
+                           healthCheckGracePeriod: cdk.Duration.seconds(240), // Spring arranque lento
+                         });
+
+                         // ====== AUTOSCALING ======
+                         const scaling = service.autoScaleTaskCount({
+                           minCapacity: 1,
+                           maxCapacity: 4,
+                         });
+
+                         // Escala por CPU > 60%
+                         scaling.scaleOnCpuUtilization('Cpu60', {
+                           targetUtilizationPercent: 60,
+                           scaleInCooldown: cdk.Duration.seconds(120),
+                           scaleOutCooldown: cdk.Duration.seconds(60),
+                         });
+
+                         // Escala por Memoria > 70%
+                         scaling.scaleOnMemoryUtilization('Mem70', {
+                           targetUtilizationPercent: 70,
+                           scaleInCooldown: cdk.Duration.seconds(120),
+                           scaleOutCooldown: cdk.Duration.seconds(60),
+                         });
+    });
+
+    // Escala por CPU > 60%
+    scaling.scaleOnCpuUtilization('Cpu60', {
+      targetUtilizationPercent: 60,
+      scaleInCooldown: cdk.Duration.seconds(120),
+      scaleOutCooldown: cdk.Duration.seconds(60),
+    });
+
+    // Escala por Memoria > 70%
+    scaling.scaleOnMemoryUtilization('Mem70', {
+      targetUtilizationPercent: 70,
+      scaleInCooldown: cdk.Duration.seconds(120),
+      scaleOutCooldown: cdk.Duration.seconds(60),
+    });
+
     // ====== LISTENER TARGETS ======
     const tg = listenerHttps.addTargets('ApiTargets5000', {
       protocol: elbv2.ApplicationProtocol.HTTP,
