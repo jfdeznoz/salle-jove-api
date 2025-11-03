@@ -158,7 +158,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
     });
 
     // ====== LISTENER TARGETS ======
-    const tg = listenerHttps.addTargets('ApiTargets', {
+    const tg = listenerHttps.addTargets('ApiTargets5000', {
       protocol: elbv2.ApplicationProtocol.HTTP,
       port: CONTAINER_PORT,
       targets: [service],
