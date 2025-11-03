@@ -90,8 +90,10 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain signInSecurityFilterChain(HttpSecurity http) throws Exception {
         return http
-                .securityMatcher(new AntPathRequestMatcher("/sign-in/**"))
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .securityMatcher(
+                        new AntPathRequestMatcher("/sign-in")
+                )
+                .cors(c -> c.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
@@ -103,7 +105,8 @@ public class SecurityConfig {
                         .authenticationEntryPoint(authEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler)
                 )
-                .httpBasic(httpBasic -> {})
+                .httpBasic(AbstractHttpConfigurer::disable)   // <-- desactivar Basic
+                .formLogin(AbstractHttpConfigurer::disable)   // <-- por si acaso
                 .build();
     }
 
