@@ -29,7 +29,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
     // ====== PARAMS ======
     const CERT_ARN = 'arn:aws:acm:eu-north-1:659925004462:certificate/23c87695-563f-4904-b380-a453435bbd24';
     const RDS_SG_ID = 'sg-08d1b1505131491f6';
-    const CONTAINER_PORT = 8080;
+    const CONTAINER_PORT = 5000;
     const HEALTH_PATH = '/public/info';
 
     // ====== SECRET DB ======
