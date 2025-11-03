@@ -114,8 +114,8 @@ export class SalleJovenFargateStack extends cdk.Stack {
     });
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-      cpu: 256,
-      memoryLimitMiB: 512,
+      cpu: 512,
+      memoryLimitMiB: 1024,
       executionRole: execRole,
     });
 
