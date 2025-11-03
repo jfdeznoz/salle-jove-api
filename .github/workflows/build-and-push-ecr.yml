@@ -62,3 +62,17 @@ jobs:
         run: |
           echo "Pushed: $ECR_URI:latest"
           echo "Pushed: $ECR_URI:${GITHUB_SHA::7}"
+
+      - name: Force new ECS deployment
+        env:
+          CLUSTER: SalleJovenFargate-ClusterEB0386A7-4dnvcjLvEfC0
+          SERVICE: SalleJovenFargate-ServiceD69D759B-bNxQApTIQkkr
+          AWS_REGION: eu-north-1
+        run: |
+          echo "🔄 Forcing new ECS deployment on $SERVICE..."
+          aws ecs update-service \
+            --cluster $CLUSTER \
+            --service $SERVICE \
+            --force-new-deployment \
+            --region $AWS_REGION
+      
