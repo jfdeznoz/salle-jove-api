@@ -103,11 +103,25 @@ public class SecurityConfig {
                 )
                 .userDetailsService(userInfoManagerConfig)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+
+                // 👇 Mantén Basic para Postman, pero usa TU entrypoint que NO añade el header
+                .httpBasic(h -> h.authenticationEntryPoint((req, res, ex) -> {
+                    res.setStatus(401);
+                    res.setContentType("application/json");
+                    res.setHeader("WWW-Authenticate", "");  // <- sin esquema Basic => NO popup
+                    res.getWriter().write("{\"error\":\"unauthorized\"}");
+                }))
+
+                // por si alguna excepción cae fuera de httpBasic()
                 .exceptionHandling(ex -> ex
-                        .authenticationEntryPoint(authEntryPoint)
+                        .authenticationEntryPoint((req, res, e) -> {
+                            res.setStatus(401);
+                            res.setContentType("application/json");
+                            res.setHeader("WWW-Authenticate", "");
+                            res.getWriter().write("{\"error\":\"unauthorized\"}");
+                        })
                         .accessDeniedHandler(accessDeniedHandler)
                 )
-                .httpBasic(httpBasic -> {})
                 .formLogin(AbstractHttpConfigurer::disable)
                 .build();
     }
