@@ -1,17 +1,14 @@
 package com.sallejoven.backend.service;
 
 import com.sallejoven.backend.errors.SalleException;
-import com.sallejoven.backend.model.dto.UserPendingDto;
-import com.sallejoven.backend.model.dto.UserSelfDto;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserPending;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
-import com.sallejoven.backend.model.types.ErrorCodes;
+import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.repository.UserPendingRepository;
 import com.sallejoven.backend.repository.UserRepository;
-import com.sallejoven.backend.utils.SalleConverters;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;

@@ -106,15 +106,17 @@ public class UserController {
 
     @GetMapping("/self")
     public UserSelfDto getSelfData() throws SalleException {
-        String userEmail = authService.getCurrentUserEmail();
-        return salleConverters.buildSelfUserInfo(userEmail);
+        UserSalle user = authService.getCurrentUser();
+        return salleConverters.buildSelfUserInfo(user);
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("@authz.isAnyManagerType()")
     @GetMapping("/search")
     public ResponseEntity<List<UserSelfDto>> searchUsers(@RequestParam("search") String search) throws SalleException {
-        List<UserSalle> users = userService.searchUsers(search);
-        List<UserSelfDto> result = users.stream()
+        UserSalle me = authService.getCurrentUser();
+
+        var users = userService.searchUsersSmart(search, me);
+        var result = users.stream()
                 .map(u -> {
                     try { return salleConverters.buildSelfUserInfo(u); }
                     catch (SalleException e) { throw new RuntimeException(e); }

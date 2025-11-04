@@ -1,6 +1,6 @@
 package com.sallejoven.backend.controller;
 
-import com.sallejoven.backend.model.types.ReportType;
+import com.sallejoven.backend.model.enums.ReportType;
 import com.sallejoven.backend.service.ReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

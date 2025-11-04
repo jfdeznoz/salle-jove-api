@@ -2,7 +2,7 @@ package com.sallejoven.backend.service;
 
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.AcademicState;
-import com.sallejoven.backend.model.types.ErrorCodes;
+import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.repository.AcademicStateRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -36,5 +36,18 @@ public class AcademicStateService {
         st.setPromotedAt(OffsetDateTime.now());
         repo.save(st);
         return year;
+    }
+
+    public boolean isLocked() {
+        return repo.findById((short) 1)
+                .map(AcademicState::isLocked)
+                .orElse(false);
+    }
+
+    public void setLocked(boolean locked) {
+        AcademicState state = repo.findById((short) 1)
+                .orElseThrow(() -> new IllegalStateException("Academic state not found"));
+        state.setLocked(locked);
+        repo.save(state);
     }
 }

@@ -4,7 +4,7 @@ import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.Center;
 import com.sallejoven.backend.model.entity.UserCenter;
 import com.sallejoven.backend.model.entity.UserSalle;
-import com.sallejoven.backend.model.types.ErrorCodes;
+import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.repository.CenterRepository;
 import com.sallejoven.backend.repository.UserCenterRepository;
 import com.sallejoven.backend.repository.UserRepository;

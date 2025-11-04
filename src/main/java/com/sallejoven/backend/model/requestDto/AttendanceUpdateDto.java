@@ -1,7 +1,7 @@
 package com.sallejoven.backend.model.requestDto;
 
 import com.sallejoven.backend.errors.SalleException;
-import com.sallejoven.backend.model.types.ErrorCodes;
+import com.sallejoven.backend.model.enums.ErrorCodes;
 
 import lombok.Data;
 

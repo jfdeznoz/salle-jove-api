@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Repository
 public interface UserRepository extends JpaRepository<UserSalle, Long> {
@@ -73,6 +74,36 @@ public interface UserRepository extends JpaRepository<UserSalle, Long> {
     ORDER BY u.name NULLS LAST, u.last_name NULLS LAST
     """, nativeQuery = true)
     List<UserSalle> searchUsersNormalized(@Param("normalized") String normalized);
+
+    @Query(value = """
+    SELECT DISTINCT u.*
+    FROM user_salle u
+    LEFT JOIN user_group ug ON ug.user_salle = u.id
+    LEFT JOIN group_salle g ON g.id = ug.group_salle
+    WHERE u.deleted_at IS NULL
+      AND g.center IN (:centerIds)
+      AND (
+        lower(
+          translate(
+            trim(coalesce(u.name,'') || ' ' || coalesce(u.last_name,'')),
+            'ÁÉÍÓÚÜÀÈÌÒÙÑáéíóúüàèìòùñ',
+            'AEIOUUAEIOUNaeiouuaeioun'
+          )
+        ) LIKE CONCAT('%', :normalized, '%')
+        OR
+        lower(
+          translate(
+            coalesce(u.email,''),
+            'ÁÉÍÓÚÜÀÈÌÒÙÑáéíóúüàèìòùñ',
+            'AEIOUUAEIOUNaeiouuaeioun'
+          )
+        ) LIKE CONCAT('%', :normalized, '%')
+      )
+    ORDER BY u.name NULLS LAST, u.last_name NULLS LAST
+    """, nativeQuery = true)
+    List<UserSalle> searchUsersNormalizedByCenters(@Param("normalized") String normalized,
+                                                   @Param("centerIds") Set<Long> centerIds);
+
 
     @Query("""
         select distinct u
