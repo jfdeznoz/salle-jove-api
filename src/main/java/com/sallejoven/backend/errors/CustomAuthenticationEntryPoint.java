@@ -1,7 +1,7 @@
 package com.sallejoven.backend.errors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sallejoven.backend.model.types.ErrorCodes;
+import com.sallejoven.backend.model.enums.ErrorCodes;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;

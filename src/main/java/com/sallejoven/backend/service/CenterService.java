@@ -1,9 +1,6 @@
 package com.sallejoven.backend.service;
 
 import com.sallejoven.backend.errors.SalleException;
-import com.sallejoven.backend.model.dto.UserCenterDto;
-import com.sallejoven.backend.model.dto.UserCenterGroupsDto;
-import com.sallejoven.backend.model.dto.UserGroupDto;
 import com.sallejoven.backend.model.entity.Center;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserCenter;
@@ -12,22 +9,18 @@ import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.enums.UserType;
 import com.sallejoven.backend.model.raw.UserCenterGroupsRaw;
-import com.sallejoven.backend.model.types.ErrorCodes;
+import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.repository.CenterRepository;
-import com.sallejoven.backend.utils.SalleConverters;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 

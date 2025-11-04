@@ -1,6 +1,6 @@
 package com.sallejoven.backend.errors;
 
-import com.sallejoven.backend.model.types.ErrorCodes;
+import com.sallejoven.backend.model.enums.ErrorCodes;
 
 public class SalleException extends Exception{
 

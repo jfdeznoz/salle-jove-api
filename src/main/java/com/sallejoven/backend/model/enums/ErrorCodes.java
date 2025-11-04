@@ -1,4 +1,4 @@
-package com.sallejoven.backend.model.types;
+package com.sallejoven.backend.model.enums;
 
 public enum ErrorCodes {
 

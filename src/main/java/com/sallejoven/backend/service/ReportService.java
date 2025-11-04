@@ -6,10 +6,9 @@ import com.sallejoven.backend.model.entity.Event;
 import com.sallejoven.backend.model.entity.EventUser;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserSalle;
-import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.enums.Stage;
 import com.sallejoven.backend.model.enums.TshirtSizeEnum;
-import com.sallejoven.backend.model.types.ReportType;
+import com.sallejoven.backend.model.enums.ReportType;
 import com.sallejoven.backend.repository.projection.SeguroRow;
 import com.sallejoven.backend.utils.ExcelReportUtils;
 
@@ -24,14 +23,10 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor

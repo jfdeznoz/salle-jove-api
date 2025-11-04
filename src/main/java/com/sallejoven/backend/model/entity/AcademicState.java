@@ -20,4 +20,7 @@ public class AcademicState {
 
     @Column(name = "promoted_at")
     private OffsetDateTime promotedAt;
+
+    @Column(name = "locked", nullable = false)
+    private boolean locked = false;
 }

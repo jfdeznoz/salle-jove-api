@@ -4,7 +4,7 @@ import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
-import com.sallejoven.backend.model.types.ErrorCodes;
+import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.repository.UserGroupRepository;
 import com.sallejoven.backend.repository.UserRepository;
 import com.sallejoven.backend.repository.projection.SeguroRow;
@@ -12,7 +12,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;

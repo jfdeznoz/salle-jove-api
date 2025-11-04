@@ -1,13 +1,12 @@
 package com.sallejoven.backend.service;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.sallejoven.backend.config.security.JwtProperties;
-import com.sallejoven.backend.model.types.ErrorCodes;
+import com.sallejoven.backend.model.enums.ErrorCodes;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -27,7 +26,6 @@ import com.sallejoven.backend.model.enums.TokenType;
 import com.sallejoven.backend.repository.RefreshTokenRepository;
 import com.sallejoven.backend.repository.UserRepository;
 
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -68,6 +66,7 @@ public class AuthService {
         if (authorities.contains("ROLE_ADMIN")) {
             return List.of(Role.ADMIN);
         }
+
         boolean isPD = authorities.stream().anyMatch(a -> a.contains(":PASTORAL_DELEGATE:"));
         if (isPD) return List.of(Role.PASTORAL_DELEGATE);
 

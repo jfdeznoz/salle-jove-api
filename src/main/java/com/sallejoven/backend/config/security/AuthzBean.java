@@ -65,9 +65,6 @@ public class AuthzBean {
 
         String suffix = ":" + year;
         for (String a : as) {
-            // Ejemplos válidos:
-            // "CENTER:{cid}:PASTORAL_DELEGATE:{year}"
-            // "CENTER:{cid}:GROUP_LEADER:{year}"   // Responsable Salle Joven
             if (a.startsWith("CENTER:") && a.endsWith(suffix) &&
                     (a.contains(":PASTORAL_DELEGATE:") || a.contains(":GROUP_LEADER:"))) {
                 return true;

@@ -1,16 +1,17 @@
 package com.sallejoven.backend.service;
 
 import com.sallejoven.backend.errors.SalleException;
+import com.sallejoven.backend.model.entity.Center;
 import com.sallejoven.backend.model.entity.Event;
 import com.sallejoven.backend.model.entity.GroupSalle;
+import com.sallejoven.backend.model.entity.UserCenter;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserPending;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.model.requestDto.UserSalleRequestOptional;
-import com.sallejoven.backend.model.types.ErrorCodes;
-import com.sallejoven.backend.repository.UserPendingRepository;
+import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.repository.UserRepository;
 import com.sallejoven.backend.utils.TextNormalizeUtils;
 import jakarta.transaction.Transactional;
@@ -19,9 +20,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -41,6 +44,29 @@ public class UserService {
 
     public UserSalle findByUserId(Long id) throws SalleException {
         return userRepository.findById(id).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
+    }
+
+    public List<UserSalle> searchUsersSmart(String rawSearch, UserSalle me) throws SalleException {
+        String normalized = TextNormalizeUtils.toLowerNoAccents(rawSearch).trim();
+        if (normalized.length() < 5) return List.of();
+
+        if (Boolean.TRUE.equals(me.getIsAdmin())) {
+            return userRepository.searchUsersNormalized(normalized); // global
+        }
+
+        List<UserCenter> userCenters = userCenterService.findByUserForCurrentYear(me.getId());
+        if (userCenters == null || userCenters.isEmpty()) return List.of();
+
+        Set<Long> centerIds = userCenters.stream()
+                .map(UserCenter::getCenter)
+                .filter(java.util.Objects::nonNull)
+                .map(Center::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        if (centerIds.isEmpty()) return List.of();
+
+        return userRepository.searchUsersNormalizedByCenters(normalized, centerIds);
     }
 
     public List<UserSalle> searchUsers(String rawSearch) {
