@@ -1,42 +1,46 @@
 package com.sallejoven.backend.errors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.sallejoven.backend.model.types.ErrorCodes;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.http.converter.HttpMessageConverter;
-import org.springframework.http.server.ServerHttpResponse;
-import org.springframework.http.server.ServletServerHttpResponse;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
 
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
 @Component
 public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
-    @Autowired
-    private HttpMessageConverter<String> messageConverter;
+    private final ObjectMapper mapper;
 
-    @Autowired
-    private ObjectMapper mapper;
+    public CustomAuthenticationEntryPoint(ObjectMapper mapper) {
+        this.mapper = mapper;
+    }
 
     @Override
-    public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException e) throws IOException {
-        var error = new Error(HttpStatus.UNAUTHORIZED);
-        error.setMessage("Authentication failed");
-        error.setDebugMessage(e.getMessage());
-        error.setPath(request.getRequestURI());
+    public void commence(HttpServletRequest request,
+                         HttpServletResponse response,
+                         AuthenticationException ex) throws IOException {
 
-        try (ServerHttpResponse outputMessage = new ServletServerHttpResponse(response)) {
-            outputMessage.setStatusCode(HttpStatus.UNAUTHORIZED);
-            messageConverter.write(mapper.writeValueAsString(error), MediaType.APPLICATION_JSON, outputMessage);
-        } catch (Exception ex) {
-            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            response.getWriter().write("{\"error\": \"Unable to process authentication error.\"}");
-        }
+        // Evita el popup de Basic Auth
+        response.setHeader("WWW-Authenticate", "");
+
+        // Construye tu modelo Error
+        var error = new Error(HttpStatus.UNAUTHORIZED);
+        error.setMessage(ErrorCodes.INVALID_CREDENTIALS.getMessage());
+        error.setDebugMessage(null); // no revelar detalle
+        error.setPath(request.getRequestURI());
+        error.addSubError(new Error.ApiValidationError(
+                "Auth",
+                ErrorCodes.INVALID_CREDENTIALS.getErrorCode()
+        ));
+
+        response.setStatus(HttpStatus.UNAUTHORIZED.value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        mapper.writeValue(response.getWriter(), error);
     }
 }

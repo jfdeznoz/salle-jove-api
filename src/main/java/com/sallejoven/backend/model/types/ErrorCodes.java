@@ -20,7 +20,8 @@ public enum ErrorCodes {
     USER_TYPE_NOT_VALID("El tipo de usuario no es correcto", "E016"),
     EMAIL_ALREADY_EXISTS("Ya existe un usuario con este email", "E017"),
     DNI_ALREADY_EXISTS("Ya existe un usuario con este dni", "E018"),
-    INVALID_FILE_TYPE("Sólo se permiten archivos PDF", "E019");
+    INVALID_FILE_TYPE("Sólo se permiten archivos PDF", "E019"),
+    INVALID_CREDENTIALS("Credenciales incorrectas", "E020");
 
     private final String message;
     private final String errorCode;
