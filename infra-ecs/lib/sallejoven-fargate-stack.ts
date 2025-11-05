@@ -70,6 +70,8 @@ export class SalleJovenFargateStack extends cdk.Stack {
       vpcSubnets: { subnets: vpc.publicSubnets },
     });
 
+    alb.setAttribute('idle_timeout.timeout_seconds', '180'); // 3 min (ajusta a tu caso)
+
     let listenerHttps: elbv2.ApplicationListener;
     if (CERT_ARN && CERT_ARN.startsWith('arn:aws:acm:')) {
       const cert = acm.Certificate.fromCertificateArn(this, 'AlbCert', CERT_ARN);
@@ -114,8 +116,8 @@ export class SalleJovenFargateStack extends cdk.Stack {
     });
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-      cpu: 512,
-      memoryLimitMiB: 1024,
+      cpu: 1024,
+      memoryLimitMiB: 2048,
       executionRole: execRole,
     });
 
@@ -160,21 +162,21 @@ export class SalleJovenFargateStack extends cdk.Stack {
     // ====== AUTOSCALING ======
     const scaling = service.autoScaleTaskCount({
       minCapacity: 1,
-      maxCapacity: 4,
+      maxCapacity: 3,
     });
 
     // Escala por CPU > 60%
     scaling.scaleOnCpuUtilization('Cpu60', {
       targetUtilizationPercent: 60,
-      scaleInCooldown: cdk.Duration.seconds(120),
-      scaleOutCooldown: cdk.Duration.seconds(60),
+      scaleInCooldown: cdk.Duration.seconds(180),
+      scaleOutCooldown: cdk.Duration.seconds(45),
     });
 
     // Escala por Memoria > 70%
     scaling.scaleOnMemoryUtilization('Mem70', {
       targetUtilizationPercent: 70,
-      scaleInCooldown: cdk.Duration.seconds(120),
-      scaleOutCooldown: cdk.Duration.seconds(60),
+      scaleInCooldown: cdk.Duration.seconds(180),
+      scaleOutCooldown: cdk.Duration.seconds(45),
     });
 
     // ====== LISTENER TARGETS ======

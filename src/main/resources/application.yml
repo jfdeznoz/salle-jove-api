@@ -3,4 +3,5 @@ spring:
     name: salle-joven
 
 server:
+  connection-timeout: 120s
   port: ${PORT:8080}
