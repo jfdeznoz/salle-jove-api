@@ -37,7 +37,10 @@ public class AuthController {
 
     @PostMapping("/sign-in")
     public ResponseEntity<?> authenticateUser(Authentication authentication, HttpServletResponse response){
-        return ResponseEntity.ok(authService.getJwtTokensAfterAuthentication(authentication,response));
+        if (authentication == null || authentication.getName() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing or invalid credentials");
+        }
+        return ResponseEntity.ok(authService.getJwtTokensAfterAuthentication(authentication, response));
     }
 
     @PostMapping("/refresh-token")
