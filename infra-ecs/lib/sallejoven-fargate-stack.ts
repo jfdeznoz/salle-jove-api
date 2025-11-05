@@ -70,8 +70,6 @@ export class SalleJovenFargateStack extends cdk.Stack {
       vpcSubnets: { subnets: vpc.publicSubnets },
     });
 
-    alb.setAttribute('idle_timeout.timeout_seconds', '180'); // 3 min (ajusta a tu caso)
-
     let listenerHttps: elbv2.ApplicationListener;
     if (CERT_ARN && CERT_ARN.startsWith('arn:aws:acm:')) {
       const cert = acm.Certificate.fromCertificateArn(this, 'AlbCert', CERT_ARN);
