@@ -1,7 +1,8 @@
 package com.sallejoven.backend.controller;
 
+import com.sallejoven.backend.model.dto.ReportQueueResult;
 import com.sallejoven.backend.model.enums.ReportType;
-import com.sallejoven.backend.service.ReportService;
+import com.sallejoven.backend.service.ReportQueueService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -21,35 +22,41 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ReportController {
 
-    private final ReportService reportService;
+    private final ReportQueueService reportQueueService;
 
     @PreAuthorize("@authz.canManageEventForEditOrDelete(#eventId)")
     @GetMapping("/event/{eventId}")
-    public ResponseEntity<Map<String, List<String>>> generateEventReports(@PathVariable Long eventId, @RequestParam("types") String typesCsv, 
-                                                                        @RequestParam(defaultValue = "false") boolean overwrite) throws Exception {
-        List<Integer> idxs = Arrays.stream(typesCsv.split(","))
+    public ResponseEntity<Map<String, Object>> enqueueEventReports(
+            @PathVariable Long eventId,
+            @RequestParam("types") String typesCsv,
+            @RequestParam(defaultValue = "false") boolean overwrite
+    ) throws Exception {
+
+        List<ReportType> types = Arrays.stream(typesCsv.split(","))
                 .map(String::trim)
                 .map(Integer::parseInt)
+                .map(i -> ReportType.values()[i])
                 .collect(Collectors.toList());
 
-        List<ReportType> enumTypes = idxs.stream()
-                .map(i -> {
-                    try {
-                        return ReportType.values()[i];
-                    } catch (ArrayIndexOutOfBoundsException e) {
-                        throw new IllegalArgumentException("Índice inválido de ReportType: " + i);
-                    }
-                })
-                .collect(Collectors.toList());
+        ReportQueueResult res = reportQueueService.enqueueEventReports(eventId, types, overwrite);
 
-        List<String> urls = reportService.generateEventReports(eventId, enumTypes, overwrite);
-        return ResponseEntity.ok(Map.of("reportUrls", urls));
+        return ResponseEntity.accepted().body(Map.of(
+                "jobId", res.jobId(),
+                "resultKey", res.resultKey(),
+                "outputPrefix", res.outputPrefix(),
+                "environment", res.environment()
+        ));
     }
 
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/general/seguro")
-    public ResponseEntity<Map<String, String>> generateGeneralSeguroReport() throws Exception {
-        String seguroUrl = reportService.generateSeguroReportZip();
-        return ResponseEntity.ok(Map.of("seguroUrl", seguroUrl));
+    public ResponseEntity<Map<String, Object>> enqueueGeneralSeguroReport() throws Exception {
+        var res = reportQueueService.enqueueGeneralSeguroReport();
+        return ResponseEntity.accepted().body(Map.of(
+                "jobId",        res.jobId(),
+                "resultKey",    res.resultKey(),
+                "outputPrefix", res.outputPrefix(),
+                "environment",  res.environment()
+        ));
     }
 }
