@@ -4,8 +4,10 @@ import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.dto.UserPendingDto;
 import com.sallejoven.backend.model.dto.UserSelfDto;
 import com.sallejoven.backend.model.entity.UserPending;
+import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.model.entity.UserSalle;
+import com.sallejoven.backend.service.AcademicStateService;
 import com.sallejoven.backend.service.RegistrationService;
 import com.sallejoven.backend.utils.SalleConverters;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +23,7 @@ public class RegistrationController {
 
     private final RegistrationService registrationService;
     private final SalleConverters converters;
+    private final AcademicStateService academicStateService;
 
     @PostMapping("/public/register")
     public ResponseEntity<Void> registerPublic(@RequestBody UserSalleRequest req) throws SalleException {
@@ -46,6 +49,10 @@ public class RegistrationController {
     @PreAuthorize("@authz.canModeratePending(#id)")
     @PutMapping("/api/registration/pending/{id}/approve")
     public ResponseEntity<UserSelfDto> approve(@PathVariable Long id) throws SalleException {
+        if (academicStateService.isLocked()) {
+            throw new SalleException(ErrorCodes.SYSTEM_LOCKED);
+        }
+
         UserSalle created = registrationService.approvePending(id);
         return ResponseEntity.ok(converters.buildSelfUserInfo(created));
     }
