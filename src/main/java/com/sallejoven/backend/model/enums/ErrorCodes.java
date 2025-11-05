@@ -21,7 +21,8 @@ public enum ErrorCodes {
     EMAIL_ALREADY_EXISTS("Ya existe un usuario con este email", "E017"),
     DNI_ALREADY_EXISTS("Ya existe un usuario con este dni", "E018"),
     INVALID_FILE_TYPE("Sólo se permiten archivos PDF", "E019"),
-    INVALID_CREDENTIALS("Credenciales incorrectas", "E020");
+    INVALID_CREDENTIALS("Credenciales incorrectas", "E020"),
+    SYSTEM_LOCKED("El sistema está bloqueado para añadir un nuevo usuario", "E021");
 
     private final String message;
     private final String errorCode;

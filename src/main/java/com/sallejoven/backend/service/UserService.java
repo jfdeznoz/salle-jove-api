@@ -113,6 +113,10 @@ public class UserService {
 
     @Transactional
     public UserSalle saveUser(UserSalleRequest req) throws SalleException {
+        if (academicStateService.isLocked()) {
+            throw new SalleException(ErrorCodes.SYSTEM_LOCKED);
+        }
+
         // 0) Normalización y derivación
         final String role = normalizeRole(req.getRol());   // "ROLE_*" (si viene null → ROLE_PARTICIPANT)
         final boolean isAdmin = "ROLE_ADMIN".equals(role);
