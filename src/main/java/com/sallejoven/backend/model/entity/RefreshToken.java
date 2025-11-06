@@ -37,7 +37,7 @@ public class RefreshToken {
     @Column(name = "revoked")
     private boolean revoked;
 
-    @ManyToOne
+    @ManyToOne(optional = false)
     @JoinColumn(name = "user_salle",referencedColumnName = "id")
     private UserSalle user;
 

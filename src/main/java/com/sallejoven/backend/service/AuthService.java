@@ -195,6 +195,7 @@ public class AuthService {
                 .token(refreshToken)
                 .revoked(false)
                 .build();
+        refreshTokenEntity.setId(null);
         refreshTokenRepo.save(refreshTokenEntity);
     }
 
