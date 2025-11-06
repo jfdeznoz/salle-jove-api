@@ -79,35 +79,22 @@ public class AuthService {
         return List.of(Role.PARTICIPANT);
     }
 
-    public AuthResponseDto getJwtTokensAfterAuthentication(Authentication authentication, HttpServletResponse response) {
-        try
-        {
-            var userInfoEntity = userInfoRepo.findByEmail(authentication.getName())
-                    .orElseThrow(()->{
-                        log.error("[AuthService:userSignInAuth] User :{} not found",authentication.getName());
-                        return new ResponseStatusException(HttpStatus.NOT_FOUND,"USER NOT FOUND ");});
+    public AuthResponseDto getJwtTokensAfterAuthentication(Authentication authentication, HttpServletResponse response) throws SalleException {
+        var user = userInfoRepo.findByEmail(authentication.getName())
+                .orElseThrow(() -> new SalleException(ErrorCodes.INVALID_CREDENTIALS));
 
+        String accessToken = jwtTokenGenerator.generateAccessToken(authentication);
+        String refreshToken = jwtTokenGenerator.generateRefreshToken(authentication);
 
-            String accessToken = jwtTokenGenerator.generateAccessToken(authentication);
-            String refreshToken = jwtTokenGenerator.generateRefreshToken(authentication);
+        saveUserRefreshToken(user, refreshToken);
+        setRefreshCookie(response, refreshToken, jwtProps.isCookieSecure());
 
-            log.info("[AuthService:userSignInAuth] Access token for user:{}, has been generated",userInfoEntity.getEmail());
-            saveUserRefreshToken(userInfoEntity,refreshToken);
-
-            setRefreshCookie(response, refreshToken, jwtProps.isCookieSecure());
-
-            return  AuthResponseDto.builder()
-                    .accessToken(accessToken)
-                    .accessTokenExpiry(accessTtlSeconds())
-                    .userName(userInfoEntity.getEmail())
-                    .tokenType(TokenType.Bearer)
-                    .build();
-
-
-        }catch (Exception e){
-            log.error("[AuthService:userSignInAuth]Exception while authenticating the user due to :"+e.getMessage());
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,"Please Try Again");
-        }
+        return AuthResponseDto.builder()
+                .accessToken(accessToken)
+                .accessTokenExpiry(accessTtlSeconds())
+                .userName(user.getEmail())
+                .tokenType(TokenType.Bearer)
+                .build();
     }
 
     // AuthService.java

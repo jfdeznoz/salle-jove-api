@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.validation.BindException;
@@ -69,14 +70,13 @@ public class GlobalExceptionHandler {
 
     // Excepciones de negocio que lances con ResponseStatusException
     @ExceptionHandler(ResponseStatusException.class)
-    public Error handleRse(ResponseStatusException ex, HttpServletRequest req) {
+    public ResponseEntity<Error> handleRse(ResponseStatusException ex, HttpServletRequest req) {
         HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
         Error out = new Error(status != null ? status : HttpStatus.BAD_REQUEST);
         out.setMessage(ex.getReason() != null ? ex.getReason() : "Business error");
         out.setPath(req.getRequestURI());
-        out.setDebugMessage(null); // no desvelar más
-        log.warn("{} Business error on {}: {}", out.getStatusCode(), req.getRequestURI(), out.getMessage());
-        return out;
+        out.setDebugMessage(null);
+        return ResponseEntity.status(out.getStatusCode()).body(out);
     }
 
     // Conflictos de datos (índices únicos, FK, etc.)

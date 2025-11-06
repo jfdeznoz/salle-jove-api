@@ -36,7 +36,7 @@ public class AuthController {
     private final AuthService authService;
 
     @PostMapping("/sign-in")
-    public ResponseEntity<?> authenticateUser(Authentication authentication, HttpServletResponse response){
+    public ResponseEntity<?> authenticateUser(Authentication authentication, HttpServletResponse response) throws SalleException {
         if (authentication == null || authentication.getName() == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing or invalid credentials");
         }
