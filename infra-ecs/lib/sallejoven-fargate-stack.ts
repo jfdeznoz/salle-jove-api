@@ -124,7 +124,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
     mailSecret.grantRead(execRole);
     mailSecret.grantRead(taskDef.taskRole);
 
-    taskDef.taskRole.addToPolicy(new iam.PolicyStatement({
+    taskDef.addToTaskRolePolicy(new iam.PolicyStatement({
           effect: iam.Effect.ALLOW,
           actions: ['s3:PutObject'],
           resources: [
@@ -133,7 +133,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
           ],
         }));
 
-    taskDef.taskRole.addToPolicy(new iam.PolicyStatement({
+    taskDef.addToTaskRolePolicy(new iam.PolicyStatement({
           effect: iam.Effect.ALLOW,
           actions: ['sqs:SendMessage'],
           resources: ['arn:aws:sqs:eu-north-1:659925004462:report-jobs'],
