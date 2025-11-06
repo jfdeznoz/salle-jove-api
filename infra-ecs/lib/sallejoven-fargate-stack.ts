@@ -22,6 +22,8 @@ export class SalleJovenFargateStack extends cdk.Stack {
 
     // ====== CLUSTER ECS ======
     const cluster = new ecs.Cluster(this, 'Cluster', { vpc });
+    // Habilitar capacity providers (On-Demand + Spot)
+    cluster.enableFargateCapacityProviders();
 
     // ====== ECR EXISTENTE ======
     const repo = ecr.Repository.fromRepositoryName(this, 'ApiEcrRepo', 'sallejoven-api');
@@ -36,7 +38,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
     const dbSecret = secretsmanager.Secret.fromSecretNameV2(this, 'DbSecret', 'prod/sallejoven/db');
     const mailSecret = secretsmanager.Secret.fromSecretNameV2(this, 'MailSecret', 'prod/sallejoven/mail');
 
-    // ====== SECURITY GROUPS ======
+    // ====== SGs (sin cambios) ======
     const albSg = new ec2.SecurityGroup(this, 'AlbSg', {
       vpc,
       allowAllOutbound: true,
@@ -68,6 +70,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
       internetFacing: true,
       securityGroup: albSg,
       vpcSubnets: { subnets: vpc.publicSubnets },
+      idleTimeout: cdk.Duration.seconds(30), // ↓ reduce LCUs
     });
 
     let listenerHttps: elbv2.ApplicationListener;
@@ -103,7 +106,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
 
     // ====== TASK DEF + CONTAINER ======
     const logGroup = new logs.LogGroup(this, 'ApiLogGroup', {
-      retention: logs.RetentionDays.ONE_MONTH,
+      retention: logs.RetentionDays.ONE_WEEK, // ↓ retención
     });
 
     const execRole = new iam.Role(this, 'TaskExecutionRole', {
@@ -113,9 +116,10 @@ export class SalleJovenFargateStack extends cdk.Stack {
       ],
     });
 
+    // ↓ Bajamos a 0.5 vCPU / 1 GB
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-      cpu: 1024,
-      memoryLimitMiB: 2048,
+      cpu: 512,
+      memoryLimitMiB: 1024,
       executionRole: execRole,
     });
 
@@ -125,19 +129,19 @@ export class SalleJovenFargateStack extends cdk.Stack {
     mailSecret.grantRead(taskDef.taskRole);
 
     taskDef.addToTaskRolePolicy(new iam.PolicyStatement({
-          effect: iam.Effect.ALLOW,
-          actions: ['s3:PutObject'],
-          resources: [
-            'arn:aws:s3:::sallejoven-events/*/inputs/jobs/*',
-            'arn:aws:s3:::sallejoven-events/test/*/inputs/jobs/*',
-          ],
-        }));
+      effect: iam.Effect.ALLOW,
+      actions: ['s3:PutObject'],
+      resources: [
+        'arn:aws:s3:::sallejoven-events/*/inputs/jobs/*',
+        'arn:aws:s3:::sallejoven-events/test/*/inputs/jobs/*',
+      ],
+    }));
 
     taskDef.addToTaskRolePolicy(new iam.PolicyStatement({
-          effect: iam.Effect.ALLOW,
-          actions: ['sqs:SendMessage'],
-          resources: ['arn:aws:sqs:eu-north-1:659925004462:report-jobs'],
-        }));
+      effect: iam.Effect.ALLOW,
+      actions: ['sqs:SendMessage'],
+      resources: ['arn:aws:sqs:eu-north-1:659925004462:report-jobs'],
+    }));
 
     const container = taskDef.addContainer('ApiContainer', {
       image: ecs.ContainerImage.fromEcrRepository(repo, 'latest'),
@@ -164,28 +168,33 @@ export class SalleJovenFargateStack extends cdk.Stack {
     const service = new ecs.FargateService(this, 'Service', {
       cluster,
       taskDefinition: taskDef,
-      desiredCount: 1,
+      desiredCount: 1, // 1 on-demand fijo
       assignPublicIp: true,
       securityGroups: [serviceSg],
       circuitBreaker: { enable: true, rollback: true },
       vpcSubnets: { subnets: vpc.publicSubnets },
-      healthCheckGracePeriod: cdk.Duration.seconds(240), // Spring arranque lento
+      healthCheckGracePeriod: cdk.Duration.seconds(240),
+      // Estrategia: base=1 en FARGATE (on-demand), resto en SPOT
+      capacityProviderStrategies: [
+        { capacityProvider: 'FARGATE', base: 1, weight: 1 },
+        { capacityProvider: 'FARGATE_SPOT', weight: 2 },
+      ],
     });
 
     // ====== AUTOSCALING ======
     const scaling = service.autoScaleTaskCount({
       minCapacity: 1,
-      maxCapacity: 3,
+      maxCapacity: 4, // deja margen, pero escalará en Spot
     });
 
-    // Escala por CPU > 60%
+    // CPU > 60%
     scaling.scaleOnCpuUtilization('Cpu60', {
       targetUtilizationPercent: 60,
       scaleInCooldown: cdk.Duration.seconds(180),
       scaleOutCooldown: cdk.Duration.seconds(45),
     });
 
-    // Escala por Memoria > 70%
+    // Memoria > 70%
     scaling.scaleOnMemoryUtilization('Mem70', {
       targetUtilizationPercent: 70,
       scaleInCooldown: cdk.Duration.seconds(180),
@@ -207,7 +216,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
       },
     });
 
-    // Ajustes extra de target group
+    // ↓ baja coste por conexiones colgantes
     tg.setAttribute('deregistration_delay.timeout_seconds', '15');
 
     // ====== OUTPUTS ======
