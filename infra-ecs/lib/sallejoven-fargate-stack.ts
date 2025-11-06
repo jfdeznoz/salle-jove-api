@@ -124,6 +124,21 @@ export class SalleJovenFargateStack extends cdk.Stack {
     mailSecret.grantRead(execRole);
     mailSecret.grantRead(taskDef.taskRole);
 
+    taskDef.taskRole.addToPolicy(new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ['s3:PutObject'],
+          resources: [
+            'arn:aws:s3:::sallejoven-events/*/inputs/jobs/*',
+            'arn:aws:s3:::sallejoven-events/test/*/inputs/jobs/*',
+          ],
+        }));
+
+    taskDef.taskRole.addToPolicy(new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ['sqs:SendMessage'],
+          resources: ['arn:aws:sqs:eu-north-1:659925004462:report-jobs'],
+        }));
+
     const container = taskDef.addContainer('ApiContainer', {
       image: ecs.ContainerImage.fromEcrRepository(repo, 'latest'),
       logging: ecs.LogDrivers.awsLogs({ logGroup, streamPrefix: 'api' }),
