@@ -1,4 +1,4 @@
-name: Build & Push API Image to ECR
+name: Build, Test & Push API Image to ECR
 
 on:
   push:
@@ -15,19 +15,37 @@ permissions:
   contents: read
 
 jobs:
-  build-push:
+  test:
+    name: Run Maven tests (JDK 17)
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '17'
           distribution: 'temurin'
           cache: 'maven'
+
+      - name: Build & Test
+        run: mvn -B clean verify
+
+      - name: Upload surefire reports (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports
+
+  build-push:
+    name: Build & Push to ECR (Docker builds with JDK 21)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       # OIDC → asume tu rol sin secretos
       - name: Configure AWS credentials (OIDC)
@@ -37,7 +55,6 @@ jobs:
           aws-region: eu-north-1
 
       - name: Get AWS Account ID
-        id: acct
         run: echo "ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_ENV
 
       - name: Login to Amazon ECR
@@ -63,6 +80,17 @@ jobs:
           echo "Pushed: $ECR_URI:latest"
           echo "Pushed: $ECR_URI:${GITHUB_SHA::7}"
 
+  deploy-ecs:
+    name: Force ECS deployment
+    runs-on: ubuntu-latest
+    needs: build-push
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::659925004462:role/github-cdk-deploy
+          aws-region: eu-north-1
+
       - name: Force new ECS deployment
         env:
           CLUSTER: SalleJovenFargate-ClusterEB0386A7-4dnvcjLvEfC0
@@ -75,4 +103,3 @@ jobs:
             --service $SERVICE \
             --force-new-deployment \
             --region $AWS_REGION
-      

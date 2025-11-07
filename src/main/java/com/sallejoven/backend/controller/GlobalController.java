@@ -24,7 +24,6 @@ public class GlobalController {
     private final AcademicStateService academicStateService;
     private final RegistrationService registrationService;
     private final SalleConverters converters;
-    private final AuthzBean authz; // para filtrar lo que el usuario actual puede moderar
 
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/state")
