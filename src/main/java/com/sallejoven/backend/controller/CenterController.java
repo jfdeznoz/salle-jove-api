@@ -31,7 +31,6 @@ import java.util.stream.Collectors;
 public class CenterController {
 
     private final CenterService centerService;
-    //private final GroupService groupService;
     private final UserService userService;
     private final AuthService authService;
     private final SalleConverters salleConverters;
@@ -59,30 +58,6 @@ public class CenterController {
 
         return ResponseEntity.ok(dtos);
     }
-
-    /*
-    @GetMapping("/{centerId}/groups")
-    public ResponseEntity<List<GroupDto>> listGroups(
-            @PathVariable Long centerId) throws SalleException {
-
-        Center center = centerService.getAllCentersWithGroups().stream()
-                .filter(c -> c.getId().equals(centerId))
-                .findFirst()
-                .orElseThrow(() -> new SalleException(ErrorCodes.CENTER_NOT_FOUND));
-
-        List<GroupSalle> groups = groupService.findByCenter(center);
-        List<GroupDto> dtos = groups.stream().map(g ->
-            GroupDto.builder()
-                    .groupId(Math.toIntExact(g.getId()))
-                    .centerId(Math.toIntExact(center.getId()))
-                    .stage(g.getStage())
-                    .centerName(center.getName())
-                    .cityName(center.getCity())
-                    .build()
-        ).toList();
-
-        return ResponseEntity.ok(dtos);
-    }*/
 
     @PreAuthorize("@authz.canViewUserGroups(#userId)")
     @GetMapping("/user/{userId}")
