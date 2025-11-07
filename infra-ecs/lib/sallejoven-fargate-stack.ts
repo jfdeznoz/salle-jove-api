@@ -9,6 +9,7 @@ import {
   aws_logs as logs,
   aws_secretsmanager as secretsmanager,
   aws_iam as iam,
+  aws_ssm as ssm,
 } from 'aws-cdk-lib';
 
 export class SalleJovenFargateStack extends cdk.Stack {
@@ -116,7 +117,6 @@ export class SalleJovenFargateStack extends cdk.Stack {
       ],
     });
 
-    // ↓ Bajamos a 0.5 vCPU / 1 GB
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
       cpu: 512,
       memoryLimitMiB: 1024,
@@ -218,6 +218,26 @@ export class SalleJovenFargateStack extends cdk.Stack {
 
     // ↓ baja coste por conexiones colgantes
     tg.setAttribute('deregistration_delay.timeout_seconds', '15');
+
+    new ssm.StringParameter(this, 'ParamEcsClusterArn', {
+      parameterName: '/sallejoven/ecs/cluster-arn',
+      stringValue: cluster.clusterArn,
+    });
+
+    new ssm.StringParameter(this, 'ParamEcsClusterName', {
+      parameterName: '/sallejoven/ecs/cluster-name',
+      stringValue: cluster.clusterName,
+    });
+
+    new ssm.StringParameter(this, 'ParamEcsServiceArn', {
+      parameterName: '/sallejoven/ecs/service-arn',
+      stringValue: service.serviceArn,
+    });
+
+    new ssm.StringParameter(this, 'ParamEcsServiceName', {
+      parameterName: '/sallejoven/ecs/service-name',
+      stringValue: service.serviceName,
+    });
 
     // ====== OUTPUTS ======
     new cdk.CfnOutput(this, 'AlbDns', { value: alb.loadBalancerDnsName });
