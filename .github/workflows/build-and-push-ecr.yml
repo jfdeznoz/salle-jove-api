@@ -84,22 +84,51 @@ jobs:
     name: Force ECS deployment
     runs-on: ubuntu-latest
     needs: build-push
+    env:
+      AWS_REGION: eu-north-1
     steps:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::659925004462:role/github-cdk-deploy
-          aws-region: eu-north-1
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch ECS identifiers from SSM
+        id: ssm
+        run: |
+          CLUSTER_ARN=$(aws ssm get-parameter --name "/sallejoven/ecs/cluster-arn" --query "Parameter.Value" --output text)
+          SERVICE_ARN=$(aws ssm get-parameter --name "/sallejoven/ecs/service-arn" --query "Parameter.Value" --output text)
+          echo "CLUSTER_ARN=$CLUSTER_ARN" >> $GITHUB_ENV
+          echo "SERVICE_ARN=$SERVICE_ARN" >> $GITHUB_ENV
+          echo "Cluster: $CLUSTER_ARN"
+          echo "Service: $SERVICE_ARN"
+
+      - name: Check service is ACTIVE
+        run: |
+          STATUS=$(aws ecs describe-services \
+            --cluster "$CLUSTER_ARN" \
+            --services "$SERVICE_ARN" \
+            --query 'services[0].status' \
+            --output text \
+            --region "${AWS_REGION}")
+          echo "Status: $STATUS"
+          if [ "$STATUS" != "ACTIVE" ]; then
+            echo "❌ Service not ACTIVE ($STATUS)."
+            exit 1
+          fi
 
       - name: Force new ECS deployment
-        env:
-          CLUSTER: SalleJovenFargate-ClusterEB0386A7-4dnvcjLvEfC0
-          SERVICE: SalleJovenFargate-ServiceD69D759B-bNxQApTIQkkr
-          AWS_REGION: eu-north-1
         run: |
-          echo "🔄 Forcing new ECS deployment on $SERVICE..."
+          echo "🔄 Forcing new ECS deployment..."
           aws ecs update-service \
-            --cluster $CLUSTER \
-            --service $SERVICE \
+            --cluster "$CLUSTER_ARN" \
+            --service "$SERVICE_ARN" \
             --force-new-deployment \
-            --region $AWS_REGION
+            --region "${AWS_REGION}"
+
+          echo "⏳ Waiting for service to stabilize..."
+          aws ecs wait services-stable \
+            --cluster "$CLUSTER_ARN" \
+            --services "$SERVICE_ARN" \
+            --region "${AWS_REGION}"
+          echo "✅ Deployment complete."
