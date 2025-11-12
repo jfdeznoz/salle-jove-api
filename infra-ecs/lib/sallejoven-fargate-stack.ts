@@ -11,6 +11,7 @@ import {
   aws_iam as iam,
   aws_ssm as ssm,
 } from 'aws-cdk-lib';
+import { Schedule } from 'aws-cdk-lib/aws-applicationautoscaling';
 
 export class SalleJovenFargateStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -39,7 +40,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
     const dbSecret = secretsmanager.Secret.fromSecretNameV2(this, 'DbSecret', 'prod/sallejoven/db');
     const mailSecret = secretsmanager.Secret.fromSecretNameV2(this, 'MailSecret', 'prod/sallejoven/mail');
 
-    // ====== SGs (sin cambios) ======
+    // ====== SGs ======
     const albSg = new ec2.SecurityGroup(this, 'AlbSg', {
       vpc,
       allowAllOutbound: true,
@@ -107,7 +108,7 @@ export class SalleJovenFargateStack extends cdk.Stack {
 
     // ====== TASK DEF + CONTAINER ======
     const logGroup = new logs.LogGroup(this, 'ApiLogGroup', {
-      retention: logs.RetentionDays.ONE_WEEK, // ↓ retención
+      retention: logs.RetentionDays.ONE_WEEK,
     });
 
     const execRole = new iam.Role(this, 'TaskExecutionRole', {
@@ -118,8 +119,8 @@ export class SalleJovenFargateStack extends cdk.Stack {
     });
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-      cpu: 512,
-      memoryLimitMiB: 1024,
+      cpu: 256,               // 0.25 vCPU
+      memoryLimitMiB: 1024,   // 1 GB
       executionRole: execRole,
     });
 
@@ -164,48 +165,85 @@ export class SalleJovenFargateStack extends cdk.Stack {
 
     container.addPortMappings({ containerPort: CONTAINER_PORT });
 
-    // ====== SERVICE ======
-    const service = new ecs.FargateService(this, 'Service', {
+    // ====== SERVICES (Día y Noche) ======
+
+    // --- Servicio de día: on-demand base + spot para picos (07:00–00:05)
+    const serviceDay = new ecs.FargateService(this, 'ServiceDay', {
       cluster,
       taskDefinition: taskDef,
-      desiredCount: 1, // 1 on-demand fijo
+      desiredCount: 1,
       assignPublicIp: true,
       securityGroups: [serviceSg],
       circuitBreaker: { enable: true, rollback: true },
       vpcSubnets: { subnets: vpc.publicSubnets },
       healthCheckGracePeriod: cdk.Duration.seconds(240),
-      // Estrategia: base=1 en FARGATE (on-demand), resto en SPOT
       capacityProviderStrategies: [
-        { capacityProvider: 'FARGATE', base: 1, weight: 1 },
-        { capacityProvider: 'FARGATE_SPOT', weight: 2 },
+        { capacityProvider: 'FARGATE', base: 1, weight: 1 }, // on-demand garantizado de día
+        { capacityProvider: 'FARGATE_SPOT', weight: 2 },     // spot para picos
       ],
     });
 
-    // ====== AUTOSCALING ======
-    const scaling = service.autoScaleTaskCount({
+    const scalingDay = serviceDay.autoScaleTaskCount({
       minCapacity: 1,
-      maxCapacity: 4, // deja margen, pero escalará en Spot
+      maxCapacity: 3,
     });
-
-    // CPU > 60%
-    scaling.scaleOnCpuUtilization('Cpu60', {
+    scalingDay.scaleOnCpuUtilization('Cpu60Day', {
       targetUtilizationPercent: 60,
       scaleInCooldown: cdk.Duration.seconds(180),
       scaleOutCooldown: cdk.Duration.seconds(45),
     });
-
-    // Memoria > 70%
-    scaling.scaleOnMemoryUtilization('Mem70', {
+    scalingDay.scaleOnMemoryUtilization('Mem70Day', {
       targetUtilizationPercent: 70,
       scaleInCooldown: cdk.Duration.seconds(180),
       scaleOutCooldown: cdk.Duration.seconds(45),
+    });
+    // Horarios (Europe/Madrid) con solape para evitar 503
+    // Enciende 06:55
+    scalingDay.scaleOnSchedule('DayOn_0655', {
+      schedule: Schedule.cron({ minute: '55', hour: '6' }),
+      minCapacity: 1, maxCapacity: 3,
+    });
+    // Apaga 00:05
+    scalingDay.scaleOnSchedule('DayOff_0005', {
+      schedule: Schedule.cron({ minute: '5', hour: '0' }),
+      minCapacity: 0, maxCapacity: 0,
+    });
+
+    // --- Servicio de noche: solo Spot (23:55–07:05)
+    const serviceNight = new ecs.FargateService(this, 'ServiceNight', {
+      cluster,
+      taskDefinition: taskDef,
+      desiredCount: 0, // arrancará por horario
+      assignPublicIp: true,
+      securityGroups: [serviceSg],
+      circuitBreaker: { enable: true, rollback: true },
+      vpcSubnets: { subnets: vpc.publicSubnets },
+      healthCheckGracePeriod: cdk.Duration.seconds(240),
+      capacityProviderStrategies: [
+        { capacityProvider: 'FARGATE_SPOT', weight: 1 }, // solo Spot por la noche
+      ],
+    });
+
+    const scalingNight = serviceNight.autoScaleTaskCount({
+      minCapacity: 0,
+      maxCapacity: 2,
+    });
+    // Enciende 23:55
+    scalingNight.scaleOnSchedule('NightOn_2355', {
+      schedule: Schedule.cron({ minute: '55', hour: '23' }),
+      minCapacity: 1, maxCapacity: 2,
+    });
+    // Apaga 07:05
+    scalingNight.scaleOnSchedule('NightOff_0705', {
+      schedule: Schedule.cron({ minute: '5', hour: '7' }),
+      minCapacity: 0, maxCapacity: 0,
     });
 
     // ====== LISTENER TARGETS ======
     const tg = listenerHttps.addTargets('ApiTargets5000', {
       protocol: elbv2.ApplicationProtocol.HTTP,
       port: CONTAINER_PORT,
-      targets: [service],
+      targets: [serviceDay], // registra el servicio de día primero
       healthCheck: {
         path: HEALTH_PATH,
         healthyHttpCodes: '200-399',
@@ -215,32 +253,41 @@ export class SalleJovenFargateStack extends cdk.Stack {
         unhealthyThresholdCount: 5,
       },
     });
-
-    // ↓ baja coste por conexiones colgantes
     tg.setAttribute('deregistration_delay.timeout_seconds', '15');
 
+    // ➕ añade también el servicio nocturno al mismo TG
+    tg.addTarget(serviceNight);
+
+    // ====== PARAMS SSM (del servicio de día como referencia principal) ======
     new ssm.StringParameter(this, 'ParamEcsClusterArn', {
       parameterName: '/sallejoven/ecs/cluster-arn',
       stringValue: cluster.clusterArn,
     });
-
     new ssm.StringParameter(this, 'ParamEcsClusterName', {
       parameterName: '/sallejoven/ecs/cluster-name',
       stringValue: cluster.clusterName,
     });
-
-    new ssm.StringParameter(this, 'ParamEcsServiceArn', {
-      parameterName: '/sallejoven/ecs/service-arn',
-      stringValue: service.serviceArn,
+    new ssm.StringParameter(this, 'ParamEcsServiceDayArn', {
+      parameterName: '/sallejoven/ecs/service-day-arn',
+      stringValue: serviceDay.serviceArn,
     });
-
-    new ssm.StringParameter(this, 'ParamEcsServiceName', {
-      parameterName: '/sallejoven/ecs/service-name',
-      stringValue: service.serviceName,
+    new ssm.StringParameter(this, 'ParamEcsServiceDayName', {
+      parameterName: '/sallejoven/ecs/service-day-name',
+      stringValue: serviceDay.serviceName,
+    });
+    new ssm.StringParameter(this, 'ParamEcsServiceNightArn', {
+      parameterName: '/sallejoven/ecs/service-night-arn',
+      stringValue: serviceNight.serviceArn,
+    });
+    new ssm.StringParameter(this, 'ParamEcsServiceNightName', {
+      parameterName: '/sallejoven/ecs/service-night-name',
+      stringValue: serviceNight.serviceName,
     });
 
     // ====== OUTPUTS ======
     new cdk.CfnOutput(this, 'AlbDns', { value: alb.loadBalancerDnsName });
+    new cdk.CfnOutput(this, 'ServiceDayName', { value: serviceDay.serviceName });
+    new cdk.CfnOutput(this, 'ServiceNightName', { value: serviceNight.serviceName });
     new cdk.CfnOutput(this, 'ServiceSgId', { value: serviceSg.securityGroupId });
     new cdk.CfnOutput(this, 'ClusterName', { value: cluster.clusterName });
     new cdk.CfnOutput(this, 'VpcId', { value: vpc.vpcId });
