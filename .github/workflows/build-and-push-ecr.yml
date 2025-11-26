@@ -97,11 +97,11 @@ jobs:
         id: ssm
         run: |
           CLUSTER_ARN=$(aws ssm get-parameter --name "/sallejoven/ecs/cluster-arn" --query "Parameter.Value" --output text)
-          SERVICE_ARN=$(aws ssm get-parameter --name "/sallejoven/ecs/service-arn" --query "Parameter.Value" --output text)
+          SERVICE_ARN=$(aws ssm get-parameter --name "/sallejoven/ecs/service-day-arn" --query "Parameter.Value" --output text)
           echo "CLUSTER_ARN=$CLUSTER_ARN" >> $GITHUB_ENV
           echo "SERVICE_ARN=$SERVICE_ARN" >> $GITHUB_ENV
           echo "Cluster: $CLUSTER_ARN"
-          echo "Service: $SERVICE_ARN"
+          echo "Service (day): $SERVICE_ARN"    
 
       - name: Check service is ACTIVE
         run: |
