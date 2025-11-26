@@ -9,4 +9,5 @@ public interface SeguroRow {
     LocalDate getBirthDate();
     String getDni();
     String getCentersGroups();
+    Integer getUserType();
 }
