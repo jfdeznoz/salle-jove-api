@@ -170,7 +170,7 @@ public interface UserGroupRepository extends JpaRepository<UserGroup, Long> {
     AND ug.deleted_at IS NULL
     AND ug.user_type IN (0, 1)
   GROUP BY u.id, u.name, u.last_name, u.birth_date, u.dni
-  ORDER BY MIN(c.name), MIN(g.stage), u.last_name, u.name
+  ORDER BY MIN(c.name), MIN(c.city), MIN(g.stage), u.last_name, u.name
   """, nativeQuery = true)
     List<SeguroRow> findSeguroRows(@Param("year") int year);
 
