@@ -116,7 +116,8 @@ public class ReportQueueService {
                 "fullName", ((sr.getName()==null?"":sr.getName()) + " " + (sr.getLastName()==null?"":sr.getLastName())).trim(),
                 "birthDate", sr.getBirthDate()!=null ? sr.getBirthDate().toString() : "",
                 "dni",       sr.getDni()==null ? "" : sr.getDni(),
-                "centersGroups", sr.getCentersGroups()==null ? "" : sr.getCentersGroups()
+                "centersGroups", sr.getCentersGroups()==null ? "" : sr.getCentersGroups(),
+                "userType", Optional.ofNullable(sr.getUserType()).orElse(0)
         )).toList();
 
         return Map.of(

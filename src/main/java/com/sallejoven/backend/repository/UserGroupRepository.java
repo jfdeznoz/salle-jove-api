@@ -131,6 +131,7 @@ public interface UserGroupRepository extends JpaRepository<UserGroup, Long> {
     u.last_name  AS last_name,
     u.birth_date AS birth_date,
     u.dni        AS dni,
+    MAX(ug.user_type) AS user_type,
     STRING_AGG(
       DISTINCT (
         c.name || ' (' || c.city || ') - ' ||
