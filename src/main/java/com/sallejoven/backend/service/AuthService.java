@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 
 import com.sallejoven.backend.config.security.JwtProperties;
 import com.sallejoven.backend.model.enums.ErrorCodes;
+import com.sallejoven.backend.utils.TokenHashUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -114,7 +115,7 @@ public class AuthService {
         }
 
         // 2) Verificar en BD que no está revocado
-        var refreshTokenEntity = refreshTokenRepo.findByToken(refreshToken)
+        var refreshTokenEntity = refreshTokenRepo.findByTokenHash(TokenHashUtils.sha256Base64Url(refreshToken))
                 .filter(tokens -> !tokens.isRevoked())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Refresh token revoked"));
 
@@ -192,7 +193,7 @@ public class AuthService {
     private void saveUserRefreshToken(UserSalle userInfoEntity, String refreshToken) {
         var refreshTokenEntity = RefreshToken.builder()
                 .user(userInfoEntity)
-                .token(refreshToken)
+                .tokenHash(TokenHashUtils.sha256Base64Url(refreshToken))
                 .revoked(false)
                 .build();
         refreshTokenEntity.setId(null);
@@ -202,7 +203,7 @@ public class AuthService {
     public UserSalle registerUser(UserRegistrationDto userRegistrationDto,HttpServletResponse httpServletResponse){
 
         try{
-            log.info("[AuthService:registerUser]User Registration Started with :::{}",userRegistrationDto);
+            log.info("[AuthService:registerUser]User Registration Started for email:{}", userRegistrationDto.userEmail());
 
             Optional<UserSalle> user = userInfoRepo.findByEmail(userRegistrationDto.userEmail());
             if(user.isPresent()){

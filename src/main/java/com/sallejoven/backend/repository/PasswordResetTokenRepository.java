@@ -7,6 +7,6 @@ import java.time.Instant;
 import java.util.Optional;
 
 public interface PasswordResetTokenRepository extends JpaRepository<PasswordResetToken, Long> {
-    Optional<PasswordResetToken> findByToken(String token);
+    Optional<PasswordResetToken> findByTokenHash(String tokenHash);
     void deleteAllByExpiresAtBefore(Instant cutoff); // útil para limpieza programada
 }

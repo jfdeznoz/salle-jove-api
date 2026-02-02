@@ -16,7 +16,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.BindingResult;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sallejoven.backend.model.dto.UserRegistrationDto;
@@ -47,7 +46,6 @@ public class AuthController {
     public AuthResponseDto refresh(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
             @CookieValue(value = "refresh_token", required = false) String refreshCookie,
-            @RequestParam(value = "refresh_token", required = false) String refreshParam, // <-- NUEVO
             HttpServletResponse response
     ) throws SalleException {
 
@@ -59,12 +57,6 @@ public class AuthController {
         // 2) Fallback cookie
         if (refreshCookie != null && !refreshCookie.isBlank()) {
             String h = "Bearer " + refreshCookie;
-            return (AuthResponseDto) authService.getAccessTokenUsingRefreshToken(h, response);
-        }
-
-        // 3) Fallback body (x-www-form-urlencoded)
-        if (refreshParam != null && !refreshParam.isBlank()) {
-            String h = "Bearer " + refreshParam;
             return (AuthResponseDto) authService.getAccessTokenUsingRefreshToken(h, response);
         }
 

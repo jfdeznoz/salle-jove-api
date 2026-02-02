@@ -31,8 +31,8 @@ public class RefreshToken {
     )
     private Long id;
 
-    @Column(name = "token", nullable = false, length = 10000)
-    private String token;
+    @Column(name = "token_hash", nullable = false, length = 128)
+    private String tokenHash;
 
     @Column(name = "revoked")
     private boolean revoked;

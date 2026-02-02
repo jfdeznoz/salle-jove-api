@@ -12,6 +12,7 @@ import org.springframework.mail.javamail.MimeMessageHelper;      // <---
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import com.sallejoven.backend.utils.TokenHashUtils;
 
 import jakarta.mail.internet.MimeMessage;                     // <---
 import java.net.URLEncoder;
@@ -54,7 +55,7 @@ public class PasswordResetService {
         final Instant exp = now.plus(Duration.ofMinutes(10));
 
         PasswordResetToken prt = new PasswordResetToken();
-        prt.setToken(token);
+        prt.setTokenHash(TokenHashUtils.sha256Base64Url(token));
         prt.setEmail(email);
         prt.setCreatedAt(now);
         prt.setExpiresAt(exp);
@@ -69,7 +70,7 @@ public class PasswordResetService {
 
     @Transactional
     public void confirmReset(String token, String newPassword) {
-        PasswordResetToken prt = tokenRepo.findByToken(token)
+        PasswordResetToken prt = tokenRepo.findByTokenHash(TokenHashUtils.sha256Base64Url(token))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "token_invalid"));
 
         if (prt.isUsed() || prt.getExpiresAt().isBefore(Instant.now())) {

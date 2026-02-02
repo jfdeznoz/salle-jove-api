@@ -7,6 +7,7 @@ import org.springframework.security.core.Authentication;
 
 import com.sallejoven.backend.model.enums.TokenType;
 import com.sallejoven.backend.repository.RefreshTokenRepository;
+import com.sallejoven.backend.utils.TokenHashUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -30,7 +31,7 @@ public class LogoutHandlerService implements LogoutHandler {
 
         final String refreshToken = authHeader.substring(7);
         
-        var storedRefreshToken = refreshTokenRepo.findByToken(refreshToken)
+        var storedRefreshToken = refreshTokenRepo.findByTokenHash(TokenHashUtils.sha256Base64Url(refreshToken))
                 .map(token->{
                     token.setRevoked(true);
                     refreshTokenRepo.save(token);

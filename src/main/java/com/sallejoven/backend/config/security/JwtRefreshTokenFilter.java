@@ -14,6 +14,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.server.ResponseStatusException;
 import com.sallejoven.backend.repository.RefreshTokenRepository;
+import com.sallejoven.backend.utils.TokenHashUtils;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import java.io.IOException;
@@ -59,7 +60,8 @@ public class JwtRefreshTokenFilter extends OncePerRequestFilter {
 
             if (!userName.isEmpty() && SecurityContextHolder.getContext().getAuthentication() == null) {
                 //Check if refreshToken isPresent in database and is valid
-                var isRefreshTokenValidInDatabase = refreshTokenRepo.findByToken(jwtRefreshToken.getTokenValue())
+                var isRefreshTokenValidInDatabase = refreshTokenRepo.findByTokenHash(
+                                TokenHashUtils.sha256Base64Url(jwtRefreshToken.getTokenValue()))
                         .map(refreshTokenEntity -> !refreshTokenEntity.isRevoked())
                         .orElse(false);
 

@@ -31,7 +31,7 @@ public class PasswordResetToken {
     private Long id;
 
     @Column(nullable = false, unique = true, length = 200)
-    private String token; // base64url
+    private String tokenHash; // base64url sha-256
 
     @Column(nullable = false)
     private String email;

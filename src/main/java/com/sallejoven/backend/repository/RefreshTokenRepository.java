@@ -8,5 +8,5 @@ import com.sallejoven.backend.model.entity.RefreshToken;
 @Repository
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long> {
 
-    Optional<RefreshToken> findByToken(String refreshToken);
+    Optional<RefreshToken> findByTokenHash(String refreshTokenHash);
 }
