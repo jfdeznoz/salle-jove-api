@@ -163,6 +163,50 @@ public class S3V2Service {
 
     public record UploadPresigneds(@Nullable PresignedPutDTO image, @Nullable PresignedPutDTO pdf) {}
 
+    public String weeklySessionFolderForSession(@Nullable Long centerId, int year, long sessionId) {
+        String scope = "centers/" + centerId;
+        String folder = join(basePrefix, String.valueOf(year), "weekly-sessions", scope, "session_" + sessionId);
+        return folder.isEmpty() ? "" : folder + "/";
+    }
+
+    public UploadPresigneds buildPresignedForWeeklySessionUploads(
+            @Nullable Long centerId,
+            @Nullable LocalDate sessionDate,
+            long sessionId,
+            @Nullable String pdfOriginalName
+    ) {
+        final int year = (sessionDate != null) ? sessionDate.getYear() : Year.now().getValue();
+        final String folder = weeklySessionFolderForSession(centerId, year, sessionId);
+
+        PresignedPutDTO pdfDto = null;
+
+        if (pdfOriginalName != null && !pdfOriginalName.isBlank()) {
+            String pdfKey = newKey(folder, ".pdf");
+            String cd = "inline; filename=\"sesion.pdf\"";
+            var pdfPut = presignedPut(pdfKey, "application/pdf", cd, /*publicRead*/ false, Duration.ofMinutes(15));
+            pdfDto = new PresignedPutDTO(pdfPut.url(), pdfPut.key(), pdfPut.requiredHeaders());
+        }
+
+        return new UploadPresigneds(null, pdfDto);
+    }
+
+    public String vitalSituationSessionFolderForSession(Long vitalSituationId, long sessionId) {
+        String folder = join(basePrefix, "vital-situation-sessions", "vs_" + vitalSituationId, "session_" + sessionId);
+        return folder.isEmpty() ? "" : folder + "/";
+    }
+
+    public PresignedPutDTO buildPresignedForVitalSituationSessionPdf(
+            Long vitalSituationId,
+            long sessionId,
+            @Nullable String pdfOriginalName
+    ) {
+        final String folder = vitalSituationSessionFolderForSession(vitalSituationId, sessionId);
+        String pdfKey = newKey(folder, ".pdf");
+        String cd = "inline; filename=\"sesion.pdf\"";
+        var pdfPut = presignedPut(pdfKey, "application/pdf", cd, /*publicRead*/ false, Duration.ofMinutes(15));
+        return new PresignedPutDTO(pdfPut.url(), pdfPut.key(), pdfPut.requiredHeaders());
+    }
+
     public void deleteObject(String key) {
         try {
             s3.deleteObject(b -> b.bucket(bucket).key(key));

@@ -8,6 +8,7 @@ import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.repository.GroupRepository;
+import com.sallejoven.backend.repository.UserGroupRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.util.HashSet;
@@ -21,6 +22,7 @@ import java.util.stream.Stream;
 public class GroupService {
 
     private final GroupRepository groupRepository;
+    private final UserGroupRepository userGroupRepository;
     private final EventGroupService eventGroupService;
     private final AuthorityService authorityService;
     private final AcademicStateService academicStateService;
@@ -44,6 +46,12 @@ public class GroupService {
 
     public List<GroupSalle> findGroupsByCenterId(Long centerId) {
         return groupRepository.findByCenterId(centerId);
+    }
+
+    /** Grupos del centro con al menos una membresía en el año visible. */
+    public List<GroupSalle> findGroupsByCenterIdForYear(Long centerId, int year) {
+        List<Long> ids = userGroupRepository.findDistinctGroupIdsByCenterIdAndYear(centerId, year);
+        return ids.isEmpty() ? List.of() : groupRepository.findAllById(ids);
     }
 
     public List<GroupSalle> findAllByEvent(Long eventId) throws SalleException {

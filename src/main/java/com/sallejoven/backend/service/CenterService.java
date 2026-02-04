@@ -9,8 +9,11 @@ import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.enums.UserType;
 import com.sallejoven.backend.model.raw.UserCenterGroupsRaw;
+import com.sallejoven.backend.model.dto.UserGroupDto;
 import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.repository.CenterRepository;
+import com.sallejoven.backend.repository.UserGroupRepository;
+import com.sallejoven.backend.service.AcademicStateService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -31,6 +34,8 @@ public class CenterService {
     private final CenterRepository centerRepository;
     private final GroupService groupService;
     private final UserCenterService userCenterService;
+    private final AcademicStateService academicStateService;
+    private final UserGroupRepository userGroupRepository;
 
     public Center findById(Long id) throws SalleException {
         return centerRepository.findById(id)
@@ -61,11 +66,20 @@ public class CenterService {
         }
     }
 
-    private List<UserCenterGroupsRaw> rawForAdmin() {
+    private List<UserCenterGroupsRaw> rawForAdmin() throws SalleException {
+        int year = academicStateService.getVisibleYear();
         List<UserCenterGroupsRaw> raws = new ArrayList<>();
         for (Center c : getAllCentersWithGroups()) {
-            List<GroupSalle> groups = groupService.findGroupsByCenterId(c.getId());
-            raws.add(new UserCenterGroupsRaw(c, groups, UserType.ADMIN.toInt())); // 4
+            List<GroupSalle> groups = groupService.findGroupsByCenterIdForYear(c.getId(), year);
+            List<UserGroupDto> dtos = groups.stream()
+                    .map(g -> UserGroupDto.builder()
+                            .id(g.getId() != null ? g.getId().intValue() : null)
+                            .groupId(g.getId() != null ? g.getId().intValue() : null)
+                            .stage(g.getStage())
+                            .user_type(UserType.ADMIN.toInt())
+                            .build())
+                    .toList();
+            raws.add(new UserCenterGroupsRaw(c, dtos));
         }
         return raws;
     }
@@ -86,12 +100,22 @@ public class CenterService {
             }
         }
 
+        int year = academicStateService.getVisibleYear();
         Set<Long> mainCenterIds = new HashSet<>(chosenByCenter.keySet());
         for (UserCenter uc : chosenByCenter.values()) {
             Center c = uc.getCenter();
             Long centerId = c.getId();
-            List<GroupSalle> groups = groupService.findGroupsByCenterId(centerId);
-            result.add(new UserCenterGroupsRaw(c, groups, uc.getUserType())); // 2 ó 3
+            List<GroupSalle> groups = groupService.findGroupsByCenterIdForYear(centerId, year);
+            int roleCode = uc.getUserType() != null ? uc.getUserType() : UserType.PARTICIPANT.toInt();
+            List<UserGroupDto> dtos = groups.stream()
+                    .map(g -> UserGroupDto.builder()
+                            .id(g.getId() != null ? g.getId().intValue() : null)
+                            .groupId(g.getId() != null ? g.getId().intValue() : null)
+                            .stage(g.getStage())
+                            .user_type(roleCode)
+                            .build())
+                    .toList();
+            result.add(new UserCenterGroupsRaw(c, dtos));
         }
 
         List<UserCenterGroupsRaw> others = rawForDefaultUser(me);
@@ -103,29 +127,34 @@ public class CenterService {
         return result;
     }
 
-    private List<UserCenterGroupsRaw> rawForDefaultUser(UserSalle me) {
-        List<UserGroup> active = me.getGroups().stream()
-                .filter(this::isActive)
+    private List<UserCenterGroupsRaw> rawForDefaultUser(UserSalle me) throws SalleException {
+        int year = academicStateService.getVisibleYear();
+        List<UserGroup> active = userGroupRepository.findByUser_IdAndYearAndDeletedAtIsNull(me.getId(), year).stream()
+                .filter(ug -> ug.getGroup() != null && ug.getGroup().getCenter() != null)
                 .toList();
 
         // agrupamos por centro y devolvemos un raw por centro
-        Map<Center, List<GroupSalle>> byCenter = active.stream()
-                .filter(ug -> ug.getGroup() != null && ug.getGroup().getCenter() != null)
-                .collect(Collectors.groupingBy(
-                        ug -> ug.getGroup().getCenter(),
-                        Collectors.mapping(UserGroup::getGroup, Collectors.toList())
-                ));
+        Map<Center, List<UserGroup>> byCenter = active.stream()
+                .collect(Collectors.groupingBy(ug -> ug.getGroup().getCenter()));
 
         List<UserCenterGroupsRaw> raws = new ArrayList<>();
-        for (Map.Entry<Center, List<GroupSalle>> e : byCenter.entrySet()) {
+        for (Map.Entry<Center, List<UserGroup>> e : byCenter.entrySet()) {
             // Para usuario “normal” ponemos el tipo PARTICIPANT (ajusta si tienes otra regla)
-            raws.add(new UserCenterGroupsRaw(e.getKey(), e.getValue(), UserType.PARTICIPANT.toInt()));
+            List<UserGroupDto> dtos = e.getValue().stream()
+                    .map(ug -> {
+                        GroupSalle g = ug.getGroup();
+                        Integer ut = ug.getUserType();
+                        return UserGroupDto.builder()
+                                .id(g.getId() != null ? g.getId().intValue() : null)
+                                .groupId(g.getId() != null ? g.getId().intValue() : null)
+                                .stage(g.getStage())
+                                .user_type(ut != null ? ut : UserType.PARTICIPANT.toInt())
+                                .build();
+                    })
+                    .toList();
+            raws.add(new UserCenterGroupsRaw(e.getKey(), dtos));
         }
         return raws;
-    }
-
-    private boolean isActive(UserGroup ug) {
-        return ug != null && ug.getDeletedAt() == null && ug.getGroup() != null;
     }
 
 }

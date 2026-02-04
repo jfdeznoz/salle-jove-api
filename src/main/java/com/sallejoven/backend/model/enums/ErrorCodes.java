@@ -22,7 +22,11 @@ public enum ErrorCodes {
     DNI_ALREADY_EXISTS("Ya existe un usuario con este dni", "E018"),
     INVALID_FILE_TYPE("Sólo se permiten archivos PDF", "E019"),
     INVALID_CREDENTIALS("Credenciales incorrectas", "E020"),
-    SYSTEM_LOCKED("El sistema está bloqueado para añadir un nuevo usuario", "E021");
+    SYSTEM_LOCKED("El sistema está bloqueado para añadir un nuevo usuario", "E021"),
+    AWS_CREDENTIALS_NOT_CONFIGURED("No se pueden subir archivos: credenciales de AWS no configuradas", "E022"),
+    VITAL_SITUATION_NOT_FOUND("Situación vital no encontrada", "E023"),
+    VITAL_SITUATION_SESSION_NOT_FOUND("Sesión de situación vital no encontrada", "E024"),
+    WEEKLY_SESSION_NOT_FOUND("Sesión semanal no encontrada", "E025");
 
     private final String message;
     private final String errorCode;

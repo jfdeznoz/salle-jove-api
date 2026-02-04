@@ -98,6 +98,39 @@ public class AuthorityService {
         return a.getAuthorities().stream().map(GrantedAuthority::getAuthority).collect(Collectors.toSet());
     }
 
+    /**
+     * Verifica si el usuario actual es SOLO catequista (ANIMATOR) sin otros roles administrativos.
+     * Si tiene otros roles (admin, pastoralDelegate, groupLeader), retorna false.
+     */
+    public boolean isOnlyAnimator() {
+        var a = SecurityContextHolder.getContext().getAuthentication();
+        if (a == null) return false;
+        
+        Set<String> auths = a.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toSet());
+        
+        // Si es admin, no es solo catequista
+        if (auths.contains("ROLE_ADMIN")) return false;
+        
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) return false;
+        
+        // Verificar si tiene roles de centro (PASTORAL_DELEGATE o GROUP_LEADER)
+        String suffix = ":" + year;
+        boolean hasCenterRole = auths.stream()
+                .anyMatch(auth -> auth.startsWith("CENTER:") && auth.endsWith(suffix) &&
+                        (auth.contains(":PASTORAL_DELEGATE:") || auth.contains(":GROUP_LEADER:")));
+        
+        if (hasCenterRole) return false; // Tiene roles de centro, no es solo catequista
+        
+        // Si tiene al menos un rol ANIMATOR y no tiene roles de centro ni admin, es solo catequista
+        boolean hasAnimatorRole = auths.stream()
+                .anyMatch(auth -> auth.startsWith("GROUP:") && auth.contains(":ANIMATOR:"));
+        
+        return hasAnimatorRole;
+    }
+
     public Set<Long> extractCenterIdsForYear(Set<String> authorities, int year) {
         Set<Long> out = new java.util.HashSet<>();
         String suffix = ":" + year;

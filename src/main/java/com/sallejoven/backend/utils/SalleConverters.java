@@ -335,6 +335,38 @@ public class SalleConverters {
                 .build();
     }
 
+    public ParticipantDto participantDtoFromWeeklySessionUser(com.sallejoven.backend.model.entity.WeeklySessionUser weeklySessionUser) throws SalleException {
+        UserGroup userGroup = weeklySessionUser.getUserGroup();
+        UserSalle userSalle = userGroup.getUser();
+        Integer userType = userGroup.getUserType();
+
+        return ParticipantDto.builder()
+                .id(userSalle.getId())
+                .name(userSalle.getName())
+                .lastName(userSalle.getLastName())
+                .dni(userSalle.getDni())
+                .phone(userSalle.getPhone())
+                .email(userSalle.getEmail())
+                .tshirtSize(userSalle.getTshirtSize())
+                .healthCardNumber(userSalle.getHealthCardNumber())
+                .intolerances(userSalle.getIntolerances())
+                .chronicDiseases(userSalle.getChronicDiseases())
+                .city(userSalle.getCity())
+                .address(userSalle.getAddress())
+                .motherFullName(userSalle.getMotherFullName())
+                .fatherFullName(userSalle.getFatherFullName())
+                .motherEmail(userSalle.getMotherEmail())
+                .fatherEmail(userSalle.getFatherEmail())
+                .fatherPhone(userSalle.getFatherPhone())
+                .motherPhone(userSalle.getMotherPhone())
+                .birthDate(userSalle.getBirthDate())
+                .gender(userSalle.getGender())
+                .imageAuthorization(userSalle.getImageAuthorization())
+                .attends(weeklySessionUser.getStatus())
+                .userType(userType)
+                .build();
+    }
+
     public List<UserCenterGroupsDto> userGroupsToUserCenters(List<UserGroup> userGroups) {
         Map<Center, List<UserGroup>> byCenter = userGroups.stream()
                 .collect(Collectors.groupingBy(ug -> ug.getGroup().getCenter()));
@@ -366,24 +398,14 @@ public class SalleConverters {
                 .build();
     }
 
-    public UserCenterGroupsDto toUserCenterGroupsDto(Center center, List<GroupSalle> groups, int roleCode) {
+    public UserCenterGroupsDto toUserCenterGroupsDto(Center center, List<UserGroupDto> groupDtos) {
         UserCenterGroupsDto dto = centerToUserCenterNoGroups(center);
-
-        List<UserGroupDto> groupDtos = new ArrayList<>(groups.size());
-        for (GroupSalle g : groups) {
-            groupDtos.add(UserGroupDto.builder()
-                    .groupId(g.getId().intValue())
-                    .stage(g.getStage())
-                    .user_type(roleCode) // p.ej. ADMIN=4, DELEGATE=3, LEADER=2
-                    .build());
-        }
-
-        groupDtos.sort((a, b) -> {
+        List<UserGroupDto> sorted = new ArrayList<>(groupDtos);
+        sorted.sort((a, b) -> {
             int s = Comparator.nullsLast(Integer::compareTo).compare(a.getStage(), b.getStage());
             return (s != 0) ? s : Comparator.nullsLast(Integer::compareTo).compare(a.getGroupId(), b.getGroupId());
         });
-
-        dto.setGroups(groupDtos);
+        dto.setGroups(sorted);
         return dto;
     }
 

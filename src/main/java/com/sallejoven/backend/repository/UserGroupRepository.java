@@ -94,6 +94,9 @@ public interface UserGroupRepository extends JpaRepository<UserGroup, Long> {
 
     List<UserGroup> findByUser_IdAndYearAndDeletedAtIsNull(Long userId, Integer year);
 
+    @Query("SELECT DISTINCT ug.group.id FROM UserGroup ug WHERE ug.group.center.id = :centerId AND ug.year = :year AND ug.deletedAt IS NULL")
+    List<Long> findDistinctGroupIdsByCenterIdAndYear(@Param("centerId") Long centerId, @Param("year") Integer year);
+
     boolean existsByUser_IdAndYearAndDeletedAtIsNull(Long userId, Integer year);
 
 

@@ -85,11 +85,7 @@ public class CenterController {
         var raws = centerService.getCentersForUserRaw(me, roles);
 
         List<UserCenterGroupsDto> dtos = raws.stream()
-                .map(r -> salleConverters.toUserCenterGroupsDto(
-                        r.getCenter(),
-                        r.getGroups(),
-                        r.getUserType()
-                ))
+                .map(r -> salleConverters.toUserCenterGroupsDto(r.getCenter(), r.getGroups()))
                 .toList();
 
         return ResponseEntity.ok(dtos);
