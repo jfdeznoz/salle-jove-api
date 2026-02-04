@@ -1,6 +1,7 @@
 // BaseUserDto.java
 package com.sallejoven.backend.model.dto.abstractDto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -24,6 +25,7 @@ public abstract class BaseUserDto {
     private String intolerances;
     private String chronicDiseases;
     private Boolean imageAuthorization;
+    @JsonFormat(pattern = "yyyy-MM-dd")
     private Date birthDate;
 
     private Integer gender;

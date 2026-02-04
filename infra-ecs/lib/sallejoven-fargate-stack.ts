@@ -131,10 +131,22 @@ export class SalleJovenFargateStack extends cdk.Stack {
 
     taskDef.addToTaskRolePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ['s3:PutObject'],
+      actions: ['s3:PutObject', 's3:DeleteObject'],
       resources: [
+        // Permisos para jobs de reportes
         'arn:aws:s3:::sallejoven-events/*/inputs/jobs/*',
         'arn:aws:s3:::sallejoven-events/test/*/inputs/jobs/*',
+        // Eventos generales: year/events/general/event_ID/*
+        'arn:aws:s3:::sallejoven-events/*/events/general/event_*/*',
+        'arn:aws:s3:::sallejoven-events/test/*/events/general/event_*/*',
+        // Eventos por centro: year/events/centers/centerId/event_ID/*
+        'arn:aws:s3:::sallejoven-events/*/events/centers/*/event_*/*',
+        'arn:aws:s3:::sallejoven-events/test/*/events/centers/*/event_*/*',
+        // Permisos para sesiones semanales (PDFs)
+        'arn:aws:s3:::sallejoven-events/*/weekly-sessions/*',
+        'arn:aws:s3:::sallejoven-events/test/*/weekly-sessions/*',
+        // Situaciones vitales: PDFs de sesiones (test/vital-situation-sessions/... o vital-situation-sessions/...)
+        'arn:aws:s3:::sallejoven-events/*/vital-situation-sessions/*',
       ],
     }));
 

@@ -16,12 +16,13 @@ import com.sallejoven.backend.repository.UserRepository;
 import com.sallejoven.backend.service.AcademicStateService;
 import com.sallejoven.backend.service.AuthorityService;
 import com.sallejoven.backend.service.EventService;
+import com.sallejoven.backend.service.VitalSituationService;
+import com.sallejoven.backend.service.WeeklySessionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-import java.time.Year;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -40,6 +41,8 @@ public class AuthzBean {
     private final EventGroupRepository eventGroupRepo;
     private final AuthorityService authorityService;
     private final UserPendingRepository userPendingRepo;
+    private final WeeklySessionService weeklySessionService;
+    private final VitalSituationService vitalSituationService;
 
     private Set<String> auths() {
         var a = SecurityContextHolder.getContext().getAuthentication();
@@ -172,27 +175,30 @@ public class AuthzBean {
     public boolean hasCenterRole(Long centerId, String... roles) {
         var auths = auths();
         if (isAdmin(auths)) return true;
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) return false;
         var a = SecurityContextHolder.getContext().getAuthentication();
         if (a == null) return false;
         Set<String> set = a.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.toSet());
-        int year = Year.now().getValue(); // o inyecta AcademicStateService si prefieres el año visible
         for (String r : roles) {
             if (set.contains("CENTER:" + centerId + ":" + r + ":" + year)) return true;
         }
         return false;
     }
 
+    /** Usa año académico visible (igual que en el JWT) para que catequistas tengan acceso a GET /api/users/group/{groupId}. */
     public boolean hasGroupRole(Long groupId, String... roles) {
         var auths = auths();
         if (isAdmin(auths)) return true;
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) return false;
         var a = SecurityContextHolder.getContext().getAuthentication();
         if (a == null) return false;
         Set<String> set = a.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.toSet());
-        int year = Year.now().getValue(); // o AcademicStateService
         for (String r : roles) {
             if (set.contains("GROUP:" + groupId + ":" + r + ":" + year)) return true;
         }
@@ -338,6 +344,175 @@ public class AuthzBean {
 
         return as.contains("CENTER:" + centerId + ":PASTORAL_DELEGATE:" + year)
                 || as.contains("CENTER:" + centerId + ":GROUP_LEADER:" + year);
+    }
+
+    public boolean canCreateWeeklySession(com.sallejoven.backend.model.requestDto.RequestWeeklySession req) {
+        var as = auths();
+        if (isAdmin(as)) return true;
+
+        if (req == null) return false;
+
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) return false;
+
+        Long groupId = req.getGroupId();
+        if (groupId == null) return false;
+
+        // Verificar si es ANIMATOR del grupo
+        if (hasGroupRole(groupId, "ANIMATOR")) {
+            return true;
+        }
+
+        // Verificar si es PASTORAL_DELEGATE o GROUP_LEADER del centro
+        return hasCenterOfGroup(groupId, "PASTORAL_DELEGATE", "GROUP_LEADER");
+    }
+
+    public boolean canManageWeeklySessionForEditOrDelete(Long sessionId) {
+        var as = auths();
+        if (isAdmin(as)) return true;
+
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) return false;
+
+        var sessionOpt = weeklySessionService.findById(sessionId);
+        if (sessionOpt.isEmpty()) return false;
+
+        var session = sessionOpt.get();
+        var group = session.getGroup();
+        if (group == null || group.getCenter() == null) return false;
+
+        Long centerId = group.getCenter().getId();
+
+        return as.contains("CENTER:" + centerId + ":PASTORAL_DELEGATE:" + year)
+                || as.contains("CENTER:" + centerId + ":GROUP_LEADER:" + year);
+    }
+
+    public boolean canManageWeeklySessionGroupParticipants(Long sessionId, Long groupId) {
+        var as = auths();
+        if (isAdmin(as)) return true;
+
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) return false;
+
+        var sessionOpt = weeklySessionService.findById(sessionId);
+        if (sessionOpt.isEmpty()) return false;
+
+        var session = sessionOpt.get();
+        if (!session.getGroup().getId().equals(groupId)) return false;
+
+        // Los catequistas solo pueden pasar lista de sesiones publicadas
+        boolean isOnlyAnimator = authorityService.isOnlyAnimator();
+        if (isOnlyAnimator && session.getStatus() != 1) {
+            return false; // Solo pueden pasar lista de sesiones publicadas
+        }
+
+        Long meId = currentUserIdOrNull();
+        if (meId != null && userGroupRepo
+                .existsByUser_IdAndGroup_IdAndYearAndDeletedAtIsNullAndUserType(meId, groupId, year, 1)) {
+            return true;
+        }
+
+        var group = session.getGroup();
+        if (group == null || group.getCenter() == null) return false;
+
+        Long centerId = group.getCenter().getId();
+
+        return as.contains("CENTER:" + centerId + ":PASTORAL_DELEGATE:" + year)
+                || as.contains("CENTER:" + centerId + ":GROUP_LEADER:" + year);
+    }
+
+    public boolean canCreateOrEditVitalSituation(com.sallejoven.backend.model.requestDto.RequestVitalSituation req) {
+        var as = auths();
+        if (isAdmin(as)) return true;
+
+        if (req == null) return false;
+
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) return false;
+
+        // PASTORAL_DELEGATE y GROUP_LEADER pueden crear/editar
+        return isAnyManagerType();
+    }
+
+    public boolean canEditVitalSituation(Long id) {
+        var as = auths();
+        if (isAdmin(as)) return true;
+
+        var vsOpt = vitalSituationService.findById(id);
+        if (vsOpt.isEmpty()) return false;
+
+        var vs = vsOpt.get();
+        // Solo admin puede editar las predefinidas (isDefault = true)
+        if (Boolean.TRUE.equals(vs.getIsDefault())) {
+            return false;
+        }
+
+        // PASTORAL_DELEGATE y GROUP_LEADER pueden editar las que crearon
+        return isAnyManagerType();
+    }
+
+    public boolean canDeleteVitalSituation(Long id) {
+        var as = auths();
+        if (isAdmin(as)) return true;
+
+        var vsOpt = vitalSituationService.findById(id);
+        if (vsOpt.isEmpty()) return false;
+
+        var vs = vsOpt.get();
+        // Solo admin puede eliminar las predefinidas (isDefault = true)
+        if (Boolean.TRUE.equals(vs.getIsDefault())) {
+            return false;
+        }
+
+        // PASTORAL_DELEGATE y GROUP_LEADER pueden eliminar las que crearon
+        return isAnyManagerType();
+    }
+
+    public boolean canCreateOrEditVitalSituationSession(com.sallejoven.backend.model.requestDto.RequestVitalSituationSession req) {
+        var as = auths();
+        if (isAdmin(as)) return true;
+
+        if (req == null) return false;
+
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) return false;
+
+        // PASTORAL_DELEGATE y GROUP_LEADER pueden crear/editar
+        return isAnyManagerType();
+    }
+
+    public boolean canEditVitalSituationSession(Long id) {
+        var as = auths();
+        if (isAdmin(as)) return true;
+
+        var vssOpt = vitalSituationService.findSessionById(id);
+        if (vssOpt.isEmpty()) return false;
+
+        var vss = vssOpt.get();
+        // Solo admin puede editar las predefinidas (isDefault = true)
+        if (Boolean.TRUE.equals(vss.getIsDefault())) {
+            return false;
+        }
+
+        // PASTORAL_DELEGATE y GROUP_LEADER pueden editar las que crearon
+        return isAnyManagerType();
+    }
+
+    public boolean canDeleteVitalSituationSession(Long id) {
+        var as = auths();
+        if (isAdmin(as)) return true;
+
+        var vssOpt = vitalSituationService.findSessionById(id);
+        if (vssOpt.isEmpty()) return false;
+
+        var vss = vssOpt.get();
+        // Solo admin puede eliminar las predefinidas (isDefault = true)
+        if (Boolean.TRUE.equals(vss.getIsDefault())) {
+            return false;
+        }
+
+        // PASTORAL_DELEGATE y GROUP_LEADER pueden eliminar las que crearon
+        return isAnyManagerType();
     }
 
     private static String normalizeRole(String raw) {
