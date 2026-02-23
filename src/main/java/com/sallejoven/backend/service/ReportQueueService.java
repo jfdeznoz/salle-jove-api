@@ -144,24 +144,33 @@ public class ReportQueueService {
             Integer sizeIdx = Optional.ofNullable(u.getTshirtSize()).map(TshirtSizeEnum::fromIndex)
                     .map(Enum::ordinal).orElse(-1);
 
-            return Map.<String, Object>of(
-                    "fullName", (u.getName() == null ? "" : u.getName()) + " " + (u.getLastName() == null ? "" : u.getLastName()),
-                    "email", Optional.ofNullable(u.getEmail()).orElse(""),
-                    "fatherPhone", Optional.ofNullable(u.getFatherPhone()).orElse(""),
-                    "motherPhone", Optional.ofNullable(u.getMotherPhone()).orElse(""),
-                    "intolerances", Optional.ofNullable(u.getIntolerances()).orElse(""),
-                    "chronicDiseases", Optional.ofNullable(u.getChronicDiseases()).orElse(""),
-                    "imageAuthorization", Boolean.TRUE.equals(u.getImageAuthorization()),
-                    "tshirtSize", sizeIdx,
-                    "userType", Optional.ofNullable(eu.getUserGroup().getUserType()).orElse(0),
-                    "group", Map.of(
-                            "stage", Optional.ofNullable(g.getStage()).orElse(0),
-                            "center", Map.of(
-                                    "name", Optional.ofNullable(g.getCenter()).map(c -> Optional.ofNullable(c.getName()).orElse("")).orElse(""),
-                                    "city", Optional.ofNullable(g.getCenter()).map(c -> Optional.ofNullable(c.getCity()).orElse("")).orElse("")
-                            )
-                    )
-            );
+            Map<String, Object> centerMap = new LinkedHashMap<>();
+            if (g.getCenter() != null) {
+                centerMap.put("id", g.getCenter().getId());
+                centerMap.put("name", Optional.ofNullable(g.getCenter().getName()).orElse(""));
+                centerMap.put("city", Optional.ofNullable(g.getCenter().getCity()).orElse(""));
+            } else {
+                centerMap.put("id", -1L);
+                centerMap.put("name", "");
+                centerMap.put("city", "");
+            }
+
+            Map<String, Object> part = new LinkedHashMap<>();
+            part.put("fullName", (u.getName() == null ? "" : u.getName()) + " " + (u.getLastName() == null ? "" : u.getLastName()));
+            part.put("email", Optional.ofNullable(u.getEmail()).orElse(""));
+            part.put("phone", Optional.ofNullable(u.getPhone()).orElse(""));
+            part.put("fatherPhone", Optional.ofNullable(u.getFatherPhone()).orElse(""));
+            part.put("motherPhone", Optional.ofNullable(u.getMotherPhone()).orElse(""));
+            part.put("intolerances", Optional.ofNullable(u.getIntolerances()).orElse(""));
+            part.put("chronicDiseases", Optional.ofNullable(u.getChronicDiseases()).orElse(""));
+            part.put("imageAuthorization", Boolean.TRUE.equals(u.getImageAuthorization()));
+            part.put("tshirtSize", sizeIdx);
+            part.put("userType", Optional.ofNullable(eu.getUserGroup().getUserType()).orElse(0));
+            part.put("group", Map.of(
+                    "stage", Optional.ofNullable(g.getStage()).orElse(0),
+                    "center", centerMap
+            ));
+            return part;
         }).collect(Collectors.toList());
 
         m.put("participants", participants);
