@@ -142,7 +142,7 @@ public class ReportQueueService {
             GroupSalle g = eu.getUserGroup().getGroup();
 
             Integer sizeIdx = Optional.ofNullable(u.getTshirtSize()).map(TshirtSizeEnum::fromIndex)
-                    .map(Enum::ordinal).orElse(null);
+                    .map(Enum::ordinal).orElse(-1);
 
             return Map.<String, Object>of(
                     "fullName", (u.getName() == null ? "" : u.getName()) + " " + (u.getLastName() == null ? "" : u.getLastName()),
