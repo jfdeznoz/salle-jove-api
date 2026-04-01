@@ -1,6 +1,5 @@
 package com.sallejoven.backend.controller;
 
-import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.service.PromotionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -20,7 +19,7 @@ public class PromotionController {
 
     @PostMapping("/promotions")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> promote() throws SalleException {
+    public ResponseEntity<Void> promote() {
         promotionService.promote();
         return ResponseEntity.ok().build();
     }

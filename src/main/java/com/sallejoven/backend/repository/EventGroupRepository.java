@@ -57,4 +57,14 @@ public interface EventGroupRepository extends JpaRepository<EventGroup, Long> {
     """)
     List<EventGroup> findByEventIdAndCenterIds(@Param("eventId") Long eventId,
                                                @Param("centerIds") List<Long> centerIds);
+
+    @Query("""
+        SELECT eg
+        FROM EventGroup eg
+        JOIN FETCH eg.groupSalle g
+        JOIN FETCH g.center
+        WHERE eg.event.id IN :eventIds
+          AND eg.deletedAt IS NULL
+    """)
+    List<EventGroup> findActiveByEventIds(@Param("eventIds") java.util.Collection<Long> eventIds);
 }

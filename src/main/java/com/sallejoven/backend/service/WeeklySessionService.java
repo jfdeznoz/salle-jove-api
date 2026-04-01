@@ -1,6 +1,7 @@
 package com.sallejoven.backend.service;
 
 import com.sallejoven.backend.errors.SalleException;
+import com.sallejoven.backend.mapper.WeeklySessionMapper;
 import com.sallejoven.backend.model.dto.WeeklySessionDto;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserGroup;
@@ -8,11 +9,11 @@ import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.entity.VitalSituationSession;
 import com.sallejoven.backend.model.entity.WeeklySession;
 import com.sallejoven.backend.model.enums.ErrorCodes;
-import com.sallejoven.backend.model.requestDto.RequestWeeklySession;
+import com.sallejoven.backend.model.requestDto.WeeklySessionRequest;
 import com.sallejoven.backend.repository.GroupRepository;
 import com.sallejoven.backend.repository.WeeklySessionRepository;
 import com.sallejoven.backend.repository.VitalSituationSessionRepository;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -37,6 +38,7 @@ public class WeeklySessionService {
     private final AuthService authService;
     private final GroupService groupService;
     private final AuthorityService authorityService;
+    private final WeeklySessionMapper weeklySessionMapper;
 
     public Optional<WeeklySession> findById(Long id) {
         Optional<WeeklySession> sessionOpt = weeklySessionRepository.findById(id);
@@ -54,7 +56,7 @@ public class WeeklySessionService {
         return Optional.of(session);
     }
 
-    public Page<WeeklySession> findAll(int page, int size, boolean isPast, Long groupId) throws SalleException {
+    public Page<WeeklySession> findAll(int page, int size, boolean isPast, Long groupId) {
         UserSalle user = authService.getCurrentUser();
         LocalDate today = ZonedDateTime.now(ZoneId.of("Europe/Madrid")).toLocalDate();
         Pageable pageable = PageRequest.of(page, size);
@@ -89,7 +91,7 @@ public class WeeklySessionService {
     }
 
     @Transactional
-    public WeeklySession saveWeeklySession(RequestWeeklySession request) throws SalleException {
+    public WeeklySession saveWeeklySession(WeeklySessionRequest request) {
         VitalSituationSession vss = vitalSituationSessionRepository.findById(request.getVitalSituationSessionId())
                 .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
 
@@ -101,7 +103,7 @@ public class WeeklySessionService {
                 .title(request.getTitle())
                 .group(group)
                 .sessionDateTime(request.getSessionDateTime())
-                .status(request.getStatus() != null ? request.getStatus() : 0) // Default DRAFT
+                .status(0) // DRAFT by default
                 .build();
 
         session = weeklySessionRepository.save(session);
@@ -114,7 +116,7 @@ public class WeeklySessionService {
     }
 
     @Transactional
-    public WeeklySession editWeeklySession(Long sessionId, RequestWeeklySession request) throws SalleException {
+    public WeeklySession editWeeklySession(Long sessionId, WeeklySessionRequest request) {
         WeeklySession session = weeklySessionRepository.findById(sessionId)
                 .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
 
@@ -138,10 +140,6 @@ public class WeeklySessionService {
             session.setSessionDateTime(request.getSessionDateTime());
         }
 
-        if (request.getStatus() != null) {
-            session.setStatus(request.getStatus());
-        }
-
         return weeklySessionRepository.save(session);
     }
 
@@ -163,23 +161,7 @@ public class WeeklySessionService {
     }
 
     public WeeklySessionDto toDto(WeeklySession session) {
-        GroupSalle group = session.getGroup();
-        VitalSituationSession vss = session.getVitalSituationSession();
-
-        return WeeklySessionDto.builder()
-                .id(session.getId())
-                .vitalSituationSessionId(vss.getId())
-                .vitalSituationTitle(vss.getVitalSituation().getTitle())
-                .vitalSituationSessionTitle(vss.getTitle())
-                .title(session.getTitle())
-                .groupId(group.getId())
-                .groupName(group.getCenter().getName() + " - " + group.getCenter().getCity())
-                .stage(group.getStage())
-                .centerId(group.getCenter().getId())
-                .centerName(group.getCenter().getName())
-                .sessionDateTime(session.getSessionDateTime())
-                .status(session.getStatus())
-                .build();
+        return weeklySessionMapper.toDto(session);
     }
 }
 

@@ -7,10 +7,12 @@ import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.ErrorCodes;
+import com.sallejoven.backend.repository.CenterRepository;
 import com.sallejoven.backend.repository.GroupRepository;
 import com.sallejoven.backend.repository.UserGroupRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -19,15 +21,17 @@ import java.util.stream.Stream;
 
 @RequiredArgsConstructor
 @Service
+@Transactional(readOnly = true)
 public class GroupService {
 
     private final GroupRepository groupRepository;
+    private final CenterRepository centerRepository;
     private final UserGroupRepository userGroupRepository;
     private final EventGroupService eventGroupService;
     private final AuthorityService authorityService;
     private final AcademicStateService academicStateService;
 
-    public GroupSalle findById(Long id) throws SalleException {
+    public GroupSalle findById(Long id)  {
         return groupRepository.findById(id)
                 .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
     }
@@ -54,7 +58,7 @@ public class GroupService {
         return ids.isEmpty() ? List.of() : groupRepository.findAllById(ids);
     }
 
-    public List<GroupSalle> findAllByEvent(Long eventId) throws SalleException {
+    public List<GroupSalle> findAllByEvent(Long eventId)  {
         int year = academicStateService.getVisibleYear();
         Set<String> auths = authorityService.getCurrentAuth();
 
@@ -98,6 +102,16 @@ public class GroupService {
         return groupRepository.findAllByStagesAndCenterId(stages, centerId);
     }
 
+    public GroupSalle createGroup(Long centerId, Integer stage)  {
+        Center center = centerRepository.findById(centerId)
+                .orElseThrow(() -> new SalleException(ErrorCodes.CENTER_NOT_FOUND));
+        GroupSalle group = GroupSalle.builder()
+                .center(center)
+                .stage(stage)
+                .build();
+        return groupRepository.save(group);
+    }
+
     public GroupSalle saveGroup(GroupSalle group) {
         return groupRepository.save(group);
     }
@@ -106,12 +120,12 @@ public class GroupService {
         groupRepository.deleteById(id);
     }
 
-    public GroupSalle getByCenterAndStageOrThrow(Long centerId, int stage) throws SalleException {
+    public GroupSalle getByCenterAndStageOrThrow(Long centerId, int stage)  {
         return groupRepository.findByCenterIdAndStage(centerId, stage)
                 .orElseThrow(() -> new SalleException(ErrorCodes.PROMOTION_TARGET_GROUP_NOT_FOUND));
     }
 
-    public List<GroupSalle> findEffectiveGroupsForUser(UserSalle user) throws SalleException {
+    public List<GroupSalle> findEffectiveGroupsForUser(UserSalle user)  {
         int year = academicStateService.getVisibleYear();
         Set<String> auths = authorityService.getCurrentAuth();
 

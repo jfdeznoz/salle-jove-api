@@ -1,6 +1,8 @@
 package com.sallejoven.backend.service;
 
 import com.sallejoven.backend.errors.SalleException;
+import com.sallejoven.backend.mapper.CenterMapper;
+import com.sallejoven.backend.model.dto.CenterDto;
 import com.sallejoven.backend.model.entity.Center;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserCenter;
@@ -13,10 +15,10 @@ import com.sallejoven.backend.model.dto.UserGroupDto;
 import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.repository.CenterRepository;
 import com.sallejoven.backend.repository.UserGroupRepository;
-import com.sallejoven.backend.service.AcademicStateService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -29,6 +31,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class CenterService {
 
     private final CenterRepository centerRepository;
@@ -36,8 +39,9 @@ public class CenterService {
     private final UserCenterService userCenterService;
     private final AcademicStateService academicStateService;
     private final UserGroupRepository userGroupRepository;
+    private final CenterMapper centerMapper;
 
-    public Center findById(Long id) throws SalleException {
+    public Center findById(Long id) {
         return centerRepository.findById(id)
                 .orElseThrow(() -> new SalleException(ErrorCodes.CENTER_NOT_FOUND));
     }
@@ -46,45 +50,66 @@ public class CenterService {
         return centerRepository.findAll(Sort.by(Sort.Direction.ASC, "name"));
     }
 
+    public List<CenterDto> listMyCenters(UserSalle me, List<Role> roles) {
+        if (roles.contains(Role.ADMIN)) {
+            return getAllCentersWithGroups().stream()
+                    .map(this::toCenterDto)
+                    .toList();
+        }
+        return userCenterService.findByUserForCurrentYear(me.getId()).stream()
+                .map(this::userCenterToCenterDto)
+                .toList();
+    }
+
+    private CenterDto toCenterDto(Center center) {
+        return centerMapper.toCenterDtoWithoutGroups(center);
+    }
+
+    private CenterDto userCenterToCenterDto(UserCenter uc) {
+        return centerMapper.fromUserCenter(uc);
+    }
+
+    public List<UserGroup> getActiveUserGroupsForYear(UserSalle user) {
+        int visibleYear = academicStateService.getVisibleYear();
+        return user.getGroups().stream()
+                .filter(ug -> ug.getDeletedAt() == null
+                        && ug.getGroup() != null
+                        && ug.getYear() == visibleYear)
+                .toList();
+    }
+
     public List<GroupSalle> getGroupsForCenter(Center center) {
         return groupService.findByCenter(center);
     }
 
-    public List<UserCenterGroupsRaw> getCentersForUserRaw(UserSalle me, List<Role> roles) throws SalleException {
+    public List<UserCenterGroupsRaw> getCentersForUserRaw(UserSalle me, List<Role> roles) {
         Role mainRole = (roles == null || roles.isEmpty()) ? Role.PARTICIPANT : Collections.min(roles);
 
-        switch (mainRole) {
-            case ADMIN:
-                return rawForAdmin();
-
-            case GROUP_LEADER:
-            case PASTORAL_DELEGATE:
-                return rawForLeaderOrDelegate(me);
-
-            default:
-                return rawForDefaultUser(me);
-        }
+        return switch (mainRole) {
+            case ADMIN -> rawForAdmin();
+            case GROUP_LEADER, PASTORAL_DELEGATE -> rawForLeaderOrDelegate(me);
+            default -> rawForDefaultUser(me);
+        };
     }
 
-    private List<UserCenterGroupsRaw> rawForAdmin() throws SalleException {
+    private List<UserCenterGroupsRaw> rawForAdmin() {
         int year = academicStateService.getVisibleYear();
         List<UserCenterGroupsRaw> raws = new ArrayList<>();
         for (Center c : getAllCentersWithGroups()) {
             List<GroupSalle> groups = groupService.findGroupsByCenterIdForYear(c.getId(), year);
             List<UserGroupDto> dtos = groups.stream()
-                    .map(g -> UserGroupDto.builder()
-                            .id(g.getId() != null ? g.getId().intValue() : null)
-                            .groupId(g.getId() != null ? g.getId().intValue() : null)
-                            .stage(g.getStage())
-                            .user_type(UserType.ADMIN.toInt())
-                            .build())
+                    .map(g -> new UserGroupDto(
+                            UserType.ADMIN.toInt(),
+                            g.getId(),
+                            g.getId() != null ? g.getId().intValue() : null,
+                            g.getStage()))
                     .toList();
             raws.add(new UserCenterGroupsRaw(c, dtos));
         }
         return raws;
     }
 
-    private List<UserCenterGroupsRaw> rawForLeaderOrDelegate(UserSalle me) throws SalleException {
+    private List<UserCenterGroupsRaw> rawForLeaderOrDelegate(UserSalle me) {
         List<UserCenterGroupsRaw> result = new ArrayList<>();
         List<UserCenter> myCenters = userCenterService.findByUserForCurrentYear(me.getId());
 
@@ -108,26 +133,25 @@ public class CenterService {
             List<GroupSalle> groups = groupService.findGroupsByCenterIdForYear(centerId, year);
             int roleCode = uc.getUserType() != null ? uc.getUserType() : UserType.PARTICIPANT.toInt();
             List<UserGroupDto> dtos = groups.stream()
-                    .map(g -> UserGroupDto.builder()
-                            .id(g.getId() != null ? g.getId().intValue() : null)
-                            .groupId(g.getId() != null ? g.getId().intValue() : null)
-                            .stage(g.getStage())
-                            .user_type(roleCode)
-                            .build())
+                    .map(g -> new UserGroupDto(
+                            roleCode,
+                            g.getId(),
+                            g.getId() != null ? g.getId().intValue() : null,
+                            g.getStage()))
                     .toList();
             result.add(new UserCenterGroupsRaw(c, dtos));
         }
 
         List<UserCenterGroupsRaw> others = rawForDefaultUser(me);
         if (!mainCenterIds.isEmpty()) {
-            others.removeIf(raw -> mainCenterIds.contains(raw.getCenter().getId()));
+            others.removeIf(raw -> mainCenterIds.contains(raw.center().getId()));
         }
 
         result.addAll(others);
         return result;
     }
 
-    private List<UserCenterGroupsRaw> rawForDefaultUser(UserSalle me) throws SalleException {
+    private List<UserCenterGroupsRaw> rawForDefaultUser(UserSalle me) {
         int year = academicStateService.getVisibleYear();
         List<UserGroup> active = userGroupRepository.findByUser_IdAndYearAndDeletedAtIsNull(me.getId(), year).stream()
                 .filter(ug -> ug.getGroup() != null && ug.getGroup().getCenter() != null)
@@ -144,12 +168,11 @@ public class CenterService {
                     .map(ug -> {
                         GroupSalle g = ug.getGroup();
                         Integer ut = ug.getUserType();
-                        return UserGroupDto.builder()
-                                .id(g.getId() != null ? g.getId().intValue() : null)
-                                .groupId(g.getId() != null ? g.getId().intValue() : null)
-                                .stage(g.getStage())
-                                .user_type(ut != null ? ut : UserType.PARTICIPANT.toInt())
-                                .build();
+                        return new UserGroupDto(
+                                ut != null ? ut : UserType.PARTICIPANT.toInt(),
+                                g.getId(),
+                                g.getId() != null ? g.getId().intValue() : null,
+                                g.getStage());
                     })
                     .toList();
             raws.add(new UserCenterGroupsRaw(e.getKey(), dtos));

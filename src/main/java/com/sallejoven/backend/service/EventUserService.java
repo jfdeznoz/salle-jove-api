@@ -10,7 +10,7 @@ import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.requestDto.AttendanceUpdateDto;
 import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.repository.EventUserRepository;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -126,7 +126,7 @@ public class EventUserService {
 
     @Transactional
     public void updateParticipantsAttendance(Long eventId, List<AttendanceUpdateDto> updates, Long groupId)
-            throws SalleException {
+             {
 
         if (groupId == null) throw new SalleException(ErrorCodes.GROUP_NOT_FOUND);
 

@@ -1,6 +1,6 @@
 package com.sallejoven.backend.controller;
 
-import com.sallejoven.backend.errors.SalleException;
+import com.sallejoven.backend.mapper.ParticipantMapper;
 import com.sallejoven.backend.model.dto.EventDto;
 import com.sallejoven.backend.model.dto.InitiateEventResp;
 import com.sallejoven.backend.model.dto.ParticipantDto;
@@ -9,11 +9,13 @@ import com.sallejoven.backend.model.entity.Event;
 import com.sallejoven.backend.model.entity.EventUser;
 import com.sallejoven.backend.model.requestDto.AttendanceUpdateRequest;
 import com.sallejoven.backend.model.requestDto.FinalizeUploadsReq;
-import com.sallejoven.backend.model.requestDto.RequestEvent;
+import com.sallejoven.backend.model.requestDto.EventRequest;
+import com.sallejoven.backend.model.requestDto.ToggleBlockedRequest;
 import com.sallejoven.backend.service.EventService;
 import com.sallejoven.backend.service.EventUserService;
 import com.sallejoven.backend.service.S3V2Service;
-import com.sallejoven.backend.utils.SalleConverters;
+import com.sallejoven.backend.service.assembler.EventAssembler;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.MediaType;
@@ -30,10 +32,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import java.io.IOException;
-import java.time.Duration;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 @PreAuthorize("isAuthenticated()")
@@ -44,29 +43,32 @@ public class EventController {
 
     private final EventService eventService;
     private final EventUserService eventUserService;
-    private final SalleConverters salleConverters;
+    private final EventAssembler eventAssembler;
+    private final ParticipantMapper participantMapper;
     private final S3V2Service s3v2Service;
 
     @GetMapping("/paged")
     public ResponseEntity<Page<EventDto>> getAllEvents(@RequestParam(defaultValue = "0") int page,
                                                     @RequestParam(defaultValue = "10") int size,
                                                     @RequestParam(defaultValue = "false") Boolean isPast,
-                                                    @RequestParam(required = false) Boolean isGeneral) throws SalleException {
+                                                    @RequestParam(required = false) Boolean isGeneral) {
         Page<Event> eventPage = eventService.findAll(page, size, isPast, isGeneral);
-        Page<EventDto> eventDtoPage = eventPage.map(salleConverters::eventToDto);
+        Page<EventDto> eventDtoPage = eventPage.map(eventAssembler::toDto);
         return ResponseEntity.ok(eventDtoPage);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Event> getEventById(@PathVariable Long id) {
-        Optional<Event> event = eventService.findById(id);
-        return event.map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<EventDto> getEventById(@PathVariable Long id) {
+        return eventService.findById(id)
+                .map(eventAssembler::toDto)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @PreAuthorize("@authz.canCreateEvent(#requestEvent)")
     @PostMapping(value = "/", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<InitiateEventResp> createEvent(@RequestBody RequestEvent requestEvent)
-            throws IOException, SalleException {
+    public ResponseEntity<InitiateEventResp> createEvent(@Valid @RequestBody EventRequest requestEvent)
+            throws IOException {
 
         Event ev = eventService.saveEvent(requestEvent);
 
@@ -89,7 +91,7 @@ public class EventController {
         );
 
         var body = new InitiateEventResp(
-                salleConverters.eventToDto(ev),
+                eventAssembler.toDto(ev),
                 presigneds.image(),
                 presigneds.pdf()
         );
@@ -100,8 +102,8 @@ public class EventController {
     @PutMapping(value = "/{eventId}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<InitiateEventResp> editEventInitiate(
             @PathVariable Long eventId,
-            @RequestBody RequestEvent requestEvent
-    ) throws IOException, SalleException {
+            @Valid @RequestBody EventRequest requestEvent
+    ) throws IOException {
 
         // Asegura coherencia de IDs
         if (requestEvent.getId() == null) {
@@ -131,7 +133,7 @@ public class EventController {
         );
 
         var body = new InitiateEventResp(
-                salleConverters.eventToDto(ev),
+                eventAssembler.toDto(ev),
                 presigneds.image(),
                 presigneds.pdf()
         );
@@ -144,7 +146,7 @@ public class EventController {
     public ResponseEntity<EventDto> finalizeUploads(@PathVariable Long eventId,
                                                     @RequestBody FinalizeUploadsReq req) {
         Event updated = eventService.finalizeUploads(eventId, req.imageKey(), req.pdfKey());
-        return ResponseEntity.ok(salleConverters.eventToDto(updated));
+        return ResponseEntity.ok(eventAssembler.toDto(updated));
     }
 
     @PreAuthorize("@authz.canManageEventForEditOrDelete(#eventId)")
@@ -162,20 +164,16 @@ public class EventController {
         public ResponseEntity<List<ParticipantDto>> getParticipantsByGroupAndEvent(@RequestParam Long eventId,
                                                                                    @RequestParam Long groupId) {
         List<EventUser> eventUsers = eventUserService.findByEventIdAndGroupId(eventId, groupId);
-        return ResponseEntity.ok(eventUsers.stream().map(t -> {
-            try {
-                return salleConverters.participantDto(t);
-            } catch (SalleException e) {
-                throw new RuntimeException("Error al convertir EventUser a ParticipantDto", e);
-            }
-        }).collect(Collectors.toList()));
+        return ResponseEntity.ok(eventUsers.stream()
+                .map(participantMapper::fromEventUser)
+                .collect(Collectors.toList()));
     }
 
     @PreAuthorize("@authz.canManageEventGroupParticipants(#eventId, #groupId)")
     @PostMapping("/{eventId}/groups/{groupId}/participants")
     public ResponseEntity<Void> updateAttendance(@PathVariable Long eventId,
                                                  @PathVariable Long groupId,
-                                                 @RequestBody AttendanceUpdateRequest request) throws SalleException {
+                                                 @Valid @RequestBody AttendanceUpdateRequest request) {
         eventUserService.updateParticipantsAttendance(eventId, request.getParticipants(), groupId);
         return ResponseEntity.ok().build();
     }
@@ -183,10 +181,9 @@ public class EventController {
     @PreAuthorize("@authz.canManageEventForEditOrDelete(#eventId)")
     @PutMapping("/{eventId}/block")
     public ResponseEntity<EventDto> toggleEventBlocked(@PathVariable Long eventId,
-                                                       @RequestBody Map<String, Boolean> body) throws SalleException {
-        boolean blocked = body.getOrDefault("blocked", false);
-        Event updated = eventService.setBlockedStatus(eventId, blocked);
-        return ResponseEntity.ok(salleConverters.eventToDto(updated));
+                                                       @Valid @RequestBody ToggleBlockedRequest request) {
+        Event updated = eventService.setBlockedStatus(eventId, request.blocked());
+        return ResponseEntity.ok(eventAssembler.toDto(updated));
     }
 
 }

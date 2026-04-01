@@ -25,7 +25,7 @@ public class PasswordResetController {
 
     public record StartReq(@NotBlank @Email String email) {}
     public record ConfirmReq(@NotBlank String token,
-                             @NotBlank @Size(min = 4, max = 200) String newPassword) {}
+                             @NotBlank @Size(min = 8, max = 200) String newPassword) {}
 
     @PostMapping("/start")
     public ResponseEntity<Void> start(@RequestBody @Valid StartReq req) {

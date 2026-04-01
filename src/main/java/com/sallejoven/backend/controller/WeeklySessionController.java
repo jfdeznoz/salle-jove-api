@@ -1,6 +1,7 @@
 package com.sallejoven.backend.controller;
 
-import com.sallejoven.backend.errors.SalleException;
+import com.sallejoven.backend.mapper.ParticipantMapper;
+import com.sallejoven.backend.mapper.WeeklySessionMapper;
 import com.sallejoven.backend.model.dto.InitiateWeeklySessionResp;
 import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.model.dto.ParticipantDto;
@@ -10,11 +11,11 @@ import com.sallejoven.backend.model.entity.WeeklySession;
 import com.sallejoven.backend.model.entity.WeeklySessionUser;
 import com.sallejoven.backend.model.requestDto.AttendanceUpdateRequest;
 import com.sallejoven.backend.model.requestDto.FinalizeUploadsReq;
-import com.sallejoven.backend.model.requestDto.RequestWeeklySession;
+import com.sallejoven.backend.model.requestDto.WeeklySessionRequest;
 import com.sallejoven.backend.service.S3V2Service;
 import com.sallejoven.backend.service.WeeklySessionService;
 import com.sallejoven.backend.service.WeeklySessionUserService;
-import com.sallejoven.backend.utils.SalleConverters;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import org.springframework.data.domain.Page;
@@ -43,46 +44,47 @@ public class WeeklySessionController {
 
     private final WeeklySessionService weeklySessionService;
     private final WeeklySessionUserService weeklySessionUserService;
-    private final SalleConverters salleConverters;
+    private final WeeklySessionMapper weeklySessionMapper;
+    private final ParticipantMapper participantMapper;
 
     @GetMapping("/paged")
     public ResponseEntity<Page<WeeklySessionDto>> getAllWeeklySessions(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "false") Boolean isPast,
-            @RequestParam(required = false) Long groupId) throws SalleException {
+            @RequestParam(required = false) Long groupId)  {
         Page<WeeklySession> sessionPage = weeklySessionService.findAll(page, size, isPast, groupId);
-        Page<WeeklySessionDto> sessionDtoPage = sessionPage.map(weeklySessionService::toDto);
+        Page<WeeklySessionDto> sessionDtoPage = sessionPage.map(weeklySessionMapper::toDto);
         return ResponseEntity.ok(sessionDtoPage);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<WeeklySessionDto> getWeeklySessionById(@PathVariable Long id) {
         return weeklySessionService.findById(id)
-                .map(weeklySessionService::toDto)
+                .map(weeklySessionMapper::toDto)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PreAuthorize("@authz.canCreateWeeklySession(#request)")
     @PostMapping(value = "/", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<WeeklySessionDto> createWeeklySession(@RequestBody RequestWeeklySession request)
-            throws SalleException {
+    public ResponseEntity<WeeklySessionDto> createWeeklySession(@Valid @RequestBody WeeklySessionRequest request)
+             {
         WeeklySession session = weeklySessionService.saveWeeklySession(request);
-        return ResponseEntity.ok(weeklySessionService.toDto(session));
+        return ResponseEntity.ok(weeklySessionMapper.toDto(session));
     }
 
     @PreAuthorize("@authz.canManageWeeklySessionForEditOrDelete(#sessionId)")
     @PutMapping(value = "/{sessionId}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<WeeklySessionDto> editWeeklySession(
             @PathVariable Long sessionId,
-            @RequestBody RequestWeeklySession request
-    ) throws SalleException {
+            @Valid @RequestBody WeeklySessionRequest request
+    )  {
         if (request.getId() == null) {
             request.setId(sessionId);
         }
         WeeklySession session = weeklySessionService.editWeeklySession(sessionId, request);
-        return ResponseEntity.ok(weeklySessionService.toDto(session));
+        return ResponseEntity.ok(weeklySessionMapper.toDto(session));
     }
 
     @PreAuthorize("@authz.canManageWeeklySessionForEditOrDelete(#sessionId)")
@@ -101,22 +103,17 @@ public class WeeklySessionController {
             @RequestParam Long sessionId,
             @RequestParam Long groupId) {
         List<WeeklySessionUser> sessionUsers = weeklySessionUserService.findBySessionIdAndGroupId(sessionId, groupId);
-        return ResponseEntity.ok(sessionUsers.stream().map(t -> {
-            try {
-                return salleConverters.participantDtoFromWeeklySessionUser(t);
-            } catch (SalleException e) {
-                throw new RuntimeException("Error al convertir WeeklySessionUser a ParticipantDto", e);
-            }
-        }).collect(Collectors.toList()));
+        return ResponseEntity.ok(sessionUsers.stream()
+                .map(participantMapper::fromWeeklySessionUser)
+                .collect(Collectors.toList()));
     }
 
     @PreAuthorize("@authz.canManageWeeklySessionGroupParticipants(#sessionId, #groupId)")
     @PostMapping("/{sessionId}/groups/{groupId}/participants")
     public ResponseEntity<Void> updateAttendance(@PathVariable Long sessionId,
                                                 @PathVariable Long groupId,
-                                                @RequestBody AttendanceUpdateRequest request) throws SalleException {
+                                                @Valid @RequestBody AttendanceUpdateRequest request)  {
         weeklySessionUserService.updateParticipantsAttendance(sessionId, request.getParticipants(), groupId);
         return ResponseEntity.ok().build();
     }
 }
-

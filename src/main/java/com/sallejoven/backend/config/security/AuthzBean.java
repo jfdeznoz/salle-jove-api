@@ -1,11 +1,10 @@
 package com.sallejoven.backend.config.security;
 
-import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.Center;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserPending;
 import com.sallejoven.backend.model.entity.UserSalle;
-import com.sallejoven.backend.model.requestDto.RequestEvent;
+import com.sallejoven.backend.model.requestDto.EventRequest;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.repository.EventGroupRepository;
 import com.sallejoven.backend.repository.GroupRepository;
@@ -76,7 +75,7 @@ public class AuthzBean {
         return false;
     }
 
-    public boolean canViewUserGroups(Long userId) throws SalleException {
+    public boolean canViewUserGroups(Long userId) {
         Set<String> as = auths();
         if (isAdmin(as) || isSelf(userId)) return true;
 
@@ -222,7 +221,7 @@ public class AuthzBean {
         return false;
     }
 
-    public boolean canCreateEvent(RequestEvent req) {
+    public boolean canCreateEvent(EventRequest req) {
         var as = auths();
         if (isAdmin(as)) return true;
 
@@ -346,7 +345,7 @@ public class AuthzBean {
                 || as.contains("CENTER:" + centerId + ":GROUP_LEADER:" + year);
     }
 
-    public boolean canCreateWeeklySession(com.sallejoven.backend.model.requestDto.RequestWeeklySession req) {
+    public boolean canCreateWeeklySession(com.sallejoven.backend.model.requestDto.WeeklySessionRequest req) {
         var as = auths();
         if (isAdmin(as)) return true;
 
@@ -421,7 +420,7 @@ public class AuthzBean {
                 || as.contains("CENTER:" + centerId + ":GROUP_LEADER:" + year);
     }
 
-    public boolean canCreateOrEditVitalSituation(com.sallejoven.backend.model.requestDto.RequestVitalSituation req) {
+    public boolean canCreateOrEditVitalSituation(com.sallejoven.backend.model.requestDto.VitalSituationRequest req) {
         var as = auths();
         if (isAdmin(as)) return true;
 
@@ -443,7 +442,7 @@ public class AuthzBean {
 
         var vs = vsOpt.get();
         // Solo admin puede editar las predefinidas (isDefault = true)
-        if (Boolean.TRUE.equals(vs.getIsDefault())) {
+        if (Boolean.TRUE.equals(vs.isDefault())) {
             return false;
         }
 
@@ -460,7 +459,7 @@ public class AuthzBean {
 
         var vs = vsOpt.get();
         // Solo admin puede eliminar las predefinidas (isDefault = true)
-        if (Boolean.TRUE.equals(vs.getIsDefault())) {
+        if (Boolean.TRUE.equals(vs.isDefault())) {
             return false;
         }
 
@@ -468,7 +467,7 @@ public class AuthzBean {
         return isAnyManagerType();
     }
 
-    public boolean canCreateOrEditVitalSituationSession(com.sallejoven.backend.model.requestDto.RequestVitalSituationSession req) {
+    public boolean canCreateOrEditVitalSituationSession(com.sallejoven.backend.model.requestDto.VitalSituationSessionRequest req) {
         var as = auths();
         if (isAdmin(as)) return true;
 
@@ -490,7 +489,7 @@ public class AuthzBean {
 
         var vss = vssOpt.get();
         // Solo admin puede editar las predefinidas (isDefault = true)
-        if (Boolean.TRUE.equals(vss.getIsDefault())) {
+        if (Boolean.TRUE.equals(vss.isDefault())) {
             return false;
         }
 
@@ -507,7 +506,7 @@ public class AuthzBean {
 
         var vss = vssOpt.get();
         // Solo admin puede eliminar las predefinidas (isDefault = true)
-        if (Boolean.TRUE.equals(vss.getIsDefault())) {
+        if (Boolean.TRUE.equals(vss.isDefault())) {
             return false;
         }
 

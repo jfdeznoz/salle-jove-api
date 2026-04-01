@@ -35,12 +35,10 @@ import org.springframework.http.ResponseCookie;
 @RequiredArgsConstructor
 @Slf4j
 public class AuthService {
-    //test
-    private final UserRepository userInfoRepo;
+    private final UserRepository userRepository;
     private final UserInfoMapper userInfoMapper;
     private final JwtTokenGenerator jwtTokenGenerator;
     private final RefreshTokenRepository refreshTokenRepo;
-    private final UserRepository userRepository;
     private final AuthorityService authorityService;
     private final JwtProperties jwtProps;
 
@@ -51,11 +49,11 @@ public class AuthService {
         return authentication.getName();
     }
 
-    public UserSalle getCurrentUser() throws SalleException {
+    public UserSalle getCurrentUser()  {
         return userRepository.findByEmail(getCurrentUserEmail()).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
     }
 
-    public List<Role> getCurrentUserRoles() throws SalleException {
+    public List<Role> getCurrentUserRoles()  {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null) return List.of(Role.PARTICIPANT);
 
@@ -79,8 +77,8 @@ public class AuthService {
         return List.of(Role.PARTICIPANT);
     }
 
-    public AuthResponseDto getJwtTokensAfterAuthentication(Authentication authentication, HttpServletResponse response) throws SalleException {
-        var user = userInfoRepo.findByEmail(authentication.getName())
+    public AuthResponseDto getJwtTokensAfterAuthentication(Authentication authentication, HttpServletResponse response)  {
+        var user = userRepository.findByEmail(authentication.getName())
                 .orElseThrow(() -> new SalleException(ErrorCodes.INVALID_CREDENTIALS));
 
         String accessToken = jwtTokenGenerator.generateAccessToken(authentication);
@@ -89,16 +87,15 @@ public class AuthService {
         saveUserRefreshToken(user, refreshToken);
         setRefreshCookie(response, refreshToken, jwtProps.isCookieSecure());
 
-        return AuthResponseDto.builder()
-                .accessToken(accessToken)
-                .accessTokenExpiry(accessTtlSeconds())
-                .userName(user.getEmail())
-                .tokenType(TokenType.Bearer)
-                .build();
+        return new AuthResponseDto(
+                accessToken,
+                accessTtlSeconds(),
+                TokenType.Bearer,
+                user.getEmail()
+        );
     }
 
-    // AuthService.java
-    public Object getAccessTokenUsingRefreshToken(String authorizationHeader, HttpServletResponse response) throws SalleException {
+    public AuthResponseDto getAccessTokenUsingRefreshToken(String authorizationHeader, HttpServletResponse response)  {
 
         if (authorizationHeader == null || !authorizationHeader.startsWith(TokenType.Bearer.name())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid header");
@@ -147,34 +144,14 @@ public class AuthService {
         setRefreshCookie(response, newRefresh, jwtProps.isCookieSecure());
 
         // 7) Responder con el nuevo access
-        return AuthResponseDto.builder()
-                .accessToken(accessToken)
-                .accessTokenExpiry(accessTtlSeconds())   // <-- en ambos sitios
-                .userName(user.getEmail())
-                .tokenType(TokenType.Bearer)
-                .build();
-    }
-
-    private Authentication createAuthenticationObject(UserSalle user) {
-        List<String> authStrings;
-        try {
-            authStrings = authorityService.buildAuthoritiesForUser(user.getId(), user.getIsAdmin());
-        } catch (SalleException e) {
-            authStrings = List.of();
-        }
-
-        var authorities = authStrings.stream()
-                .map(org.springframework.security.core.authority.SimpleGrantedAuthority::new)
-                .collect(Collectors.toList());
-
-        return new UsernamePasswordAuthenticationToken(
-                user.getEmail(),
-                user.getPassword(),
-                authorities
+        return new AuthResponseDto(
+                accessToken,
+                accessTtlSeconds(),
+                TokenType.Bearer,
+                user.getEmail()
         );
     }
 
-    // AuthService.java (helper)
     private void setRefreshCookie(HttpServletResponse response, String refreshToken, boolean secure) {
         String sameSite = secure ? "None" : "Lax"; // HTTPS -> None; HTTP local -> Lax
 
@@ -201,25 +178,23 @@ public class AuthService {
 
     public UserSalle registerUser(UserRegistrationDto userRegistrationDto,HttpServletResponse httpServletResponse){
 
-        try{
-            log.info("[AuthService:registerUser]User Registration Started with :::{}",userRegistrationDto);
+        try {
+            log.info("[AuthService:registerUser] Registration started for user: {}", userRegistrationDto.userEmail());
 
-            Optional<UserSalle> user = userInfoRepo.findByEmail(userRegistrationDto.userEmail());
-            if(user.isPresent()){
+            Optional<UserSalle> user = userRepository.findByEmail(userRegistrationDto.userEmail());
+            if (user.isPresent()) {
                 throw new Exception("User Already Exist");
             }
 
             UserSalle userDetailsEntity = userInfoMapper.convertToEntity(userRegistrationDto);
+            UserSalle savedUserDetails = userRepository.save(userDetailsEntity);
 
-            UserSalle savedUserDetails = userInfoRepo.save(userDetailsEntity);            
-            
-            log.info("[AuthService:registerUser] User:{} Successfully registered",savedUserDetails.getEmail());
+            log.info("[AuthService:registerUser] User: {} successfully registered", savedUserDetails.getEmail());
             return savedUserDetails;
 
-
-        }catch (Exception e){
-            log.error("[AuthService:registerUser]Exception while registering the user due to :"+e.getMessage());
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,e.getMessage());
+        } catch (Exception e) {
+            log.error("[AuthService:registerUser] Exception while registering user: {}", e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Registration failed");
         }
     }
 

@@ -64,6 +64,13 @@ yarn-error.log*
 !**/src/test/**/build/
 
 # ========================
+# 🔐 Secrets / Keys
+# ========================
+salle-jove-api/src/main/resources/certs/
+*.pem
+*.key
+
+# ========================
 # 🔒 Sistema / OS
 # ========================
 .DS_Store

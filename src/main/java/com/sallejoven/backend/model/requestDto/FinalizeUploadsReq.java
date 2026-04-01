@@ -1,3 +1,8 @@
 package com.sallejoven.backend.model.requestDto;
 
-public record FinalizeUploadsReq(String imageKey, String pdfKey) {}
+import jakarta.validation.constraints.Size;
+
+public record FinalizeUploadsReq(
+        @Size(max = 500) String imageKey,
+        @Size(max = 500) String pdfKey
+) {}

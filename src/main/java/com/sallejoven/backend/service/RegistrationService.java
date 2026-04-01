@@ -9,7 +9,7 @@ import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.repository.UserPendingRepository;
 import com.sallejoven.backend.repository.UserRepository;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -33,13 +33,14 @@ public class RegistrationService {
     private final AcademicStateService academicStateService;
     private final UserCenterService userCenterService;
     private final AuthorityService authorityService;
+    private final UserRoleHelper roleHelper;
 
 
     @Transactional
-    public UserPending registerPublic(UserSalleRequest req) throws SalleException {
-        final String role = normalizeRole(req.getRol());
+    public UserPending registerPublic(UserSalleRequest req) {
+        final String role = roleHelper.normalizeRole(req.getRol());
 
-        if (usesCenterOnly(role)) {
+        if (roleHelper.usesCenterOnly(role)) {
             if (req.getCenterId() == null) {
                 throw new SalleException(ErrorCodes.CENTER_NOT_FOUND, "Se requiere centerId para " + role);
             }
@@ -90,7 +91,11 @@ public class RegistrationService {
     }
 
     @Transactional
-    public UserSalle approvePending(Long pendingId) throws SalleException {
+    public UserSalle approvePending(Long pendingId) {
+        if (academicStateService.isLocked()) {
+            throw new SalleException(ErrorCodes.SYSTEM_LOCKED);
+        }
+
         UserPending p = userPendingRepository.findById(pendingId)
                 .orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND, "Solicitud no encontrada"));
 
@@ -101,8 +106,8 @@ public class RegistrationService {
             throw new SalleException(ErrorCodes.DNI_ALREADY_EXISTS);
         }
 
-        final String role = normalizeRole(p.getRoles());       // "ROLE_*"
-        final int userType = mapUserTypeFromRequest(role);     // 0..3
+        final String role = roleHelper.normalizeRole(p.getRoles());       // "ROLE_*"
+        final int userType = roleHelper.mapUserTypeFromRequest(role);     // 0..3
 
         final boolean isAdmin = role.equals("ROLE_ADMIN");
 
@@ -136,7 +141,7 @@ public class RegistrationService {
 
         // 4) Si el pending no es de ADMIN, seguimos asignando rol de centro o grupo
         if (!isAdmin) {
-            if (usesCenterOnly(role)) {
+            if (roleHelper.usesCenterOnly(role)) {
                 if (p.getCenterId() == null) throw new SalleException(ErrorCodes.CENTER_NOT_FOUND);
                 userCenterService.addCenterRole(user.getId(), p.getCenterId(), userType);
                 userRepository.save(user);
@@ -144,7 +149,7 @@ public class RegistrationService {
                 if (p.getGroupId() == null) throw new SalleException(ErrorCodes.GROUP_NOT_FOUND);
                 GroupSalle group = groupService.findById(p.getGroupId());
 
-                UserGroup ug = ensureMembership(user, group, userType);
+                UserGroup ug = roleHelper.ensureMembership(user, group, userType);
                 userRepository.save(user);
 
                 eventUserService.assignFutureGroupEventsToUser(user, group);
@@ -157,7 +162,7 @@ public class RegistrationService {
     }
 
     @Transactional
-    public void rejectPending(Long id) throws SalleException {
+    public void rejectPending(Long id) {
         if (!userPendingRepository.existsById(id)) {
             throw new SalleException(ErrorCodes.USER_NOT_FOUND, "Solicitud pendiente no encontrada");
         }
@@ -193,51 +198,4 @@ public class RegistrationService {
         return result.stream().toList();
     }
 
-    private String normalizeRole(String rolText) {
-        String r = (rolText == null || rolText.isBlank()) ? "PARTICIPANT" : rolText.trim().toUpperCase();
-        return r.startsWith("ROLE_") ? r : "ROLE_" + r;
-    }
-
-    private boolean usesCenterOnly(String role) {
-        return role.endsWith("GROUP_LEADER") || role.endsWith("PASTORAL_DELEGATE");
-    }
-
-    private int mapUserTypeFromRequest(String role) {
-        String r = role;
-        if (r.startsWith("ROLE_")) r = r.substring(5);
-        return switch (r) {
-            case "GROUP_LEADER"      -> 2;
-            case "ANIMATOR"          -> 1;
-            case "PASTORAL_DELEGATE" -> 3;
-            default                  -> 0; // PARTICIPANT
-        };
-    }
-
-    private UserGroup ensureMembership(UserSalle user, GroupSalle group, int userType) throws SalleException {
-        final int year = academicStateService.getVisibleYear();
-        UserGroup existing = user.getGroups().stream()
-                .filter(ug ->
-                        ug.getGroup() != null
-                                && ug.getGroup().getId().equals(group.getId())
-                                && ug.getDeletedAt() == null
-                                && ug.getYear() != null
-                                && ug.getYear() == year)
-                .findFirst()
-                .orElse(null);
-
-        if (existing != null) {
-            existing.setUserType(userType);
-            return existing;
-        }
-
-        UserGroup membership = UserGroup.builder()
-                .user(user)
-                .group(group)
-                .userType(userType)
-                .year(year)
-                .build();
-
-        user.getGroups().add(membership);
-        return membership;
-    }
 }

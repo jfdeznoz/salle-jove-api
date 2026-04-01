@@ -1,6 +1,5 @@
 package com.sallejoven.backend.service;
 
-import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.repository.UserCenterRepository;
 import com.sallejoven.backend.repository.UserGroupRepository;
@@ -21,7 +20,7 @@ public class AuthorityService {
     private final UserCenterRepository userCenterRepo;
     private final UserGroupRepository userGroupRepo;
 
-    public List<String> buildAuthoritiesForUser(Long userId, boolean isAdmin) throws SalleException {
+    public List<String> buildAuthoritiesForUser(Long userId, boolean isAdmin)  {
         int year = academicStateService.getVisibleYear();
         List<String> out = new ArrayList<>();
 
@@ -43,7 +42,7 @@ public class AuthorityService {
         return out;
     }
 
-    public List<String> buildContextAuthorities(Long userId) throws SalleException {
+    public List<String> buildContextAuthorities(Long userId)  {
         int year = academicStateService.getVisibleYear();
         List<String> out = new ArrayList<>();
 
@@ -61,7 +60,7 @@ public class AuthorityService {
         return out;
     }
 
-    public Role computeDisplayRole(Long userId) throws SalleException {
+    public Role computeDisplayRole(Long userId)  {
         int year = academicStateService.getVisibleYear();
 
         boolean isAdmin = false;

@@ -6,22 +6,20 @@ import com.sallejoven.backend.model.entity.EventGroup;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
-import com.sallejoven.backend.model.requestDto.RequestEvent;
+import com.sallejoven.backend.model.requestDto.EventRequest;
 import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.repository.EventRepository;
 import jakarta.annotation.Nullable;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
+import org.springframework.transaction.annotation.Transactional;
 import java.io.IOException;
 import java.text.Normalizer;
 import java.time.LocalDate;
-import java.time.Year;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Arrays;
@@ -37,7 +35,6 @@ public class EventService {
     private final EventRepository eventRepository;
     private final EventGroupService eventGroupService;
     private final EventUserService eventUserService;
-    private final S3Service s3Service;
     private final AuthService authService;
     private final UserGroupService userGroupService;
     private final GroupService groupService;
@@ -51,7 +48,7 @@ public class EventService {
         return eventRepository.findById(id);
     }
 
-    public Page<Event> findAll(int page, int size, boolean isPast, Boolean isGeneral) throws SalleException {
+    public Page<Event> findAll(int page, int size, boolean isPast, Boolean isGeneral) {
         UserSalle user = authService.getCurrentUser();
 
         LocalDate today = ZonedDateTime.now(ZoneId.of("Europe/Madrid")).toLocalDate();
@@ -75,7 +72,7 @@ public class EventService {
     }
 
     @Transactional
-    public Event saveEvent(RequestEvent requestEvent) throws IOException, SalleException {
+    public Event saveEvent(EventRequest requestEvent) throws IOException {
         List<Integer> stages = requestEvent.getStages();
 
         List<GroupSalle> groups = getTargetGroupsForEvents(requestEvent, stages);
@@ -92,8 +89,7 @@ public class EventService {
         return event;
     }
 
-    private List<GroupSalle> getTargetGroupsForEvents(RequestEvent requestEvent, List<Integer> stages)
-            throws SalleException {
+    private List<GroupSalle> getTargetGroupsForEvents(EventRequest requestEvent, List<Integer> stages) {
         if (Boolean.TRUE.equals(requestEvent.getIsGeneral())) {
             // todos los grupos de esos stages, independientemente de si tienen usuarios
             return groupService.findAllByStages(stages);
@@ -104,20 +100,7 @@ public class EventService {
         return groupService.findAllByStagesAndCenter(stages,centerId);
     }
 
-    private List<UserGroup> getTargetUserGroupsForEvents(RequestEvent requestEvent, List<Integer> stages) throws SalleException {
-        if (Boolean.TRUE.equals(requestEvent.getIsGeneral())) {
-            return userGroupService.findByStages(stages);
-        }
-
-        Long centerId = requestEvent.getCenterId();
-        if (centerId == null) {
-            throw new SalleException(ErrorCodes.CENTER_NOT_FOUND);
-        }
-
-        return userGroupService.findByCenterAndStages(centerId, stages);
-    }
-
-    private Event buildEventEntity(RequestEvent requestEvent, List<Integer> stages) {
+private Event buildEventEntity(EventRequest requestEvent, List<Integer> stages) {
         return Event.builder()
                 .name(requestEvent.getName())
                 .description(requestEvent.getDescription())
@@ -131,7 +114,7 @@ public class EventService {
     }
 
     @Transactional
-    public Event editEvent(RequestEvent requestEvent) throws IOException, SalleException {
+    public Event editEvent(EventRequest requestEvent) throws IOException {
         Event existingEvent = eventRepository.findById(requestEvent.getId())
                 .orElseThrow(() -> new RuntimeException("Evento no encontrado con ID: " + requestEvent.getId()));
 
@@ -153,79 +136,8 @@ public class EventService {
         return existingEvent;
     }
 
-    private boolean handleUploads(MultipartFile file, MultipartFile pdf, Event event) throws IOException, SalleException {
-        boolean changed = false;
 
-        if (file != null && !file.isEmpty()) {
-            changed |= uploadImageIfPresent(file, event);
-        }
-
-        if (pdf != null && !pdf.isEmpty()) {
-            changed |= uploadPdfIfPresent(pdf, event);
-        }
-
-        return changed;
-    }
-
-    private boolean uploadImageIfPresent(MultipartFile file, Event event) throws IOException {
-        String before = event.getFileName();
-        handleFileUpload(file, event);
-        return !safeEq(before, event.getFileName());
-    }
-
-    private boolean uploadPdfIfPresent(MultipartFile pdf, Event event) throws IOException, SalleException {
-        validatePdf(pdf);
-
-        String before = event.getPdf();
-
-        final String folderPath = buildBaseFolder(event);
-        final String uploadedUrl = "" ;//s3Service.uploadFile(pdf, folderPath);
-        event.setPdf(uploadedUrl);
-
-        return !safeEq(before, uploadedUrl);
-    }
-
-    private void validatePdf(MultipartFile pdf) throws SalleException {
-        if (pdf == null || pdf.isEmpty()) return;
-
-        String contentType = pdf.getContentType();
-        String originalName = pdf.getOriginalFilename();
-
-        boolean mimeOk = (contentType != null) && contentType.equalsIgnoreCase("application/pdf");
-        boolean extOk  = (originalName != null) && originalName.toLowerCase().endsWith(".pdf");
-
-        if (!mimeOk && !extOk) {
-            // Usa el ErrorCodes que prefieras si no tienes INVALID_FILE_TYPE
-            throw new SalleException(ErrorCodes.INVALID_FILE_TYPE, "Solo se permiten archivos PDF");
-        }
-    }
-
-    private String buildBaseFolder(Event event) {
-        final int year = (event.getEventDate() != null)
-                ? event.getEventDate().getYear()
-                : Year.now(ZoneId.of("Europe/Madrid")).getValue();
-
-        final String scopeSegment = Boolean.TRUE.equals(event.getIsGeneral())
-                ? "general"
-                : slugify(event.getName());
-
-        final String rawFolder = year + "/events/" + scopeSegment + "/event_" + event.getId();
-        return withPrefix(rawFolder);
-    }
-
-    private void handleFileUpload(MultipartFile file, Event event) throws IOException {
-        if (file != null && !file.isEmpty()) {
-            final String folderPath = buildBaseFolder(event);
-            final String uploadedUrl = ""; //s3Service.uploadFile(file, folderPath);
-            event.setFileName(uploadedUrl);
-        }
-    }
-
-    private static boolean safeEq(String a, String b) {
-        return (a == null && b == null) || (a != null && a.equals(b));
-    }
-
-    public void syncEventGroups(Event event, List<Integer> currentStages) throws SalleException {
+    public void syncEventGroups(Event event, List<Integer> currentStages) {
         List<Integer> updatedStages = Arrays.asList(event.getStages());
 
         Set<Integer> currentSet = new HashSet<>(currentStages);
@@ -314,7 +226,7 @@ public class EventService {
     }
 
     @Transactional
-    public Event setBlockedStatus(Long eventId, boolean blocked) throws SalleException {
+    public Event setBlockedStatus(Long eventId, boolean blocked) {
         Optional<Event> optionalEvent = findById(eventId);
 
         if(optionalEvent.isPresent()){

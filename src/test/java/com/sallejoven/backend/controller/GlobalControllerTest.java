@@ -7,7 +7,7 @@ import com.sallejoven.backend.model.entity.UserPending;
 import com.sallejoven.backend.model.requestDto.GlobalLockRequest;
 import com.sallejoven.backend.service.AcademicStateService;
 import com.sallejoven.backend.service.RegistrationService;
-import com.sallejoven.backend.utils.SalleConverters;
+import com.sallejoven.backend.service.assembler.UserAssembler;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -39,7 +39,7 @@ class GlobalControllerTest {
 
   @MockitoBean AcademicStateService academicStateService;
   @MockitoBean RegistrationService registrationService;
-  @MockitoBean SalleConverters converters;
+  @MockitoBean UserAssembler userAssembler;
 
   @Test
   @WithMockUser
@@ -52,7 +52,7 @@ class GlobalControllerTest {
     dto.setEmail("user@example.com");
 
     when(registrationService.listPending()).thenReturn(List.of(p));
-    when(converters.userPendingToDto(p)).thenReturn(dto);
+    when(userAssembler.toPendingDto(p)).thenReturn(dto);
 
     mockMvc.perform(get("/api/global/state"))
             .andExpect(status().isOk())
@@ -62,8 +62,8 @@ class GlobalControllerTest {
 
     verify(academicStateService).isLocked();
     verify(registrationService).listPending();
-    verify(converters).userPendingToDto(p);
-    verifyNoMoreInteractions(academicStateService, registrationService, converters);
+    verify(userAssembler).toPendingDto(p);
+    verifyNoMoreInteractions(academicStateService, registrationService, userAssembler);
   }
 
   @Test

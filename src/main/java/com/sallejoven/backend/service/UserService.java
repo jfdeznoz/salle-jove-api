@@ -14,7 +14,7 @@ import com.sallejoven.backend.model.requestDto.UserSalleRequestOptional;
 import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.repository.UserRepository;
 import com.sallejoven.backend.utils.TextNormalizeUtils;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -37,16 +37,17 @@ public class UserService {
     private final AcademicStateService academicStateService;
     private final EventService eventService;
     private final UserCenterService userCenterService;
+    private final UserRoleHelper roleHelper;
 
-    public UserSalle findByEmail(String email) throws SalleException {
+    public UserSalle findByEmail(String email) {
         return userRepository.findByEmail(email).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
     }
 
-    public UserSalle findByUserId(Long id) throws SalleException {
+    public UserSalle findByUserId(Long id) {
         return userRepository.findById(id).orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
     }
 
-    public List<UserSalle> searchUsersSmart(String rawSearch, UserSalle me) throws SalleException {
+    public List<UserSalle> searchUsersSmart(String rawSearch, UserSalle me) {
         String normalized = TextNormalizeUtils.toLowerNoAccents(rawSearch).trim();
         if (normalized.length() < 5) return List.of();
 
@@ -77,7 +78,7 @@ public class UserService {
         return userRepository.searchUsersNormalized(normalized);
     }
 
-    public UserSalle updateUserFromDto(Long id, UserSalleRequestOptional dto) throws SalleException {
+    public UserSalle updateUserFromDto(Long id, UserSalleRequestOptional dto) {
         UserSalle user = findByUserId(id);
     
         dto.getName().ifPresent(user::setName);
@@ -112,15 +113,14 @@ public class UserService {
     }
 
     @Transactional
-    public UserSalle saveUser(UserSalleRequest req) throws SalleException {
+    public UserSalle saveUser(UserSalleRequest req) {
         if (academicStateService.isLocked()) {
             throw new SalleException(ErrorCodes.SYSTEM_LOCKED);
         }
 
-        // 0) Normalización y derivación
-        final String role = normalizeRole(req.getRol());   // "ROLE_*" (si viene null → ROLE_PARTICIPANT)
+        final String role = roleHelper.normalizeRole(req.getRol());
         final boolean isAdmin = "ROLE_ADMIN".equals(role);
-        int userType = mapUserTypeFromRequest(role);       // 0..3 normalmente
+        int userType = roleHelper.mapUserTypeFromRequest(role);
 
         // 1) Construir y persistir usuario base
         UserSalle user = UserSalle.builder()
@@ -164,7 +164,7 @@ public class UserService {
         }
 
         // --- Caso A) Alta por centro (PD / GL) y NO es un alta puntual de evento ---
-        if (centerId != null && eventId == null && usesCenterOnly(role)) {
+        if (centerId != null && eventId == null && roleHelper.usesCenterOnly(role)) {
             // Asigna el rol de centro explícito (2=GL, 3=PD)
             userCenterService.addCenterRole(saved.getId(), centerId.longValue(), userType);
             userRepository.save(saved);
@@ -176,12 +176,12 @@ public class UserService {
             GroupSalle group = groupService.findById(groupId.longValue());
 
             // Tu especial: si se crea "como animador" para evento puntual, usas 5
-            if (isAnimator(role)) {
+            if (roleHelper.isAnimator(role)) {
                 userType = 5;
             }
 
-            UserGroup ug = ensureMembership(saved, group, userType);
-            saved = userRepository.save(saved); // asegurar ug.id
+            UserGroup ug = roleHelper.ensureMembership(saved, group, userType);
+            saved = userRepository.save(saved);
 
             Event event = eventService.findById(eventId.longValue())
                     .orElseThrow(() -> new SalleException(ErrorCodes.EVENT_NOT_FOUND));
@@ -193,7 +193,7 @@ public class UserService {
         // --- Caso C) Alta normal a un grupo ---
         if (groupId != null) {
             GroupSalle group = groupService.findById(groupId.longValue());
-            ensureMembership(saved, group, userType);
+            roleHelper.ensureMembership(saved, group, userType);
             saved = userRepository.save(saved);
             eventUserService.assignFutureGroupEventsToUser(saved, group);
             return saved;
@@ -203,60 +203,7 @@ public class UserService {
         return saved;
     }
 
-    /* ===== helpers iguales a los de RegistrationService ===== */
-
-    private String normalizeRole(String rolText) {
-        String r = (rolText == null || rolText.isBlank()) ? "PARTICIPANT" : rolText.trim().toUpperCase();
-        return r.startsWith("ROLE_") ? r : "ROLE_" + r;
-    }
-
-    private boolean usesCenterOnly(String role) {
-        return role.endsWith("GROUP_LEADER") || role.endsWith("PASTORAL_DELEGATE");
-    }
-    private boolean isAnimator(String role) {
-        return role.endsWith("ANIMATOR");
-    }
-
-    private int mapUserTypeFromRequest(String role) {
-        String r = role.startsWith("ROLE_") ? role.substring(5) : role;
-        return switch (r) {
-            case "GROUP_LEADER"      -> 2;
-            case "PASTORAL_DELEGATE" -> 3;
-            case "ANIMATOR"          -> 1;
-            default                  -> 0; // PARTICIPANT
-        };
-    }
-
-    private UserGroup ensureMembership(UserSalle user, GroupSalle group, int userType) throws SalleException {
-        final int year = academicStateService.getVisibleYear();
-
-        UserGroup existing = user.getGroups().stream()
-                .filter(ug ->
-                        ug.getGroup() != null
-                                && ug.getGroup().getId().equals(group.getId())
-                                && ug.getDeletedAt() == null
-                                && ug.getYear() != null
-                                && ug.getYear() == year)
-                .findFirst()
-                .orElse(null);
-
-        if (existing != null) {
-            existing.setUserType(userType);
-            return existing;
-        }
-
-        UserGroup membership = UserGroup.builder()
-                .user(user)
-                .group(group)
-                .userType(userType)
-                .year(year)
-                .build();
-
-        user.getGroups().add(membership);
-        return membership;
-    }
-
-    public void addUserToGroup(Long userId, Long groupId, Long userType) throws SalleException {
+    public void addUserToGroup(Long userId, Long groupId, Long userType) {
         final int year = academicStateService.getVisibleYear();
 
         GroupSalle group = groupService.findById(groupId);
@@ -293,7 +240,7 @@ public class UserService {
     }
 
     @Transactional
-    public void deleteUser(Long id) throws SalleException {
+    public void deleteUser(Long id) {
         UserSalle user = findByUserId(id);
         LocalDateTime now = LocalDateTime.now();
 
@@ -325,12 +272,12 @@ public class UserService {
             return userRepository.findUsersByCenterId(centerId);
     }
 
-    public List<UserSalle> getCatechistsByCenter(Long centerId) throws SalleException {
+    public List<UserSalle> getCatechistsByCenter(Long centerId) {
         int year = academicStateService.getVisibleYear();
         return userRepository.findAnimatorsByCenterAndYear(centerId, year);
     }
 
-    public List<Role> getUserRoles(UserPending userSalle) throws SalleException {
+    public List<Role> getUserRoles(UserPending userSalle) {
         return Arrays.stream(userSalle.getRoles().split(","))
                 .map(String::trim)
                 .map(role -> role.replace("ROLE_", ""))
@@ -343,11 +290,6 @@ public class UserService {
     public void removeUserFromGroup(UserSalle user, GroupSalle group) {
         if (user.getGroups().remove(group)) {
             userRepository.save(user);
-            System.out.println("✅ Grupo eliminado de usuario: " 
-                + user.getName() + " " + user.getLastName());
-        } else {
-            System.out.println("ℹ️ El usuario no pertenecía a ese grupo: " 
-                + user.getName() + " " + user.getLastName());
         }
     }
 }

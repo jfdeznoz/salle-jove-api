@@ -8,7 +8,7 @@ import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.repository.CenterRepository;
 import com.sallejoven.backend.repository.UserCenterRepository;
 import com.sallejoven.backend.repository.UserRepository;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -24,18 +24,18 @@ public class UserCenterService {
     private final CenterRepository centerRepo;
     private final AcademicStateService academicStateService;
 
-    public List<UserCenter> findByUserForCurrentYear(Long userId) throws SalleException {
+    public List<UserCenter> findByUserForCurrentYear(Long userId)  {
         int year = academicStateService.getVisibleYear();
         return userCenterRepo.findByUser_IdAndYearAndDeletedAtIsNull(userId, year);
     }
 
-    public List<UserCenter> findActiveByCenterForCurrentYear(Long centerId) throws SalleException {
+    public List<UserCenter> findActiveByCenterForCurrentYear(Long centerId)  {
         int year = academicStateService.getVisibleYear();
         return userCenterRepo.findByCenter_IdAndYearAndDeletedAtIsNull(centerId, year);
     }
 
     @Transactional
-    public UserCenter findByUserAndCenter(Long userId, Long centerId) throws SalleException {
+    public UserCenter findByUserAndCenter(Long userId, Long centerId)  {
         int year = academicStateService.getVisibleYear();
 
         return userCenterRepo.findByUser_IdAndCenter_IdAndYearAndDeletedAtIsNull(userId, centerId, year)
@@ -43,7 +43,7 @@ public class UserCenterService {
     }
 
     @Transactional
-    public UserCenter addCenterRole(Long userId, Long centerId, Integer userType) throws SalleException {
+    public UserCenter addCenterRole(Long userId, Long centerId, Integer userType)  {
         if (userType == null || (userType != 2 && userType != 3)) {
             throw new SalleException(ErrorCodes.USER_TYPE_CENTER_NOT_VALID);
         }
@@ -73,7 +73,7 @@ public class UserCenterService {
     }
 
     @Transactional
-    public void softDelete(Long userCenterId) throws SalleException {
+    public void softDelete(Long userCenterId)  {
         UserCenter uc = userCenterRepo.findById(userCenterId)
                 .orElseThrow(() -> new SalleException(ErrorCodes.USER_CENTER_NOT_FOUND));
         uc.setDeletedAt(LocalDateTime.now());
@@ -81,7 +81,7 @@ public class UserCenterService {
     }
 
     @Transactional
-    public UserCenter updateCenterRole(Long userCenterId, Integer userType) throws SalleException {
+    public UserCenter updateCenterRole(Long userCenterId, Integer userType)  {
         if (userType == null || (userType != 2 && userType != 3)) {
             throw new SalleException(ErrorCodes.USER_TYPE_CENTER_NOT_VALID);
         }

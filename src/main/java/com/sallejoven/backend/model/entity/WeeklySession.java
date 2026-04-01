@@ -11,15 +11,18 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import com.fasterxml.jackson.annotation.JsonFormat;
 
-@Data
+@Getter
+@Setter
+@EqualsAndHashCode(of = "id")
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -43,7 +46,6 @@ public class WeeklySession {
     private GroupSalle group;
 
     @Column(name = "session_datetime", nullable = false)
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm")
     private LocalDateTime sessionDateTime;
 
     /** 0=DRAFT, 1=PUBLISHED, 2=ARCHIVED */
@@ -51,7 +53,6 @@ public class WeeklySession {
     private Integer status;
 
     @Column(name = "deleted_at")
-    @JsonFormat(pattern="yyyy-MM-dd HH:mm:ss")
     private LocalDateTime deletedAt;
 }
 

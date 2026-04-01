@@ -2,7 +2,7 @@ package com.sallejoven.backend.errors;
 
 import com.sallejoven.backend.model.enums.ErrorCodes;
 
-public class SalleException extends Exception{
+public class SalleException extends RuntimeException {
 
     private final String errorCode;
     private final String additionalInfo;

@@ -7,11 +7,11 @@ import com.sallejoven.backend.model.dto.VitalSituationSessionDto;
 import com.sallejoven.backend.model.entity.VitalSituation;
 import com.sallejoven.backend.model.entity.VitalSituationSession;
 import com.sallejoven.backend.model.enums.ErrorCodes;
-import com.sallejoven.backend.model.requestDto.RequestVitalSituation;
-import com.sallejoven.backend.model.requestDto.RequestVitalSituationSession;
-import com.sallejoven.backend.repository.VitalSituationSessionRepository;
+import com.sallejoven.backend.model.requestDto.VitalSituationRequest;
+import com.sallejoven.backend.model.requestDto.VitalSituationSessionRequest;
 import com.sallejoven.backend.service.S3V2Service;
 import com.sallejoven.backend.service.VitalSituationService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -37,7 +37,6 @@ public class VitalSituationController {
 
     private final VitalSituationService vitalSituationService;
     private final S3V2Service s3v2Service;
-    private final VitalSituationSessionRepository vitalSituationSessionRepository;
 
     @GetMapping
     public ResponseEntity<List<VitalSituationDto>> getAllVitalSituations(
@@ -66,7 +65,7 @@ public class VitalSituationController {
 
     @PreAuthorize("@authz.canCreateOrEditVitalSituation(#request)")
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<VitalSituationDto> createVitalSituation(@RequestBody RequestVitalSituation request) {
+    public ResponseEntity<VitalSituationDto> createVitalSituation(@Valid @RequestBody VitalSituationRequest request) {
         VitalSituation vs = vitalSituationService.createVitalSituation(request);
         return ResponseEntity.ok(vitalSituationService.findById(vs.getId()).orElseThrow());
     }
@@ -75,14 +74,14 @@ public class VitalSituationController {
     @PutMapping(value = "/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<VitalSituationDto> updateVitalSituation(
             @PathVariable Long id,
-            @RequestBody RequestVitalSituation request) throws SalleException {
+            @Valid @RequestBody VitalSituationRequest request)  {
         VitalSituation vs = vitalSituationService.updateVitalSituation(id, request);
         return ResponseEntity.ok(vitalSituationService.findById(vs.getId()).orElseThrow());
     }
 
     @PreAuthorize("@authz.canDeleteVitalSituation(#id)")
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteVitalSituation(@PathVariable Long id) throws SalleException {
+    public ResponseEntity<Void> deleteVitalSituation(@PathVariable Long id)  {
         vitalSituationService.deleteVitalSituation(id);
         return ResponseEntity.noContent().build();
     }
@@ -90,7 +89,7 @@ public class VitalSituationController {
     @PreAuthorize("@authz.canCreateOrEditVitalSituationSession(#request)")
     @PostMapping(value = "/sessions", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<VitalSituationSessionDto> createVitalSituationSession(
-            @RequestBody RequestVitalSituationSession request) throws SalleException {
+            @Valid @RequestBody VitalSituationSessionRequest request)  {
         VitalSituationSession vss = vitalSituationService.createVitalSituationSession(request);
         return ResponseEntity.ok(vitalSituationService.findSessionById(vss.getId()).orElseThrow());
     }
@@ -99,7 +98,7 @@ public class VitalSituationController {
     @PutMapping(value = "/sessions/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<VitalSituationSessionDto> updateVitalSituationSession(
             @PathVariable Long id,
-            @RequestBody RequestVitalSituationSession request) throws SalleException {
+            @Valid @RequestBody VitalSituationSessionRequest request)  {
         VitalSituationSession vss = vitalSituationService.updateVitalSituationSession(id, request);
         return ResponseEntity.ok(vitalSituationService.findSessionById(vss.getId()).orElseThrow());
     }
@@ -108,9 +107,8 @@ public class VitalSituationController {
     @PostMapping(value = "/sessions/{id}/presigned-pdf", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<PresignedPutDTO> getPresignedPdfForSession(
             @PathVariable Long id,
-            @RequestBody RequestVitalSituationSession request) throws SalleException {
-        VitalSituationSession vss = vitalSituationSessionRepository.findById(id)
-                .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_SESSION_NOT_FOUND));
+            @Valid @RequestBody VitalSituationSessionRequest request)  {
+        VitalSituationSession vss = vitalSituationService.findSessionEntityById(id);
         
         try {
             PresignedPutDTO pdfPresigned = s3v2Service.buildPresignedForVitalSituationSessionPdf(
@@ -129,7 +127,7 @@ public class VitalSituationController {
     @PostMapping(value = "/sessions/{id}/finalize-pdf", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<VitalSituationSessionDto> finalizeSessionPdf(
             @PathVariable Long id,
-            @RequestBody RequestVitalSituationSession request) throws SalleException {
+            @Valid @RequestBody VitalSituationSessionRequest request)  {
         String pdfKey = request.getPdfUpload() != null ? request.getPdfUpload().trim() : null;
         VitalSituationSession vss = vitalSituationService.finalizeSessionUpload(id, pdfKey);
         return ResponseEntity.ok(vitalSituationService.findSessionById(vss.getId()).orElseThrow());
@@ -137,9 +135,8 @@ public class VitalSituationController {
 
     @PreAuthorize("@authz.canDeleteVitalSituationSession(#id)")
     @DeleteMapping("/sessions/{id}")
-    public ResponseEntity<Void> deleteVitalSituationSession(@PathVariable Long id) throws SalleException {
+    public ResponseEntity<Void> deleteVitalSituationSession(@PathVariable Long id)  {
         vitalSituationService.deleteVitalSituationSession(id);
         return ResponseEntity.noContent().build();
     }
 }
-

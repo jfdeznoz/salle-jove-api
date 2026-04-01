@@ -29,42 +29,42 @@ public class UserGroupService {
     private final EventUserService eventUserService;
     private final UserRepository userRepository;
 
-    public UserGroup findActiveById(Long userGroupId) throws SalleException {
+    public UserGroup findActiveById(Long userGroupId)  {
         return userGroupRepository.findByIdAndDeletedAtIsNull(userGroupId)
                 .orElseThrow(() -> new SalleException(ErrorCodes.USER_GROUP_NOT_ASSIGNED));
     }
 
-    public List<UserGroup> findByGroupIds(Collection<Long> groupIds) throws SalleException {
+    public List<UserGroup> findByGroupIds(Collection<Long> groupIds)  {
         int year = academicStateService.getVisibleYear();
         return userGroupRepository.findByGroupIdsAndYear(groupIds, year);
     }
 
-    public List<UserGroup> findByGroupId(Long groupId) throws SalleException {
+    public List<UserGroup> findByGroupId(Long groupId)  {
         int year = academicStateService.getVisibleYear();
         return userGroupRepository.findByGroupIdAndYear(groupId, year);
     }
 
-    public List<UserGroup> findByStages(Collection<Integer> stages) throws SalleException {
+    public List<UserGroup> findByStages(Collection<Integer> stages)  {
         int year = academicStateService.getVisibleYear();
         return userGroupRepository.findByGroupStagesAndYear(stages, year);
     }
 
-    public List<UserGroup> findByCenterAndStages(Long centerId, Collection<Integer> stages) throws SalleException {
+    public List<UserGroup> findByCenterAndStages(Long centerId, Collection<Integer> stages)  {
         int year = academicStateService.getVisibleYear();
         return userGroupRepository.findByCenterAndGroupStagesAndYear(centerId, stages, year);
     }
 
-    public List<UserGroup> findByCenterAndUserTypes(Long centerId, Integer... types) throws SalleException {
+    public List<UserGroup> findByCenterAndUserTypes(Long centerId, Integer... types)  {
         int year = academicStateService.getVisibleYear();
         return userGroupRepository.findUserGroupsByCenterAndUserTypesAndYear(centerId, year, types);
     }
 
-    public List<UserGroup> findActiveByCurrentYear() throws SalleException {
+    public List<UserGroup> findActiveByCurrentYear()  {
         int year = academicStateService.getVisibleYear();
         return userGroupRepository.findByYearAndDeletedAtIsNull(year);
     }
 
-    public boolean existsActiveForUserInCurrentYear(Long userId) throws SalleException {
+    public boolean existsActiveForUserInCurrentYear(Long userId)  {
         int year = academicStateService.getVisibleYear();
         return userGroupRepository.existsByUser_IdAndYearAndDeletedAtIsNull(userId, year);
     }
@@ -98,7 +98,7 @@ public class UserGroupService {
         return userGroupRepository.findByYearAndUserTypeAndDeletedAtIsNull(year, 0);
     }
 
-    public List<UserGroup> findByUserAndUserTypeForCurrentYear(Long userId, int userType) throws SalleException {
+    public List<UserGroup> findByUserAndUserTypeForCurrentYear(Long userId, int userType)  {
         int year = academicStateService.getVisibleYear();
         return userGroupRepository.findByUser_IdAndYearAndDeletedAtIsNullAndUserType(userId, year, userType);
     }
@@ -113,7 +113,7 @@ public class UserGroupService {
     }
 
     @Transactional
-    public void moveUserBetweenGroups(UserSalle user, Long fromGroupId, Long toGroupId) throws SalleException {
+    public void moveUserBetweenGroups(UserSalle user, Long fromGroupId, Long toGroupId)  {
         if (fromGroupId.equals(toGroupId)) return;
 
         UserGroup source = user.getGroups().stream()
@@ -158,7 +158,7 @@ public class UserGroupService {
     }
 
     @Transactional
-    public UserGroup addUserToGroup(UserSalle user, Long groupId, int userType) throws SalleException {
+    public UserGroup addUserToGroup(UserSalle user, Long groupId, int userType)  {
         if (userType != 0 && userType != 1 && userType != 5) {
             throw new SalleException(ErrorCodes.USER_TYPE_NOT_VALID);
         }
@@ -195,7 +195,7 @@ public class UserGroupService {
     }
 
     @Transactional
-    public void unlinkByUserAndGroup(Long userId, Long groupId) throws SalleException {
+    public void unlinkByUserAndGroup(Long userId, Long groupId)  {
         int year = academicStateService.getVisibleYear();
 
         UserGroup ug = userGroupRepository
@@ -207,7 +207,7 @@ public class UserGroupService {
     }
 
     @Transactional
-    public void changeRoleByUserAndGroup(Long userId, Long groupId, int newUserType) throws SalleException {
+    public void changeRoleByUserAndGroup(Long userId, Long groupId, int newUserType)  {
         if (newUserType != 0 && newUserType != 1 && newUserType != 5) {
             throw new SalleException(ErrorCodes.USER_TYPE_NOT_VALID);
         }
@@ -221,7 +221,7 @@ public class UserGroupService {
         ug.setUserType(newUserType);
     }
 
-    public List<SeguroRow> findSeguroRowsForCurrentYear() throws SalleException {
+    public List<SeguroRow> findSeguroRowsForCurrentYear()  {
         int year = academicStateService.getVisibleYear();
         return userGroupRepository.findSeguroRows(year);
     }

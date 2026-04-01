@@ -1,9 +1,8 @@
 package com.sallejoven.backend.service;
 
-import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserGroup;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -30,7 +29,7 @@ public class PromotionService {
     );
 
     @Transactional
-    public void promote() throws SalleException {
+    public void promote() {
         final LocalDate today = LocalDate.now();
         final int newYear = academicYear(today);
         final int sourceYear = newYear - 1;
