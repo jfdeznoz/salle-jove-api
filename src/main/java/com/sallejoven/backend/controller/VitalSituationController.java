@@ -7,7 +7,11 @@ import com.sallejoven.backend.model.dto.VitalSituationSessionDto;
 import com.sallejoven.backend.model.entity.VitalSituation;
 import com.sallejoven.backend.model.entity.VitalSituationSession;
 import com.sallejoven.backend.model.enums.ErrorCodes;
+import com.sallejoven.backend.model.requestDto.VitalSituationEditRequest;
 import com.sallejoven.backend.model.requestDto.VitalSituationRequest;
+import com.sallejoven.backend.model.requestDto.VitalSituationSessionEditRequest;
+import com.sallejoven.backend.model.requestDto.VitalSituationSessionFinalizePdfRequest;
+import com.sallejoven.backend.model.requestDto.VitalSituationSessionPresignedPdfRequest;
 import com.sallejoven.backend.model.requestDto.VitalSituationSessionRequest;
 import com.sallejoven.backend.service.S3V2Service;
 import com.sallejoven.backend.service.VitalSituationService;
@@ -71,13 +75,12 @@ public class VitalSituationController {
         return ResponseEntity.ok(vitalSituationService.findById(vs.getUuid()).orElseThrow());
     }
 
-    @PreAuthorize("@authz.canCreateOrEditVitalSituation(#request)")
+    @PreAuthorize("@authz.canEditVitalSituation(#uuid)")
     @PutMapping(value = "/{uuid}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<VitalSituationDto> updateVitalSituation(
-            @PathVariable String uuid,
-            @Valid @RequestBody VitalSituationRequest request) {
-        UUID resolved = requireUuid(uuid, ErrorCodes.VITAL_SITUATION_NOT_FOUND);
-        VitalSituation vs = vitalSituationService.updateVitalSituation(resolved, request);
+            @PathVariable UUID uuid,
+            @Valid @RequestBody VitalSituationEditRequest request) {
+        VitalSituation vs = vitalSituationService.updateVitalSituation(uuid, request);
         return ResponseEntity.ok(vitalSituationService.findById(vs.getUuid()).orElseThrow());
     }
 
@@ -100,7 +103,7 @@ public class VitalSituationController {
     @PutMapping(value = "/sessions/{uuid}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<VitalSituationSessionDto> updateVitalSituationSession(
             @PathVariable UUID uuid,
-            @Valid @RequestBody VitalSituationSessionRequest request) {
+            @Valid @RequestBody VitalSituationSessionEditRequest request) {
         VitalSituationSession vss = vitalSituationService.updateVitalSituationSession(uuid, request);
         return ResponseEntity.ok(vitalSituationService.findSessionById(vss.getUuid()).orElseThrow());
     }
@@ -109,13 +112,13 @@ public class VitalSituationController {
     @PostMapping(value = "/sessions/{uuid}/presigned-pdf", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<PresignedPutDTO> getPresignedPdfForSession(
             @PathVariable UUID uuid,
-            @Valid @RequestBody VitalSituationSessionRequest request) {
+            @Valid @RequestBody VitalSituationSessionPresignedPdfRequest request) {
         VitalSituationSession vss = vitalSituationService.findSessionEntityById(uuid);
         try {
             PresignedPutDTO pdfPresigned = s3v2Service.buildPresignedForVitalSituationSessionPdf(
                     vss.getVitalSituation().getUuid(),
                     vss.getUuid(),
-                    request.getPdfUpload()
+                    request.pdfOriginalName()
             );
             return ResponseEntity.ok(pdfPresigned);
         } catch (SdkClientException e) {
@@ -128,8 +131,8 @@ public class VitalSituationController {
     @PostMapping(value = "/sessions/{uuid}/finalize-pdf", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<VitalSituationSessionDto> finalizeSessionPdf(
             @PathVariable UUID uuid,
-            @Valid @RequestBody VitalSituationSessionRequest request) {
-        String pdfKey = request.getPdfUpload() != null ? request.getPdfUpload().trim() : null;
+            @Valid @RequestBody VitalSituationSessionFinalizePdfRequest request) {
+        String pdfKey = request.pdfKey() != null ? request.pdfKey().trim() : null;
         VitalSituationSession vss = vitalSituationService.finalizeSessionUpload(uuid, pdfKey);
         return ResponseEntity.ok(vitalSituationService.findSessionById(vss.getUuid()).orElseThrow());
     }

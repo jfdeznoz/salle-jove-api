@@ -7,7 +7,9 @@ import com.sallejoven.backend.model.dto.VitalSituationSessionDto;
 import com.sallejoven.backend.model.entity.VitalSituation;
 import com.sallejoven.backend.model.entity.VitalSituationSession;
 import com.sallejoven.backend.model.enums.ErrorCodes;
+import com.sallejoven.backend.model.requestDto.VitalSituationEditRequest;
 import com.sallejoven.backend.model.requestDto.VitalSituationRequest;
+import com.sallejoven.backend.model.requestDto.VitalSituationSessionEditRequest;
 import com.sallejoven.backend.model.requestDto.VitalSituationSessionRequest;
 import com.sallejoven.backend.repository.VitalSituationRepository;
 import com.sallejoven.backend.repository.VitalSituationSessionRepository;
@@ -17,9 +19,11 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -86,7 +90,7 @@ public class VitalSituationService {
     }
 
     @Transactional
-    public VitalSituation updateVitalSituation(UUID uuid, VitalSituationRequest request) {
+    public VitalSituation updateVitalSituation(UUID uuid, VitalSituationEditRequest request) {
         VitalSituation vitalSituation = vitalSituationRepository.findById(uuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_NOT_FOUND));
         if (request.getTitle() != null) {
@@ -117,7 +121,7 @@ public class VitalSituationService {
     }
 
     @Transactional
-    public VitalSituationSession updateVitalSituationSession(UUID uuid, VitalSituationSessionRequest request) {
+    public VitalSituationSession updateVitalSituationSession(UUID uuid, VitalSituationSessionEditRequest request) {
         VitalSituationSession session = vitalSituationSessionRepository.findById(uuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_SESSION_NOT_FOUND));
         if (request.getTitle() != null) {
@@ -133,16 +137,20 @@ public class VitalSituationService {
     public VitalSituationSession finalizeSessionUpload(UUID uuid, String pdfKey) {
         VitalSituationSession session = vitalSituationSessionRepository.findById(uuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_SESSION_NOT_FOUND));
-        if (pdfKey != null && !pdfKey.isBlank()) {
-            String oldUrl = session.getPdf();
-            if (oldUrl != null && !oldUrl.isBlank()) {
-                String oldKey = s3v2Service.keyFromUrl(oldUrl);
-                if (oldKey != null && !oldKey.isBlank() && !oldKey.equals(pdfKey)) {
-                    s3v2Service.deleteObject(oldKey);
-                }
-            }
-            session.setPdf(s3v2Service.publicUrl(pdfKey));
+        if (pdfKey == null || pdfKey.isBlank()) {
+            log.warn("Ignoring blank PDF finalize request for vital situation session {}", uuid);
+            return vitalSituationSessionRepository.save(session);
         }
+
+        String oldUrl = session.getPdf();
+        if (oldUrl != null && !oldUrl.isBlank()) {
+            String oldKey = s3v2Service.keyFromUrl(oldUrl);
+            if (oldKey != null && !oldKey.isBlank() && !oldKey.equals(pdfKey)) {
+                s3v2Service.deleteObject(oldKey);
+            }
+        }
+        session.setPdf(s3v2Service.publicUrl(pdfKey));
+        log.info("Finalized PDF upload for vital situation session {}", uuid);
         return vitalSituationSessionRepository.save(session);
     }
 
