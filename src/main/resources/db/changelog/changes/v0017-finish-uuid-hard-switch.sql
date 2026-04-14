@@ -590,6 +590,33 @@ BEGIN
   END IF;
 END $$;
 
+-- Algunas filas históricas de event_user nunca llegaron a enlazarse con
+-- user_group_id cuando se introdujo esa relación. No se pueden mapear al
+-- modelo canónico (event_uuid, user_uuid), así que se eliminan antes de
+-- endurecer la columna.
+DELETE FROM event_user eu
+WHERE eu.user_uuid IS NULL
+  AND (
+    eu.user_group_id IS NULL
+    OR NOT EXISTS (
+      SELECT 1
+      FROM user_group ug
+      WHERE ug.id = eu.user_group_id
+        AND ug.user_uuid IS NOT NULL
+    )
+  );
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM event_user
+    WHERE user_uuid IS NULL
+  ) THEN
+    RAISE EXCEPTION 'v0017 hard switch: quedan filas de event_user sin user_uuid';
+  END IF;
+END $$;
+
 DO $$
 DECLARE
   rec RECORD;
