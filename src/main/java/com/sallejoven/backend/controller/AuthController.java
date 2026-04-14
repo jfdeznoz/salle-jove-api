@@ -60,14 +60,16 @@ public class AuthController {
     public ResponseEntity<?> registerUser(@Valid @RequestBody UserRegistrationDto userRegistrationDto,
                                             BindingResult bindingResult,HttpServletResponse httpServletResponse){
 
-        log.info("[AuthController:registerUser]Signup Process Started for user:{}",userRegistrationDto.userName());
+        log.info("[AuthController:registerUser] Signup process started");
         if (bindingResult.hasErrors()) {
             List<String> errorMessage = bindingResult.getAllErrors().stream()
                     .map(DefaultMessageSourceResolvable::getDefaultMessage)
                     .toList();
-            log.error("[AuthController:registerUser]Errors in user:{}",errorMessage);
+            log.error("[AuthController:registerUser] Validation errors: {}", errorMessage);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorMessage);
         }
-        return ResponseEntity.ok(authService.registerUser(userRegistrationDto,httpServletResponse));
+        var savedUser = authService.registerUser(userRegistrationDto, httpServletResponse);
+        var response = new AuthResponseDto(null, 0, null, savedUser.getEmail());
+        return ResponseEntity.ok(response);
     }
 }

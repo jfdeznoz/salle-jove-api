@@ -2,6 +2,10 @@ package com.sallejoven.backend.repository;
 
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.WeeklySession;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -10,12 +14,12 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Optional;
-
 @Repository
-public interface WeeklySessionRepository extends JpaRepository<WeeklySession, Long> {
+public interface WeeklySessionRepository extends JpaRepository<WeeklySession, UUID> {
+
+    default Optional<WeeklySession> findByUuid(UUID uuid) {
+        return findById(uuid);
+    }
 
     @Query("""
         SELECT ws
@@ -39,7 +43,7 @@ public interface WeeklySessionRepository extends JpaRepository<WeeklySession, Lo
         SELECT ws
         FROM WeeklySession ws
         WHERE ws.deletedAt IS NULL
-          AND ws.group.id = :groupId
+          AND ws.group.uuid = :groupUuid
           AND (
                (:isPast = true  AND CAST(ws.sessionDateTime AS date) <  :today)
             OR (:isPast = false AND CAST(ws.sessionDateTime AS date) >= :today)
@@ -47,18 +51,18 @@ public interface WeeklySessionRepository extends JpaRepository<WeeklySession, Lo
           AND (:onlyPublished = false OR ws.status = 1)
         ORDER BY ws.sessionDateTime ASC
     """)
-    Page<WeeklySession> findByGroupIdAndPastStatus(@Param("groupId") Long groupId,
-                                                   @Param("isPast") boolean isPast,
-                                                   @Param("today") LocalDate today,
-                                                   @Param("onlyPublished") boolean onlyPublished,
-                                                   Pageable pageable);
+    Page<WeeklySession> findByGroupUuidAndPastStatus(@Param("groupUuid") UUID groupUuid,
+                                                     @Param("isPast") boolean isPast,
+                                                     @Param("today") LocalDate today,
+                                                     @Param("onlyPublished") boolean onlyPublished,
+                                                     Pageable pageable);
 
-    @Query("SELECT ws FROM WeeklySession ws WHERE ws.id = :id AND ws.deletedAt IS NULL")
-    Optional<WeeklySession> findById(@Param("id") Long id);
+    @Query("SELECT ws FROM WeeklySession ws WHERE ws.uuid = :uuid AND ws.deletedAt IS NULL")
+    Optional<WeeklySession> findById(@Param("uuid") UUID uuid);
 
     @Modifying
-    @Query("UPDATE WeeklySession ws SET ws.deletedAt = CURRENT_TIMESTAMP WHERE ws.id = :sessionId")
-    void softDeleteSession(@Param("sessionId") Long sessionId);
+    @Query("UPDATE WeeklySession ws SET ws.deletedAt = CURRENT_TIMESTAMP WHERE ws.uuid = :sessionUuid")
+    void softDeleteSession(@Param("sessionUuid") UUID sessionUuid);
 
     @Query("""
         SELECT ws
@@ -68,5 +72,18 @@ public interface WeeklySessionRepository extends JpaRepository<WeeklySession, Lo
           AND CAST(ws.sessionDateTime AS date) < :today
     """)
     List<WeeklySession> findPublishedSessionsBeforeDate(@Param("today") LocalDate today);
-}
 
+    @Query("""
+        SELECT ws
+        FROM WeeklySession ws
+        WHERE ws.deletedAt IS NULL
+          AND ws.group IN :groups
+          AND CAST(ws.sessionDateTime AS date) = :sessionDate
+          AND (:onlyPublished = false OR ws.status = 1)
+        ORDER BY ws.sessionDateTime ASC
+    """)
+    Page<WeeklySession> findByGroupsAndSessionDate(@Param("groups") List<GroupSalle> groups,
+                                                   @Param("sessionDate") LocalDate sessionDate,
+                                                   @Param("onlyPublished") boolean onlyPublished,
+                                                   Pageable pageable);
+}

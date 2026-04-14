@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import java.util.Date;
 
 public record ParticipantDto(
-    Long id,
+    java.util.UUID uuid,
     String name,
     String lastName,
     String dni,
@@ -27,5 +27,7 @@ public record ParticipantDto(
     Integer gender,
     Boolean imageAuthorization,
     Integer attends,
+    Boolean justified,
+    String justificationReason,
     Integer userType
 ) {}

@@ -44,6 +44,7 @@ public class AcademicStateService {
                 .orElse(false);
     }
 
+    @Transactional
     public void setLocked(boolean locked) {
         AcademicState state = repo.findById((short) 1)
                 .orElseThrow(() -> new IllegalStateException("Academic state not found"));

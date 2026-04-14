@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -23,14 +24,14 @@ public class CenterAssembler {
     private final GroupMapper groupMapper;
 
     public List<CenterDto> toCenterDtosWithGroups(List<Center> centers) {
-        List<Long> centerIds = centers.stream().map(Center::getId).toList();
-        List<GroupSalle> allGroups = groupRepository.findByCenterIdIn(centerIds);
+        List<UUID> centerUuids = centers.stream().map(Center::getUuid).toList();
+        List<GroupSalle> allGroups = groupRepository.findByCenterUuidIn(centerUuids);
 
-        Map<Long, List<GroupSalle>> groupsByCenter = allGroups.stream()
-                .collect(Collectors.groupingBy(g -> g.getCenter().getId()));
+        Map<UUID, List<GroupSalle>> groupsByCenter = allGroups.stream()
+                .collect(Collectors.groupingBy(g -> g.getCenter().getUuid()));
 
         return centers.stream().map(c -> {
-            List<GroupSalle> groups = groupsByCenter.getOrDefault(c.getId(), List.of());
+            List<GroupSalle> groups = groupsByCenter.getOrDefault(c.getUuid(), List.of());
             List<GroupDto> groupDtos = groups.stream().map(groupMapper::toGroupDto).toList();
             return centerMapper.toCenterDtoWithGroups(c, groupDtos);
         }).toList();

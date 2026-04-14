@@ -5,16 +5,20 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import java.time.LocalDateTime;
 
 public record WeeklySessionDto(
-    Long id,
-    Long vitalSituationSessionId,
+    java.util.UUID uuid,
+    java.util.UUID vitalSituationSessionUuid,
     String vitalSituationTitle,
     String vitalSituationSessionTitle,
     String title,
-    Long groupId,
+    java.util.UUID groupUuid,
     String groupName,
     Integer stage,
-    Long centerId,
+    java.util.UUID centerUuid,
     String centerName,
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm") LocalDateTime sessionDateTime,
+    String observations,
+    String content,
+    Integer attendanceCount,
+    Integer totalCount,
     Integer status
 ) {}

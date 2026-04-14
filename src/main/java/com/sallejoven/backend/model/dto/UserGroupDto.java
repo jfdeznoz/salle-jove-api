@@ -2,7 +2,7 @@ package com.sallejoven.backend.model.dto;
 
 public record UserGroupDto(
     Integer userType,
-    Long groupId,
-    Integer id,
+    java.util.UUID groupUuid,
+    java.util.UUID uuid,
     Integer stage
 ) {}

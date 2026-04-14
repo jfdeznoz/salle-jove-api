@@ -1,8 +1,11 @@
 package com.sallejoven.backend.service;
 
+import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
+import com.sallejoven.backend.model.enums.ErrorCodes;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -33,6 +36,33 @@ public class UserRoleHelper {
             case "ANIMATOR"          -> 1;
             default                  -> 0;
         };
+    }
+
+    /**
+     * Valida que la request contiene el contexto mínimo para materializar el rol solicitado.
+     * - Roles de centro (GROUP_LEADER, PASTORAL_DELEGATE) requieren centerUuid.
+     * - Roles de grupo (ANIMATOR, PARTICIPANT) requieren groupUuid.
+     * ADMIN no requiere contexto adicional.
+     *
+     * Falla rápido con SalleException para evitar persistir usuarios huérfanos sin rol asignado.
+     */
+    public void assertScopeForRole(String role, UUID centerUuid, UUID groupUuid) {
+        final boolean isAdmin = "ROLE_ADMIN".equals(role);
+        if (isAdmin) return;
+
+        if (usesCenterOnly(role)) {
+            if (centerUuid == null) {
+                throw new SalleException(ErrorCodes.CENTER_NOT_FOUND,
+                        "Se requiere centerUuid para crear un usuario con rol " + role);
+            }
+            return;
+        }
+
+        // Resto (PARTICIPANT, ANIMATOR): se materializan vía grupo.
+        if (groupUuid == null) {
+            throw new SalleException(ErrorCodes.GROUP_NOT_FOUND,
+                    "Se requiere groupUuid para crear un usuario con rol " + role);
+        }
     }
 
     public UserGroup ensureMembership(UserSalle user, GroupSalle group, int userType) {

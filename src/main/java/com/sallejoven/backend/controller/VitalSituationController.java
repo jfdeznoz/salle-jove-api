@@ -11,6 +11,7 @@ import com.sallejoven.backend.model.requestDto.VitalSituationRequest;
 import com.sallejoven.backend.model.requestDto.VitalSituationSessionRequest;
 import com.sallejoven.backend.service.S3V2Service;
 import com.sallejoven.backend.service.VitalSituationService;
+import com.sallejoven.backend.utils.ReferenceParser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 import software.amazon.awssdk.core.exception.SdkClientException;
 
 import java.util.List;
+import java.util.UUID;
 
 @PreAuthorize("isAuthenticated()")
 @RequestMapping(value = "/api/vital-situations")
@@ -41,79 +43,78 @@ public class VitalSituationController {
     @GetMapping
     public ResponseEntity<List<VitalSituationDto>> getAllVitalSituations(
             @RequestParam(required = false) Integer stage) {
-        List<VitalSituationDto> situations;
-        if (stage != null) {
-            situations = vitalSituationService.findByStage(stage);
-        } else {
-            situations = vitalSituationService.findAll();
-        }
+        List<VitalSituationDto> situations = stage != null
+                ? vitalSituationService.findByStage(stage)
+                : vitalSituationService.findAll();
         return ResponseEntity.ok(situations);
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<VitalSituationDto> getVitalSituationById(@PathVariable Long id) {
-        return vitalSituationService.findById(id)
+    @GetMapping("/{uuid}")
+    public ResponseEntity<VitalSituationDto> getVitalSituationById(@PathVariable String uuid) {
+        return vitalSituationService.findByReference(uuid)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    @GetMapping("/{id}/sessions")
-    public ResponseEntity<List<VitalSituationSessionDto>> getSessionsByVitalSituation(@PathVariable Long id) {
-        List<VitalSituationSessionDto> sessions = vitalSituationService.findSessionsByVitalSituationId(id);
-        return ResponseEntity.ok(sessions);
+    @GetMapping("/{uuid}/sessions")
+    public ResponseEntity<List<VitalSituationSessionDto>> getSessionsByVitalSituation(@PathVariable String uuid) {
+        UUID resolved = requireUuid(uuid, ErrorCodes.VITAL_SITUATION_NOT_FOUND);
+        vitalSituationService.findById(resolved)
+                .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_NOT_FOUND));
+        return ResponseEntity.ok(vitalSituationService.findSessionsByVitalSituationId(resolved));
     }
 
     @PreAuthorize("@authz.canCreateOrEditVitalSituation(#request)")
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<VitalSituationDto> createVitalSituation(@Valid @RequestBody VitalSituationRequest request) {
         VitalSituation vs = vitalSituationService.createVitalSituation(request);
-        return ResponseEntity.ok(vitalSituationService.findById(vs.getId()).orElseThrow());
+        return ResponseEntity.ok(vitalSituationService.findById(vs.getUuid()).orElseThrow());
     }
 
     @PreAuthorize("@authz.canCreateOrEditVitalSituation(#request)")
-    @PutMapping(value = "/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PutMapping(value = "/{uuid}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<VitalSituationDto> updateVitalSituation(
-            @PathVariable Long id,
-            @Valid @RequestBody VitalSituationRequest request)  {
-        VitalSituation vs = vitalSituationService.updateVitalSituation(id, request);
-        return ResponseEntity.ok(vitalSituationService.findById(vs.getId()).orElseThrow());
+            @PathVariable String uuid,
+            @Valid @RequestBody VitalSituationRequest request) {
+        UUID resolved = requireUuid(uuid, ErrorCodes.VITAL_SITUATION_NOT_FOUND);
+        VitalSituation vs = vitalSituationService.updateVitalSituation(resolved, request);
+        return ResponseEntity.ok(vitalSituationService.findById(vs.getUuid()).orElseThrow());
     }
 
-    @PreAuthorize("@authz.canDeleteVitalSituation(#id)")
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteVitalSituation(@PathVariable Long id)  {
-        vitalSituationService.deleteVitalSituation(id);
+    @PreAuthorize("@authz.canDeleteVitalSituation(#uuid)")
+    @DeleteMapping("/{uuid}")
+    public ResponseEntity<Void> deleteVitalSituation(@PathVariable UUID uuid) {
+        vitalSituationService.deleteVitalSituation(uuid);
         return ResponseEntity.noContent().build();
     }
 
     @PreAuthorize("@authz.canCreateOrEditVitalSituationSession(#request)")
     @PostMapping(value = "/sessions", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<VitalSituationSessionDto> createVitalSituationSession(
-            @Valid @RequestBody VitalSituationSessionRequest request)  {
+            @Valid @RequestBody VitalSituationSessionRequest request) {
         VitalSituationSession vss = vitalSituationService.createVitalSituationSession(request);
-        return ResponseEntity.ok(vitalSituationService.findSessionById(vss.getId()).orElseThrow());
+        return ResponseEntity.ok(vitalSituationService.findSessionById(vss.getUuid()).orElseThrow());
     }
 
-    @PreAuthorize("@authz.canEditVitalSituationSession(#id)")
-    @PutMapping(value = "/sessions/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("@authz.canEditVitalSituationSession(#uuid)")
+    @PutMapping(value = "/sessions/{uuid}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<VitalSituationSessionDto> updateVitalSituationSession(
-            @PathVariable Long id,
-            @Valid @RequestBody VitalSituationSessionRequest request)  {
-        VitalSituationSession vss = vitalSituationService.updateVitalSituationSession(id, request);
-        return ResponseEntity.ok(vitalSituationService.findSessionById(vss.getId()).orElseThrow());
+            @PathVariable UUID uuid,
+            @Valid @RequestBody VitalSituationSessionRequest request) {
+        VitalSituationSession vss = vitalSituationService.updateVitalSituationSession(uuid, request);
+        return ResponseEntity.ok(vitalSituationService.findSessionById(vss.getUuid()).orElseThrow());
     }
 
-    @PreAuthorize("@authz.canEditVitalSituationSession(#id)")
-    @PostMapping(value = "/sessions/{id}/presigned-pdf", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("@authz.canEditVitalSituationSession(#uuid)")
+    @PostMapping(value = "/sessions/{uuid}/presigned-pdf", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<PresignedPutDTO> getPresignedPdfForSession(
-            @PathVariable Long id,
-            @Valid @RequestBody VitalSituationSessionRequest request)  {
-        VitalSituationSession vss = vitalSituationService.findSessionEntityById(id);
-        
+            @PathVariable UUID uuid,
+            @Valid @RequestBody VitalSituationSessionRequest request) {
+        VitalSituationSession vss = vitalSituationService.findSessionEntityById(uuid);
         try {
             PresignedPutDTO pdfPresigned = s3v2Service.buildPresignedForVitalSituationSessionPdf(
-                    vss.getVitalSituation().getId(),
-                    vss.getId(),
+                    vss.getVitalSituation().getUuid(),
+                    vss.getUuid(),
                     request.getPdfUpload()
             );
             return ResponseEntity.ok(pdfPresigned);
@@ -123,20 +124,24 @@ public class VitalSituationController {
         }
     }
 
-    @PreAuthorize("@authz.canEditVitalSituationSession(#id)")
-    @PostMapping(value = "/sessions/{id}/finalize-pdf", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("@authz.canEditVitalSituationSession(#uuid)")
+    @PostMapping(value = "/sessions/{uuid}/finalize-pdf", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<VitalSituationSessionDto> finalizeSessionPdf(
-            @PathVariable Long id,
-            @Valid @RequestBody VitalSituationSessionRequest request)  {
+            @PathVariable UUID uuid,
+            @Valid @RequestBody VitalSituationSessionRequest request) {
         String pdfKey = request.getPdfUpload() != null ? request.getPdfUpload().trim() : null;
-        VitalSituationSession vss = vitalSituationService.finalizeSessionUpload(id, pdfKey);
-        return ResponseEntity.ok(vitalSituationService.findSessionById(vss.getId()).orElseThrow());
+        VitalSituationSession vss = vitalSituationService.finalizeSessionUpload(uuid, pdfKey);
+        return ResponseEntity.ok(vitalSituationService.findSessionById(vss.getUuid()).orElseThrow());
     }
 
-    @PreAuthorize("@authz.canDeleteVitalSituationSession(#id)")
-    @DeleteMapping("/sessions/{id}")
-    public ResponseEntity<Void> deleteVitalSituationSession(@PathVariable Long id)  {
-        vitalSituationService.deleteVitalSituationSession(id);
+    @PreAuthorize("@authz.canDeleteVitalSituationSession(#uuid)")
+    @DeleteMapping("/sessions/{uuid}")
+    public ResponseEntity<Void> deleteVitalSituationSession(@PathVariable UUID uuid) {
+        vitalSituationService.deleteVitalSituationSession(uuid);
         return ResponseEntity.noContent().build();
+    }
+
+    private UUID requireUuid(String reference, ErrorCodes notFound) {
+        return ReferenceParser.asUuid(reference).orElseThrow(() -> new SalleException(notFound));
     }
 }

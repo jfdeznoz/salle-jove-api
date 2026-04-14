@@ -10,7 +10,7 @@ spring:
       maximum-pool-size: 10
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     properties:
       hibernate:
         format_sql: true
@@ -34,8 +34,8 @@ spring:
   mail:
     host: smtp.gmail.com
     port: 587
-    username: jfdeznoz@gmail.com
-    password: bhka rxso nzkp ucio
+    username: ${MAIL_USERNAME:jfdeznoz@gmail.com}
+    password: ${MAIL_PASSWORD:changeme}
     properties:
       mail:
         smtp:

@@ -8,7 +8,7 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface EventMapper {
 
-    @Mapping(target = "centerId", source = "centerId")
+    @Mapping(target = "centerUuid", source = "centerUuid")
     @Mapping(target = "centerName", source = "centerName")
-    EventDto toEventDto(Event event, Long centerId, String centerName);
+    EventDto toEventDto(Event event, java.util.UUID centerUuid, String centerName);
 }

@@ -12,19 +12,19 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface GroupMapper {
 
-    @Mapping(target = "centerId", source = "center.id")
+    @Mapping(target = "centerUuid", source = "center.uuid")
     @Mapping(target = "centerName", expression = "java(formatCenterName(group.getCenter()))")
     @Mapping(target = "cityName", source = "center.city")
     GroupDto toGroupDto(GroupSalle group);
 
-    @Mapping(target = "centerId", source = "center.id")
+    @Mapping(target = "centerUuid", source = "center.uuid")
     @Mapping(target = "centerName", source = "center.name")
     @Mapping(target = "cityName", source = "center.city")
     GroupResponse toGroupResponse(GroupSalle group);
 
     @Mapping(target = "userType", source = "userType")
-    @Mapping(target = "groupId", source = "group.id")
-    @Mapping(target = "id", source = "id")
+    @Mapping(target = "groupUuid", source = "group.uuid")
+    @Mapping(target = "uuid", source = "uuid")
     @Mapping(target = "stage", source = "group.stage")
     UserGroupDto toUserGroupDto(UserGroup userGroup);
 

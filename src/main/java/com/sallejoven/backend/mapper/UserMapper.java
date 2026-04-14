@@ -21,7 +21,7 @@ public interface UserMapper {
     @Mapping(target = "userType", source = "userType")
     UserDto toUserDto(UserSalle user, int userType);
 
-    @Mapping(target = "id", source = "user.id")
+    @Mapping(target = "uuid", source = "user.uuid")
     @Mapping(target = "name", source = "user.name")
     @Mapping(target = "lastName", source = "user.lastName")
     @Mapping(target = "dni", source = "user.dni")

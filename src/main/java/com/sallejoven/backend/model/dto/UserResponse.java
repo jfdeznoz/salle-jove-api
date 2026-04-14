@@ -3,10 +3,11 @@ package com.sallejoven.backend.model.dto;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.sallejoven.backend.model.entity.UserSalle;
 
+import java.time.LocalDateTime;
 import java.util.Date;
 
 public record UserResponse(
-        Long id,
+        java.util.UUID uuid,
         String name,
         String lastName,
         String email,
@@ -26,11 +27,12 @@ public record UserResponse(
         String motherEmail,
         String fatherEmail,
         String motherPhone,
-        String fatherPhone
+        String fatherPhone,
+        @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss") LocalDateTime deletedAt
 ) {
     public static UserResponse from(UserSalle user) {
         return new UserResponse(
-                user.getId(),
+                user.getUuid(),
                 user.getName(),
                 user.getLastName(),
                 user.getEmail(),
@@ -50,7 +52,8 @@ public record UserResponse(
                 user.getMotherEmail(),
                 user.getFatherEmail(),
                 user.getMotherPhone(),
-                user.getFatherPhone()
+                user.getFatherPhone(),
+                user.getDeletedAt()
         );
     }
 }

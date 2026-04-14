@@ -1,8 +1,8 @@
 package com.sallejoven.backend.model.dto;
 
 public record GroupDto(
-    Long id,
-    Long centerId,
+    java.util.UUID uuid,
+    java.util.UUID centerUuid,
     Integer stage,
     String centerName,
     String cityName

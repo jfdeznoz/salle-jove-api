@@ -17,24 +17,23 @@ public interface CenterMapper {
     @Mapping(target = "groups", ignore = true)
     CenterDto toCenterDtoWithoutGroups(Center center);
 
-    @Mapping(target = "id", source = "center.id")
     @Mapping(target = "name", source = "center.name")
     @Mapping(target = "city", source = "center.city")
     @Mapping(target = "groups", ignore = true)
     CenterDto fromUserCenter(UserCenter userCenter);
 
-    @Mapping(target = "centerId", source = "center.id")
+    @Mapping(target = "centerUuid", source = "center.uuid")
     @Mapping(target = "centerName", source = "center.name")
     @Mapping(target = "cityName", source = "center.city")
     UserCenterDto toUserCenterDto(UserCenter userCenter);
 
-    @Mapping(target = "centerId", source = "id")
+    @Mapping(target = "centerUuid", source = "uuid")
     @Mapping(target = "centerName", source = "name")
     @Mapping(target = "cityName", source = "city")
     @Mapping(target = "groups", ignore = true)
     UserCenterGroupsDto toUserCenterGroupsDtoNoGroups(Center center);
 
     default CenterDto toCenterDtoWithGroups(Center center, List<GroupDto> groups) {
-        return new CenterDto(center.getId(), center.getName(), center.getCity(), groups);
+        return new CenterDto(center.getUuid(), center.getName(), center.getCity(), groups);
     }
 }

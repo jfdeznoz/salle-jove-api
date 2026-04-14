@@ -1,19 +1,25 @@
 package com.sallejoven.backend.repository;
 
 import com.sallejoven.backend.model.entity.UserSalle;
+import jakarta.persistence.LockModeType;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-
 @Repository
-public interface UserRepository extends JpaRepository<UserSalle, Long> {
+public interface UserRepository extends JpaRepository<UserSalle, UUID> {
 
     Optional<UserSalle> findByEmail(String email);
+
+    default Optional<UserSalle> findByUuid(UUID uuid) {
+        return findById(uuid);
+    }
 
     boolean existsByDni(String dni);
 
@@ -34,27 +40,26 @@ public interface UserRepository extends JpaRepository<UserSalle, Long> {
         FROM UserSalle u
         JOIN u.groups ug
         JOIN ug.group gr
-        WHERE gr.id = :groupId
+        WHERE gr.uuid = :groupUuid
           AND u.deletedAt IS NULL
         """)
-    List<UserSalle> findUsersByGroupId(@Param("groupId") Long groupId);
+    List<UserSalle> findUsersByGroupUuid(@Param("groupUuid") UUID groupUuid);
 
     @Query("""
       SELECT DISTINCT u
       FROM UserSalle u
       JOIN u.groups ug
       JOIN ug.group g
-      WHERE g.center.id = :centerId
+      WHERE g.center.uuid = :centerUuid
         AND u.deletedAt IS NULL
     """)
-    List<UserSalle> findUsersByCenterId(@Param("centerId") Long centerId);
+    List<UserSalle> findUsersByCenterUuid(@Param("centerUuid") UUID centerUuid);
 
     @Query(value = """
     SELECT u.*
     FROM user_salle u
     WHERE u.deleted_at IS NULL
       AND (
-        -- nombre completo: name + ' ' + last_name
         lower(
           translate(
             trim(coalesce(u.name,'') || ' ' || coalesce(u.last_name,'')),
@@ -78,10 +83,10 @@ public interface UserRepository extends JpaRepository<UserSalle, Long> {
     @Query(value = """
     SELECT DISTINCT u.*
     FROM user_salle u
-    LEFT JOIN user_group ug ON ug.user_salle = u.id
-    LEFT JOIN group_salle g ON g.id = ug.group_salle
+    LEFT JOIN user_group ug ON ug.user_uuid = u.uuid
+    LEFT JOIN group_salle g ON g.uuid = ug.group_uuid
     WHERE u.deleted_at IS NULL
-      AND g.center IN (:centerIds)
+      AND g.center_uuid IN (:centerUuids)
       AND (
         lower(
           translate(
@@ -101,21 +106,63 @@ public interface UserRepository extends JpaRepository<UserSalle, Long> {
       )
     ORDER BY u.name NULLS LAST, u.last_name NULLS LAST
     """, nativeQuery = true)
-    List<UserSalle> searchUsersNormalizedByCenters(@Param("normalized") String normalized,
-                                                   @Param("centerIds") Set<Long> centerIds);
-
+    List<UserSalle> searchUsersNormalizedByCenterUuids(@Param("normalized") String normalized,
+                                                       @Param("centerUuids") Set<UUID> centerUuids);
 
     @Query("""
         select distinct u
         from UserSalle u
-        join UserGroup ug on ug.user.id = u.id
+        join UserGroup ug on ug.user.uuid = u.uuid
         join ug.group g
         where u.deletedAt is null
           and ug.deletedAt is null
           and ug.year = :year
           and ug.userType = 1
-          and g.center.id = :centerId
+          and g.center.uuid = :centerUuid
     """)
-    List<UserSalle> findAnimatorsByCenterAndYear(@Param("centerId") Long centerId,
+    List<UserSalle> findAnimatorsByCenterAndYear(@Param("centerUuid") UUID centerUuid,
                                                  @Param("year") int year);
+
+    @Query("""
+        select u
+        from UserSalle u
+        where u.deletedAt is not null
+        order by u.deletedAt desc
+    """)
+    List<UserSalle> findAllByDeletedAtIsNotNullOrderByDeletedAtDesc(org.springframework.data.domain.Pageable pageable);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM UserSalle u WHERE u.uuid = :uuid")
+    Optional<UserSalle> findByIdForUpdate(@Param("uuid") UUID uuid);
+
+    @Query(value = """
+    SELECT u.*
+    FROM user_salle u
+    WHERE u.deleted_at IS NOT NULL
+      AND (
+        lower(
+          translate(
+            trim(coalesce(u.name,'') || ' ' || coalesce(u.last_name,'')),
+            'ÁÉÍÓÚÜÀÈÌÒÙÑáéíóúüàèìòùñ',
+            'AEIOUUAEIOUNaeiouuaeioun'
+          )
+        ) LIKE CONCAT('%', :normalized, '%')
+        OR
+        lower(
+          translate(
+            coalesce(u.email,''),
+            'ÁÉÍÓÚÜÀÈÌÒÙÑáéíóúüàèìòùñ',
+            'AEIOUUAEIOUNaeiouuaeioun'
+          )
+        ) LIKE CONCAT('%', :normalized, '%')
+        OR
+        lower(coalesce(u.dni,'')) LIKE CONCAT('%', :normalized, '%')
+      )
+    ORDER BY u.deleted_at DESC
+    LIMIT 100
+    """, nativeQuery = true)
+    List<UserSalle> findDeletedByNormalized(@Param("normalized") String normalized);
+
+    @Query("select u from UserSalle u where u.email = :email and u.deletedAt is null")
+    Optional<UserSalle> findActiveByEmail(@Param("email") String email);
 }

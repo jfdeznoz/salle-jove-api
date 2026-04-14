@@ -12,6 +12,6 @@ public interface VitalSituationMapper {
 
     VitalSituationDto toDto(VitalSituation vitalSituation);
 
-    @Mapping(target = "vitalSituationId", source = "vitalSituation.id")
+    @Mapping(target = "vitalSituationUuid", source = "vitalSituation.uuid")
     VitalSituationSessionDto toSessionDto(VitalSituationSession session);
 }

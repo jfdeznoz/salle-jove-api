@@ -78,15 +78,15 @@ public class UserSalleRequest {
     @Size(max = 20)
     private String motherPhone;
 
-    private List<Long> groups;
+    private List<String> groupUuids;
 
     private String rol;
 
-    private Integer eventId;
+    private String eventUuid;
 
-    private Integer groupId;
+    private String groupUuid;
 
-    private Integer centerId;
+    private String centerUuid;
 
     @Size(min = 8, max = 200)
     private String password;

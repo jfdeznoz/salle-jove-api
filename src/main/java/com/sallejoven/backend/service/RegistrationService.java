@@ -1,23 +1,24 @@
 package com.sallejoven.backend.service;
 
 import com.sallejoven.backend.errors.SalleException;
+import com.sallejoven.backend.model.entity.Center;
 import com.sallejoven.backend.model.entity.GroupSalle;
-import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserPending;
 import com.sallejoven.backend.model.entity.UserSalle;
-import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.model.enums.ErrorCodes;
+import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.repository.UserPendingRepository;
 import com.sallejoven.backend.repository.UserRepository;
-import org.springframework.transaction.annotation.Transactional;
+import com.sallejoven.backend.utils.ReferenceParser;
+import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-
-import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-import java.util.List;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -25,41 +26,36 @@ public class RegistrationService {
 
     private final UserRepository userRepository;
     private final UserPendingRepository userPendingRepository;
-
     private final PasswordEncoder passwordEncoder;
-
     private final GroupService groupService;
+    private final CenterService centerService;
     private final EventUserService eventUserService;
     private final AcademicStateService academicStateService;
     private final UserCenterService userCenterService;
     private final AuthorityService authorityService;
     private final UserRoleHelper roleHelper;
 
-
     @Transactional
     public UserPending registerPublic(UserSalleRequest req) {
-        final String role = roleHelper.normalizeRole(req.getRol());
+        String role = roleHelper.normalizeRole(req.getRol());
+        Center center = resolveCenter(req);
+        GroupSalle group = resolveGroup(req);
 
-        if (roleHelper.usesCenterOnly(role)) {
-            if (req.getCenterId() == null) {
-                throw new SalleException(ErrorCodes.CENTER_NOT_FOUND, "Se requiere centerId para " + role);
-            }
-        } else {
-            if (req.getGroupId() == null) {
-                throw new SalleException(ErrorCodes.GROUP_NOT_FOUND, "Se requiere groupId para " + role);
-            }
+        if (roleHelper.usesCenterOnly(role) && center == null) {
+            throw new SalleException(ErrorCodes.CENTER_NOT_FOUND, "Se requiere centerUuid para " + role);
         }
-
+        if (!roleHelper.usesCenterOnly(role) && group == null) {
+            throw new SalleException(ErrorCodes.GROUP_NOT_FOUND, "Se requiere groupUuid para " + role);
+        }
         if (userRepository.existsByEmail(req.getEmail()) || userPendingRepository.existsByEmail(req.getEmail())) {
             throw new SalleException(ErrorCodes.EMAIL_ALREADY_EXISTS);
         }
-        if (req.getDni() != null && !req.getDni().isBlank()) {
-            if (userRepository.existsByDni(req.getDni()) || userPendingRepository.existsByDni(req.getDni())) {
-                throw new SalleException(ErrorCodes.DNI_ALREADY_EXISTS);
-            }
+        if (req.getDni() != null && !req.getDni().isBlank()
+                && (userRepository.existsByDni(req.getDni()) || userPendingRepository.existsByDni(req.getDni()))) {
+            throw new SalleException(ErrorCodes.DNI_ALREADY_EXISTS);
         }
 
-        final UserPending pending = UserPending.builder()
+        UserPending pending = UserPending.builder()
                 .name(req.getName())
                 .lastName(req.getLastName())
                 .dni(req.getDni())
@@ -82,8 +78,8 @@ public class RegistrationService {
                 .fatherEmail(req.getFatherEmail())
                 .motherPhone(req.getMotherPhone())
                 .fatherPhone(req.getFatherPhone())
-                .centerId(req.getCenterId() != null ? req.getCenterId().longValue() : null)
-                .groupId(req.getGroupId()  != null ? req.getGroupId().longValue()  : null)
+                .centerUuid(center != null ? center.getUuid() : null)
+                .groupUuid(group != null ? group.getUuid() : null)
                 .createdAt(LocalDateTime.now())
                 .build();
 
@@ -91,82 +87,75 @@ public class RegistrationService {
     }
 
     @Transactional
-    public UserSalle approvePending(Long pendingId) {
+    public UserSalle approvePending(UUID pendingUuid) {
         if (academicStateService.isLocked()) {
             throw new SalleException(ErrorCodes.SYSTEM_LOCKED);
         }
-
-        UserPending p = userPendingRepository.findById(pendingId)
+        UserPending pending = userPendingRepository.findById(pendingUuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND, "Solicitud no encontrada"));
 
-        if (userRepository.existsByEmail(p.getEmail())) {
+        if (userRepository.existsByEmail(pending.getEmail())) {
             throw new SalleException(ErrorCodes.EMAIL_ALREADY_EXISTS);
         }
-        if (p.getDni() != null && !p.getDni().isBlank() && userRepository.existsByDni(p.getDni())) {
+        if (pending.getDni() != null && !pending.getDni().isBlank() && userRepository.existsByDni(pending.getDni())) {
             throw new SalleException(ErrorCodes.DNI_ALREADY_EXISTS);
         }
 
-        final String role = roleHelper.normalizeRole(p.getRoles());       // "ROLE_*"
-        final int userType = roleHelper.mapUserTypeFromRequest(role);     // 0..3
-
-        final boolean isAdmin = role.equals("ROLE_ADMIN");
+        String role = roleHelper.normalizeRole(pending.getRoles());
+        int userType = roleHelper.mapUserTypeFromRequest(role);
+        boolean isAdmin = role.equals("ROLE_ADMIN");
 
         UserSalle user = UserSalle.builder()
-                .name(p.getName())
-                .lastName(p.getLastName())
-                .dni(p.getDni())
-                .phone(p.getPhone())
-                .email(p.getEmail())
-                .tshirtSize(p.getTshirtSize())
-                .healthCardNumber(p.getHealthCardNumber())
-                .intolerances(p.getIntolerances())
-                .chronicDiseases(p.getChronicDiseases())
-                .city(p.getCity())
-                .address(p.getAddress())
-                .imageAuthorization(p.getImageAuthorization())
-                .birthDate(p.getBirthDate())
+                .name(pending.getName())
+                .lastName(pending.getLastName())
+                .dni(pending.getDni())
+                .phone(pending.getPhone())
+                .email(pending.getEmail())
+                .tshirtSize(pending.getTshirtSize())
+                .healthCardNumber(pending.getHealthCardNumber())
+                .intolerances(pending.getIntolerances())
+                .chronicDiseases(pending.getChronicDiseases())
+                .city(pending.getCity())
+                .address(pending.getAddress())
+                .imageAuthorization(pending.getImageAuthorization())
+                .birthDate(pending.getBirthDate())
                 .isAdmin(isAdmin)
-                .password(p.getPassword())
-                .gender(p.getGender())
-                .motherFullName(p.getMotherFullName())
-                .fatherFullName(p.getFatherFullName())
-                .motherEmail(p.getMotherEmail())
-                .fatherEmail(p.getFatherEmail())
-                .motherPhone(p.getMotherPhone())
-                .fatherPhone(p.getFatherPhone())
+                .password(pending.getPassword())
+                .gender(pending.getGender())
+                .motherFullName(pending.getMotherFullName())
+                .fatherFullName(pending.getFatherFullName())
+                .motherEmail(pending.getMotherEmail())
+                .fatherEmail(pending.getFatherEmail())
+                .motherPhone(pending.getMotherPhone())
+                .fatherPhone(pending.getFatherPhone())
                 .build();
 
-        if (user.getGroups() == null) user.setGroups(new HashSet<>());
+        if (user.getGroups() == null) {
+            user.setGroups(new java.util.HashSet<>());
+        }
         user = userRepository.save(user);
 
-        // 4) Si el pending no es de ADMIN, seguimos asignando rol de centro o grupo
         if (!isAdmin) {
             if (roleHelper.usesCenterOnly(role)) {
-                if (p.getCenterId() == null) throw new SalleException(ErrorCodes.CENTER_NOT_FOUND);
-                userCenterService.addCenterRole(user.getId(), p.getCenterId(), userType);
-                userRepository.save(user);
+                userCenterService.addCenterRole(user.getUuid(), resolvePendingCenter(pending).getUuid(), userType);
             } else {
-                if (p.getGroupId() == null) throw new SalleException(ErrorCodes.GROUP_NOT_FOUND);
-                GroupSalle group = groupService.findById(p.getGroupId());
-
-                UserGroup ug = roleHelper.ensureMembership(user, group, userType);
+                GroupSalle group = resolvePendingGroup(pending);
+                roleHelper.ensureMembership(user, group, userType);
                 userRepository.save(user);
-
                 eventUserService.assignFutureGroupEventsToUser(user, group);
             }
         }
 
-        userPendingRepository.deleteById(pendingId);
-
+        userPendingRepository.deleteById(pendingUuid);
         return user;
     }
 
     @Transactional
-    public void rejectPending(Long id) {
-        if (!userPendingRepository.existsById(id)) {
+    public void rejectPending(UUID pendingUuid) {
+        if (!userPendingRepository.existsById(pendingUuid)) {
             throw new SalleException(ErrorCodes.USER_NOT_FOUND, "Solicitud pendiente no encontrada");
         }
-        userPendingRepository.deleteById(id);
+        userPendingRepository.deleteById(pendingUuid);
     }
 
     public List<UserPending> listPending() {
@@ -176,26 +165,53 @@ public class RegistrationService {
         }
 
         Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return List.of();
-
-        var myCenterIds = authorityService.extractCenterIdsForYear(auths, year);
-        if (myCenterIds.isEmpty()) return List.of();
-
-        boolean iAmPD = auths.stream().anyMatch(a ->
-                a.startsWith("CENTER:") && a.endsWith(":" + year) && a.contains(":PASTORAL_DELEGATE:"));
-        boolean iAmGL = auths.stream().anyMatch(a ->
-                a.startsWith("CENTER:") && a.endsWith(":" + year) && a.contains(":GROUP_LEADER:"));
-
-        if (!iAmPD && !iAmGL) return List.of();
-
-        var result = new LinkedHashSet<UserPending>(); // evita duplicados y mantiene orden
-
-        if (iAmPD) {
-            result.addAll(userPendingRepository.findByCenterIdIn(myCenterIds));
+        if (year == null) {
+            return List.of();
         }
-        result.addAll(userPendingRepository.findByGroupCenterIds(myCenterIds));
 
+        Set<UUID> myCenterUuids = authorityService.extractCenterIdsForYear(auths, year);
+        if (myCenterUuids.isEmpty()) {
+            return List.of();
+        }
+
+        Set<UserPending> result = new LinkedHashSet<>();
+        result.addAll(userPendingRepository.findByCenterUuidIn(myCenterUuids));
+        result.addAll(userPendingRepository.findByGroupCenterUuids(myCenterUuids));
         return result.stream().toList();
     }
 
+    public UserPending findPendingByReference(String reference) {
+        UUID uuid = ReferenceParser.asUuid(reference)
+                .orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND, "Solicitud no encontrada"));
+        return userPendingRepository.findByUuid(uuid)
+                .orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND, "Solicitud no encontrada"));
+    }
+
+    private Center resolveCenter(UserSalleRequest req) {
+        if (req.getCenterUuid() == null || req.getCenterUuid().isBlank()) {
+            return null;
+        }
+        return centerService.findByReference(req.getCenterUuid());
+    }
+
+    private GroupSalle resolveGroup(UserSalleRequest req) {
+        if (req.getGroupUuid() == null || req.getGroupUuid().isBlank()) {
+            return null;
+        }
+        return groupService.findByReference(req.getGroupUuid());
+    }
+
+    private Center resolvePendingCenter(UserPending pending) {
+        if (pending.getCenterUuid() == null) {
+            throw new SalleException(ErrorCodes.CENTER_NOT_FOUND);
+        }
+        return centerService.findById(pending.getCenterUuid());
+    }
+
+    private GroupSalle resolvePendingGroup(UserPending pending) {
+        if (pending.getGroupUuid() == null) {
+            throw new SalleException(ErrorCodes.GROUP_NOT_FOUND);
+        }
+        return groupService.findById(pending.getGroupUuid());
+    }
 }

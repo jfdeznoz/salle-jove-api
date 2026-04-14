@@ -28,7 +28,7 @@ public class JwtTokenGenerator {
     private final JwtProperties jwtProps;
 
     public String generateAccessToken(Authentication authentication) {
-        log.info("[JwtTokenGenerator] Creating access token for {}", authentication.getName());
+        log.info("[JwtTokenGenerator] Creating access token");
 
         List<String> roles = authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)     // "ROLE_ADMIN"
@@ -40,9 +40,9 @@ public class JwtTokenGenerator {
         var user = userRepo.findByEmail(authentication.getName()).orElseThrow();
         List<String> authz;
         try {
-            authz = authorityService.buildContextAuthorities(user.getId());
+            authz = authorityService.buildContextAuthorities(user.getUuid()).stream().toList();
         } catch (Exception e) {
-            log.error("Error building context authorities for {}: {}", authentication.getName(), e.getMessage());
+            log.error("Error building context authorities: {}", e.getMessage());
             authz = List.of(); // fallback seguro
         }
 

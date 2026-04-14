@@ -3,8 +3,6 @@ package com.sallejoven.backend.model.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Temporal;
@@ -18,10 +16,11 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 import java.util.Date;
+import java.util.UUID;
 
 @Getter
 @Setter
-@EqualsAndHashCode(of = "id")
+@EqualsAndHashCode(of = "uuid")
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -30,8 +29,8 @@ import java.util.Date;
 public class UserPending {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "uuid", nullable=false, unique = true, updatable = false, columnDefinition = "uuid")
+    private UUID uuid;
 
     @Column(nullable=false) private String name;
     @Column(name="last_name", nullable=false) private String lastName;
@@ -59,8 +58,23 @@ public class UserPending {
     @Column(name="father_phone") private String fatherPhone;
     @Column(name="mother_phone") private String motherPhone;
 
-    @Column(name="center_id") private Long centerId;
-    @Column(name="group_id")  private Long groupId;
+    @Column(name="center_uuid") private UUID centerUuid;
+    @Column(name="group_uuid") private UUID groupUuid;
 
     @Column(name="created_at", nullable=false) private LocalDateTime createdAt;
+
+    @jakarta.persistence.PrePersist
+    private void ensureUuid() {
+        if (uuid == null) {
+            uuid = UUID.randomUUID();
+        }
+    }
+
+    public UUID getId() {
+        return uuid;
+    }
+
+    public void setId(UUID id) {
+        this.uuid = id;
+    }
 }

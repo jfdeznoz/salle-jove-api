@@ -45,7 +45,6 @@ public class S3V2Service {
                 .contentType((contentType == null || contentType.isBlank()) ? null : contentType)
                 .contentDisposition((contentDisposition == null || contentDisposition.isBlank()) ? null : contentDisposition);
 
-        // OJO: si el bucket está en BucketOwnerEnforced, NO se permiten ACLs y esto dará error.
         if (publicRead) {
             putBuilder.acl(ObjectCannedACL.PUBLIC_READ);
         }
@@ -95,14 +94,21 @@ public class S3V2Service {
         return (bucketUrl.endsWith("/") ? bucketUrl : bucketUrl + "/") + key;
     }
 
-    public String eventFolderForEvent(boolean isGeneral, @Nullable Long centerId, int year, long eventId) {
-        String scope = isGeneral ? "general" : "centers/" + centerId;
-        String folder = join(basePrefix, String.valueOf(year), "events", scope, "event_" + eventId);
+    private String refSegment(String prefix, UUID uuid) {
+        return prefix + "_" + (uuid == null ? "unknown" : uuid.toString());
+    }
+
+    public String eventFolderForEvent(boolean isGeneral,
+                                      @Nullable UUID centerUuid,
+                                      int year,
+                                      UUID eventUuid) {
+        String scope = isGeneral ? "general" : join("centers", refSegment("center", centerUuid));
+        String folder = join(basePrefix, String.valueOf(year), "events", scope, refSegment("event", eventUuid));
         return folder.isEmpty() ? "" : folder + "/";
     }
 
-    public String eventFolder(boolean isGeneral, @Nullable Long centerId) {
-        String scope = isGeneral ? "general/events" : "centers/" + centerId + "/events";
+    public String eventFolder(boolean isGeneral, @Nullable UUID centerUuid) {
+        String scope = isGeneral ? "general/events" : join("centers", refSegment("center", centerUuid), "events");
         String folder = join(basePrefix, scope);
         return folder.isEmpty() ? "" : folder + "/";
     }
@@ -124,15 +130,15 @@ public class S3V2Service {
 
     public UploadPresigneds buildPresignedForEventUploads(
             boolean isGeneral,
-            @Nullable Long centerId,
+            @Nullable UUID centerUuid,
             @Nullable LocalDate eventDate,
-            long eventId,
+            UUID eventUuid,
             boolean wantImage,
             boolean wantPdf,
             @Nullable String imageOriginalName
     ) {
         final int year = (eventDate != null) ? eventDate.getYear() : Year.now().getValue();
-        final String folder = eventFolderForEvent(isGeneral, centerId, year, eventId);
+        final String folder = eventFolderForEvent(isGeneral, centerUuid, year, eventUuid);
 
         PresignedPutDTO imgDto = null;
         PresignedPutDTO pdfDto = null;
@@ -163,20 +169,22 @@ public class S3V2Service {
 
     public record UploadPresigneds(@Nullable PresignedPutDTO image, @Nullable PresignedPutDTO pdf) {}
 
-    public String weeklySessionFolderForSession(@Nullable Long centerId, int year, long sessionId) {
-        String scope = "centers/" + centerId;
-        String folder = join(basePrefix, String.valueOf(year), "weekly-sessions", scope, "session_" + sessionId);
+    public String weeklySessionFolderForSession(@Nullable UUID centerUuid,
+                                                int year,
+                                                UUID sessionUuid) {
+        String scope = join("centers", refSegment("center", centerUuid));
+        String folder = join(basePrefix, String.valueOf(year), "weekly-sessions", scope, refSegment("session", sessionUuid));
         return folder.isEmpty() ? "" : folder + "/";
     }
 
     public UploadPresigneds buildPresignedForWeeklySessionUploads(
-            @Nullable Long centerId,
+            @Nullable UUID centerUuid,
             @Nullable LocalDate sessionDate,
-            long sessionId,
+            UUID sessionUuid,
             @Nullable String pdfOriginalName
     ) {
         final int year = (sessionDate != null) ? sessionDate.getYear() : Year.now().getValue();
-        final String folder = weeklySessionFolderForSession(centerId, year, sessionId);
+        final String folder = weeklySessionFolderForSession(centerUuid, year, sessionUuid);
 
         PresignedPutDTO pdfDto = null;
 
@@ -190,17 +198,20 @@ public class S3V2Service {
         return new UploadPresigneds(null, pdfDto);
     }
 
-    public String vitalSituationSessionFolderForSession(Long vitalSituationId, long sessionId) {
-        String folder = join(basePrefix, "vital-situation-sessions", "vs_" + vitalSituationId, "session_" + sessionId);
+    public String vitalSituationSessionFolderForSession(UUID vitalSituationUuid, UUID sessionUuid) {
+        String folder = join(basePrefix,
+                "vital-situation-sessions",
+                refSegment("vs", vitalSituationUuid),
+                refSegment("session", sessionUuid));
         return folder.isEmpty() ? "" : folder + "/";
     }
 
     public PresignedPutDTO buildPresignedForVitalSituationSessionPdf(
-            Long vitalSituationId,
-            long sessionId,
+            UUID vitalSituationUuid,
+            UUID sessionUuid,
             @Nullable String pdfOriginalName
     ) {
-        final String folder = vitalSituationSessionFolderForSession(vitalSituationId, sessionId);
+        final String folder = vitalSituationSessionFolderForSession(vitalSituationUuid, sessionUuid);
         String pdfKey = newKey(folder, ".pdf");
         String cd = "inline; filename=\"sesion.pdf\"";
         var pdfPut = presignedPut(pdfKey, "application/pdf", cd, /*publicRead*/ false, Duration.ofMinutes(15));

@@ -14,8 +14,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class VitalSituationRequest {
 
-    private Long id;
-
     @NotBlank
     @Size(max = 150)
     private String title;

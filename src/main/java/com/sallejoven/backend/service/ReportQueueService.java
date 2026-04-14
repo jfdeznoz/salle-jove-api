@@ -25,6 +25,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -35,6 +37,7 @@ public class ReportQueueService {
     private final EventUserService eventUserService;
     private final AcademicStateService academicStateService;
     private final AuthService authService;
+    private final AuthorityService authorityService;
     private final UserGroupService userGroupService;
 
     @Value("${salle.aws.bucket-name}")            private String bucket;
@@ -46,27 +49,36 @@ public class ReportQueueService {
 
     private final ObjectMapper om = new ObjectMapper();
 
-    public ReportQueueResult enqueueEventReports(Long eventId, List<ReportType> types, boolean overwrite) throws Exception {
-        Event event = eventService.findById(eventId)
-                .orElseThrow(() -> new IllegalArgumentException("Evento no encontrado ID: " + eventId));
+    public ReportQueueResult enqueueEventReports(UUID eventUuid, List<ReportType> types, boolean overwrite) throws Exception {
+        Event event = eventService.findById(eventUuid)
+                .orElseThrow(() -> new IllegalArgumentException("Evento no encontrado ID: " + eventUuid));
 
-        List<EventUser> participants = eventUserService.findConfirmedByEventIdOrdered(eventId);
         int year = academicStateService.getVisibleYear();
+        Set<String> currentAuth = authorityService.getCurrentAuth();
+        boolean fullAccess = currentAuth.contains("ROLE_ADMIN");
+        Set<UUID> scopedCenterUuids = fullAccess
+                ? Set.of()
+                : authorityService.extractCenterIdsForYear(currentAuth, year);
+        List<EventUser> participants = filterParticipantsByScope(
+                eventUserService.findConfirmedByEventIdOrdered(eventUuid),
+                fullAccess,
+                scopedCenterUuids
+        );
 
         // 1) jobId & rutas
         long jobId = Instant.now().toEpochMilli();
         String inputKeyNoPrefix = year + "/inputs/jobs/" + jobId + "/input.json";
-        String outputPrefixNoPrefix = year + "/reports/event_" + eventId;
+        String outputPrefixNoPrefix = buildOutputPrefix(year, eventUuid, fullAccess, scopedCenterUuids);
 
         // 2) subimos input.json a S3 (con prefijo si toca)
         String inputKeyWithPrefix = withPrefix(inputKeyNoPrefix); // test/... si procede
-        byte[] body = om.writeValueAsBytes(buildInputJson(event, participants));
+        byte[] body = om.writeValueAsBytes(buildInputJson(event, participants, fullAccess, scopedCenterUuids));
         putObject(bucket, inputKeyWithPrefix, "application/json", body);
 
         // 3) construimos y enviamos el mensaje a SQS (sin prefijo en las rutas; Lambda añade test/ si env=local)
         String requesterEmail = authService.getCurrentUserEmail();
         String environment = decideEnvironment(); // "local" si s3Prefix empieza por "test/", si no "prod"
-        Map<String, Object> payload = buildSqsPayload(jobId, eventId, types, inputKeyNoPrefix,
+        Map<String, Object> payload = buildSqsPayload(jobId, eventUuid.toString(), types, inputKeyNoPrefix,
                 outputPrefixNoPrefix, overwrite, requesterEmail, environment);
 
         sendSqsMessage(queueUrl, om.writeValueAsString(payload));
@@ -126,10 +138,16 @@ public class ReportQueueService {
         );
     }
 
-    private Map<String, Object> buildInputJson(Event event, List<EventUser> eus) {
+    private Map<String, Object> buildInputJson(
+            Event event,
+            List<EventUser> eus,
+            boolean fullAccess,
+            Set<UUID> scopedCenterUuids
+    ) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("event", Map.of(
                 "eventId", event.getId(),
+                "eventUuid", event.getUuid(),
                 "name", Optional.ofNullable(event.getName()).orElse(""),
                 "description", Optional.ofNullable(event.getDescription()).orElse(""),
                 "eventDate", Optional.ofNullable(event.getEventDate()).map(Object::toString).orElse(""),
@@ -138,19 +156,19 @@ public class ReportQueueService {
         ));
 
         List<Map<String, Object>> participants = eus.stream().map(eu -> {
-            UserSalle u = eu.getUserGroup().getUser();
-            GroupSalle g = eu.getUserGroup().getGroup();
+            UserSalle u = eu.getUser();
+            GroupSalle g = resolveGroupForReport(u, fullAccess, scopedCenterUuids);
 
             Integer sizeIdx = Optional.ofNullable(u.getTshirtSize()).map(TshirtSizeEnum::fromIndex)
                     .map(Enum::ordinal).orElse(-1);
 
             Map<String, Object> centerMap = new LinkedHashMap<>();
-            if (g.getCenter() != null) {
-                centerMap.put("id", g.getCenter().getId());
+            if (g != null && g.getCenter() != null) {
+                centerMap.put("uuid", g.getCenter().getUuid());
                 centerMap.put("name", Optional.ofNullable(g.getCenter().getName()).orElse(""));
                 centerMap.put("city", Optional.ofNullable(g.getCenter().getCity()).orElse(""));
             } else {
-                centerMap.put("id", -1L);
+                centerMap.put("uuid", null);
                 centerMap.put("name", "");
                 centerMap.put("city", "");
             }
@@ -165,9 +183,13 @@ public class ReportQueueService {
             part.put("chronicDiseases", Optional.ofNullable(u.getChronicDiseases()).orElse(""));
             part.put("imageAuthorization", Boolean.TRUE.equals(u.getImageAuthorization()));
             part.put("tshirtSize", sizeIdx);
-            part.put("userType", Optional.ofNullable(eu.getUserGroup().getUserType()).orElse(0));
+            part.put("userType", g == null ? 0 : Optional.ofNullable(u.getGroups().stream()
+                    .filter(ug -> ug.getDeletedAt() == null && ug.getGroup() != null && ug.getGroup().getUuid().equals(g.getUuid()))
+                    .map(ug -> ug.getUserType())
+                    .findFirst()
+                    .orElse(0)).orElse(0));
             part.put("group", Map.of(
-                    "stage", Optional.ofNullable(g.getStage()).orElse(0),
+                    "stage", g != null ? Optional.ofNullable(g.getStage()).orElse(0) : 0,
                     "center", centerMap
             ));
             return part;
@@ -177,12 +199,52 @@ public class ReportQueueService {
         return m;
     }
 
-    private Map<String, Object> buildSqsPayload(long jobId, Long eventId, List<ReportType> types,
+    private List<EventUser> filterParticipantsByScope(
+            List<EventUser> participants,
+            boolean fullAccess,
+            Set<UUID> scopedCenterUuids
+    ) {
+        if (fullAccess) {
+            return participants;
+        }
+        return participants.stream()
+                .filter(eventUser -> resolveGroupForReport(eventUser.getUser(), false, scopedCenterUuids) != null)
+                .toList();
+    }
+
+    private GroupSalle resolveGroupForReport(UserSalle user, boolean fullAccess, Set<UUID> scopedCenterUuids) {
+        if (user == null || user.getGroups() == null) {
+            return null;
+        }
+        return user.getGroups().stream()
+                .filter(userGroup -> userGroup.getDeletedAt() == null)
+                .map(userGroup -> userGroup.getGroup())
+                .filter(group -> group != null)
+                .filter(group -> fullAccess
+                        || (group.getCenter() != null && scopedCenterUuids.contains(group.getCenter().getUuid())))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String buildOutputPrefix(int year, UUID eventUuid, boolean fullAccess, Set<UUID> scopedCenterUuids) {
+        String basePrefix = year + "/reports/event_" + eventUuid;
+        if (fullAccess) {
+            return basePrefix;
+        }
+        String scopeKey = scopedCenterUuids.stream()
+                .sorted()
+                .map(UUID::toString)
+                .map(uuid -> uuid.replace("-", ""))
+                .collect(Collectors.joining("_"));
+        return basePrefix + "/center_scope_" + scopeKey;
+    }
+
+    private Map<String, Object> buildSqsPayload(long jobId, String eventUuid, List<ReportType> types,
                                                 String s3InputKeyNoPrefix, String outputPrefixNoPrefix,
                                                 boolean overwrite, String notifyEmail, String environment) {
         return new LinkedHashMap<>(Map.of(
                 "jobId", jobId,
-                "eventId", eventId,
+                "eventUuid", eventUuid,
                 "types", types.stream().map(Enum::name).collect(Collectors.toList()),
                 "s3InputKey", s3InputKeyNoPrefix,
                 "outputPrefix", outputPrefixNoPrefix,

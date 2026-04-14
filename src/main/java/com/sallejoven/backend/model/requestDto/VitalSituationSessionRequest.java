@@ -1,8 +1,6 @@
 package com.sallejoven.backend.model.requestDto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -15,11 +13,9 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class VitalSituationSessionRequest {
 
-    private Long id;
+    private String uuid;
 
-    @NotNull
-    @Positive
-    private Long vitalSituationId;
+    private String vitalSituationUuid;
 
     @NotBlank
     @Size(max = 150)

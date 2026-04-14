@@ -179,7 +179,7 @@ public class AuthService {
     public UserSalle registerUser(UserRegistrationDto userRegistrationDto,HttpServletResponse httpServletResponse){
 
         try {
-            log.info("[AuthService:registerUser] Registration started for user: {}", userRegistrationDto.userEmail());
+            log.info("[AuthService:registerUser] Registration started");
 
             Optional<UserSalle> user = userRepository.findByEmail(userRegistrationDto.userEmail());
             if (user.isPresent()) {
@@ -189,7 +189,7 @@ public class AuthService {
             UserSalle userDetailsEntity = userInfoMapper.convertToEntity(userRegistrationDto);
             UserSalle savedUserDetails = userRepository.save(userDetailsEntity);
 
-            log.info("[AuthService:registerUser] User: {} successfully registered", savedUserDetails.getEmail());
+            log.info("[AuthService:registerUser] User successfully registered with id: {}", savedUserDetails.getId());
             return savedUserDetails;
 
         } catch (Exception e) {

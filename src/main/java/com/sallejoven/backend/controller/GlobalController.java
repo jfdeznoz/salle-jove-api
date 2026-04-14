@@ -26,6 +26,7 @@ public class GlobalController {
 
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/state")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<GlobalStateDto> getGlobalState() {
         boolean locked = academicStateService.isLocked();
 

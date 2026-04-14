@@ -1,6 +1,8 @@
 spring:
   application:
     name: salle-joven
+  jpa:
+    open-in-view: false
 
 server:
-  port: ${PORT:8080}
+  port: ${PORT:8081}

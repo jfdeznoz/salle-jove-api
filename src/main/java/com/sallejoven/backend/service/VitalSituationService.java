@@ -11,13 +11,14 @@ import com.sallejoven.backend.model.requestDto.VitalSituationRequest;
 import com.sallejoven.backend.model.requestDto.VitalSituationSessionRequest;
 import com.sallejoven.backend.repository.VitalSituationRepository;
 import com.sallejoven.backend.repository.VitalSituationSessionRepository;
-import org.springframework.transaction.annotation.Transactional;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-
+import com.sallejoven.backend.utils.ReferenceParser;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -30,133 +31,143 @@ public class VitalSituationService {
     private final VitalSituationMapper vitalSituationMapper;
 
     public List<VitalSituationDto> findAll() {
-        return vitalSituationRepository.findAllActive().stream()
-                .map(this::toDto)
-                .collect(Collectors.toList());
+        return vitalSituationRepository.findAllActive().stream().map(this::toDto).collect(Collectors.toList());
     }
 
     public List<VitalSituationDto> findByStage(Integer stage) {
-        return vitalSituationRepository.findByStage(stage).stream()
-                .map(this::toDto)
-                .collect(Collectors.toList());
+        return vitalSituationRepository.findByStage(stage).stream().map(this::toDto).collect(Collectors.toList());
     }
 
-    public Optional<VitalSituationDto> findById(Long id) {
-        return vitalSituationRepository.findById(id)
-                .map(this::toDto);
+    public Optional<VitalSituationDto> findById(UUID uuid) {
+        return vitalSituationRepository.findById(uuid).map(this::toDto);
     }
 
-    public List<VitalSituationSessionDto> findSessionsByVitalSituationId(Long vitalSituationId) {
-        return vitalSituationSessionRepository.findByVitalSituationId(vitalSituationId).stream()
+    public Optional<VitalSituationDto> findByReference(String reference) {
+        return ReferenceParser.asUuid(reference).flatMap(vitalSituationRepository::findByUuid).map(this::toDto);
+    }
+
+    public Optional<VitalSituation> findEntityByReference(String reference) {
+        return ReferenceParser.asUuid(reference).flatMap(vitalSituationRepository::findByUuid);
+    }
+
+    public List<VitalSituationSessionDto> findSessionsByVitalSituationId(UUID vitalSituationUuid) {
+        return vitalSituationSessionRepository.findByVitalSituationUuid(vitalSituationUuid).stream()
                 .map(this::sessionToDto)
                 .collect(Collectors.toList());
     }
 
-    public Optional<VitalSituationSessionDto> findSessionById(Long sessionId) {
-        return vitalSituationSessionRepository.findById(sessionId)
-                .map(this::sessionToDto);
+    public Optional<VitalSituationSessionDto> findSessionById(UUID sessionUuid) {
+        return vitalSituationSessionRepository.findById(sessionUuid).map(this::sessionToDto);
     }
 
-    public VitalSituationSession findSessionEntityById(Long sessionId) {
-        return vitalSituationSessionRepository.findById(sessionId)
+    public Optional<VitalSituationSessionDto> findSessionByReference(String reference) {
+        return ReferenceParser.asUuid(reference).flatMap(vitalSituationSessionRepository::findByUuid).map(this::sessionToDto);
+    }
+
+    public VitalSituationSession findSessionEntityById(UUID sessionUuid) {
+        return vitalSituationSessionRepository.findById(sessionUuid)
+                .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_SESSION_NOT_FOUND));
+    }
+
+    public VitalSituationSession findSessionEntityByReference(String reference) {
+        return ReferenceParser.asUuid(reference)
+                .flatMap(vitalSituationSessionRepository::findByUuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_SESSION_NOT_FOUND));
     }
 
     @Transactional
     public VitalSituation createVitalSituation(VitalSituationRequest request) {
-        VitalSituation vs = VitalSituation.builder()
+        VitalSituation vitalSituation = VitalSituation.builder()
                 .title(request.getTitle())
                 .stages(request.getStages())
                 .isDefault(false)
                 .build();
-        return vitalSituationRepository.save(vs);
+        return vitalSituationRepository.save(vitalSituation);
     }
 
     @Transactional
-    public VitalSituation updateVitalSituation(Long id, VitalSituationRequest request) {
-        VitalSituation vs = vitalSituationRepository.findById(id)
+    public VitalSituation updateVitalSituation(UUID uuid, VitalSituationRequest request) {
+        VitalSituation vitalSituation = vitalSituationRepository.findById(uuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_NOT_FOUND));
-        
         if (request.getTitle() != null) {
-            vs.setTitle(request.getTitle());
+            vitalSituation.setTitle(request.getTitle());
         }
         if (request.getStages() != null) {
-            vs.setStages(request.getStages());
+            vitalSituation.setStages(request.getStages());
         }
-        return vitalSituationRepository.save(vs);
+        return vitalSituationRepository.save(vitalSituation);
     }
 
     @Transactional
-    public void deleteVitalSituation(Long id) {
-        VitalSituation vs = vitalSituationRepository.findById(id)
+    public void deleteVitalSituation(UUID uuid) {
+        vitalSituationRepository.findById(uuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_NOT_FOUND));
-        vitalSituationRepository.softDelete(id);
+        vitalSituationRepository.softDelete(uuid);
     }
 
     @Transactional
     public VitalSituationSession createVitalSituationSession(VitalSituationSessionRequest request) {
-        VitalSituation vs = vitalSituationRepository.findById(request.getVitalSituationId())
-                .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_NOT_FOUND));
-        
-        VitalSituationSession vss = VitalSituationSession.builder()
-                .vitalSituation(vs)
+        VitalSituation vitalSituation = resolveVitalSituation(request.getVitalSituationUuid());
+        VitalSituationSession session = VitalSituationSession.builder()
+                .vitalSituation(vitalSituation)
                 .title(request.getTitle())
                 .isDefault(false)
                 .build();
-        return vitalSituationSessionRepository.save(vss);
+        return vitalSituationSessionRepository.save(session);
     }
 
     @Transactional
-    public VitalSituationSession updateVitalSituationSession(Long id, VitalSituationSessionRequest request) {
-        VitalSituationSession vss = vitalSituationSessionRepository.findById(id)
+    public VitalSituationSession updateVitalSituationSession(UUID uuid, VitalSituationSessionRequest request) {
+        VitalSituationSession session = vitalSituationSessionRepository.findById(uuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_SESSION_NOT_FOUND));
-        
         if (request.getTitle() != null) {
-            vss.setTitle(request.getTitle());
+            session.setTitle(request.getTitle());
         }
-        if (request.getVitalSituationId() != null) {
-            VitalSituation vs = vitalSituationRepository.findById(request.getVitalSituationId())
-                    .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_NOT_FOUND));
-            vss.setVitalSituation(vs);
+        if (request.getVitalSituationUuid() != null && !request.getVitalSituationUuid().isBlank()) {
+            session.setVitalSituation(resolveVitalSituation(request.getVitalSituationUuid()));
         }
-        return vitalSituationSessionRepository.save(vss);
+        return vitalSituationSessionRepository.save(session);
     }
 
     @Transactional
-    public VitalSituationSession finalizeSessionUpload(Long id, String pdfKey) {
-        VitalSituationSession vss = vitalSituationSessionRepository.findById(id)
+    public VitalSituationSession finalizeSessionUpload(UUID uuid, String pdfKey) {
+        VitalSituationSession session = vitalSituationSessionRepository.findById(uuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_SESSION_NOT_FOUND));
-        
         if (pdfKey != null && !pdfKey.isBlank()) {
-            String oldUrl = vss.getPdf();
+            String oldUrl = session.getPdf();
             if (oldUrl != null && !oldUrl.isBlank()) {
                 String oldKey = s3v2Service.keyFromUrl(oldUrl);
                 if (oldKey != null && !oldKey.isBlank() && !oldKey.equals(pdfKey)) {
                     s3v2Service.deleteObject(oldKey);
                 }
             }
-            vss.setPdf(s3v2Service.publicUrl(pdfKey));
+            session.setPdf(s3v2Service.publicUrl(pdfKey));
         }
-        return vitalSituationSessionRepository.save(vss);
+        return vitalSituationSessionRepository.save(session);
     }
 
     @Transactional
-    public void deleteVitalSituationSession(Long id) {
-        VitalSituationSession vss = vitalSituationSessionRepository.findById(id)
+    public void deleteVitalSituationSession(UUID uuid) {
+        VitalSituationSession session = vitalSituationSessionRepository.findById(uuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_SESSION_NOT_FOUND));
-        
-        if (vss.getPdf() != null && !vss.getPdf().isBlank()) {
-            s3v2Service.deleteObject(s3v2Service.keyFromUrl(vss.getPdf()));
+        if (session.getPdf() != null && !session.getPdf().isBlank()) {
+            s3v2Service.deleteObject(s3v2Service.keyFromUrl(session.getPdf()));
         }
-        vitalSituationSessionRepository.softDelete(id);
+        vitalSituationSessionRepository.softDelete(uuid);
     }
 
-    private VitalSituationDto toDto(VitalSituation vs) {
-        return vitalSituationMapper.toDto(vs);
+    private VitalSituationDto toDto(VitalSituation vitalSituation) {
+        return vitalSituationMapper.toDto(vitalSituation);
     }
 
-    private VitalSituationSessionDto sessionToDto(VitalSituationSession vss) {
-        return vitalSituationMapper.toSessionDto(vss);
+    private VitalSituationSessionDto sessionToDto(VitalSituationSession session) {
+        return vitalSituationMapper.toSessionDto(session);
+    }
+
+    private VitalSituation resolveVitalSituation(String uuidReference) {
+        UUID uuid = ReferenceParser.asUuid(uuidReference)
+                .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_NOT_FOUND));
+        return vitalSituationRepository.findByUuid(uuid)
+                .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_NOT_FOUND));
     }
 }
-

@@ -14,6 +14,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequiredArgsConstructor
@@ -30,6 +31,7 @@ public class RegistrationController {
 
     @PreAuthorize("@authz.isAnyManagerType()")
     @GetMapping("/api/registration/pending")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<List<UserPendingDto>> listPending() {
         List<UserPending> pendings = registrationService.listPending();
         List<UserPendingDto> dtos = pendings.stream()
@@ -40,14 +42,14 @@ public class RegistrationController {
 
     @PreAuthorize("@authz.canModeratePending(#id)")
     @PutMapping("/api/registration/pending/{id}/approve")
-    public ResponseEntity<UserSelfDto> approve(@PathVariable Long id) {
+    public ResponseEntity<UserSelfDto> approve(@PathVariable UUID id) {
         UserSalle created = registrationService.approvePending(id);
         return ResponseEntity.ok(userAssembler.toSelfDto(created));
     }
 
     @PreAuthorize("@authz.canModeratePending(#id)")
     @DeleteMapping("/api/registration/pending/{id}")
-    public ResponseEntity<Void> reject(@PathVariable Long id) {
+    public ResponseEntity<Void> reject(@PathVariable UUID id) {
         registrationService.rejectPending(id);
         return ResponseEntity.noContent().build();
     }

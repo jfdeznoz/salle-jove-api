@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import java.time.LocalDate;
 
 public record EventDto(
-    Long id,
+    java.util.UUID uuid,
     String name,
     String description,
     @JsonFormat(pattern = "yyyy-MM-dd") LocalDate eventDate,
@@ -15,7 +15,7 @@ public record EventDto(
     Integer[] stages,
     Boolean isGeneral,
     Boolean isBlocked,
-    Long centerId,
+    java.util.UUID centerUuid,
     String centerName,
     String pdf
 ) {}

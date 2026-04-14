@@ -1,11 +1,14 @@
 package com.sallejoven.backend.config.security;
 
-import com.sallejoven.backend.model.entity.Center;
+import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserPending;
 import com.sallejoven.backend.model.entity.UserSalle;
+import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.model.requestDto.EventRequest;
+import com.sallejoven.backend.model.requestDto.GroupRequest;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
+import com.sallejoven.backend.repository.CenterRepository;
 import com.sallejoven.backend.repository.EventGroupRepository;
 import com.sallejoven.backend.repository.GroupRepository;
 import com.sallejoven.backend.repository.UserCenterRepository;
@@ -17,15 +20,17 @@ import com.sallejoven.backend.service.AuthorityService;
 import com.sallejoven.backend.service.EventService;
 import com.sallejoven.backend.service.VitalSituationService;
 import com.sallejoven.backend.service.WeeklySessionService;
+import com.sallejoven.backend.utils.ReferenceParser;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-
-import java.util.HashSet;
-import java.util.Objects;
-import java.util.Set;
-import java.util.stream.Collectors;
+import org.springframework.stereotype.Component;
 
 @RequiredArgsConstructor
 @Component("authz")
@@ -34,6 +39,7 @@ public class AuthzBean {
     private final UserCenterRepository userCenterRepo;
     private final UserRepository userRepo;
     private final UserGroupRepository userGroupRepo;
+    private final CenterRepository centerRepo;
     private final GroupRepository groupRepository;
     private final AcademicStateService academicStateService;
     private final EventService eventService;
@@ -44,597 +50,583 @@ public class AuthzBean {
     private final VitalSituationService vitalSituationService;
 
     private Set<String> auths() {
-        var a = SecurityContextHolder.getContext().getAuthentication();
-        if (a == null) return Set.of();
-        return a.getAuthorities().stream().map(GrantedAuthority::getAuthority).collect(Collectors.toSet());
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null) {
+            return Set.of();
+        }
+        return authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toSet());
     }
 
-    private boolean isAdmin(Set<String> auths) { return auths.contains("ROLE_ADMIN"); }
+    private boolean isAdmin(Set<String> authorities) {
+        return authorities.contains("ROLE_ADMIN");
+    }
 
-    private boolean isSelf(Long userId) {
-        var a = SecurityContextHolder.getContext().getAuthentication();
-        if (a == null) return false;
-        String me = a.getName();
-        return userRepo.findById(userId).map(UserSalle::getEmail).map(me::equalsIgnoreCase).orElse(false);
+    private UUID currentUserUuidOrNull() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null) {
+            return null;
+        }
+        return userRepo.findByEmail(authentication.getName()).map(UserSalle::getUuid).orElse(null);
+    }
+
+    private boolean isSelf(UUID userUuid) {
+        UUID me = currentUserUuidOrNull();
+        return me != null && me.equals(userUuid);
     }
 
     public boolean isAnyManagerType() {
-        var as = auths();
-        if (isAdmin(as)) return true;
-
-        Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
-
-        String suffix = ":" + year;
-        for (String a : as) {
-            if (a.startsWith("CENTER:") && a.endsWith(suffix) &&
-                    (a.contains(":PASTORAL_DELEGATE:") || a.contains(":GROUP_LEADER:"))) {
-                return true;
-            }
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
         }
-        return false;
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) {
+            return false;
+        }
+        return !authorityService.extractCenterIdsForYear(authorities, year).isEmpty();
     }
 
-    public boolean canViewUserGroups(Long userId) {
-        Set<String> as = auths();
-        if (isAdmin(as) || isSelf(userId)) return true;
+    public boolean canViewUserStats(String userReference) {
+        UUID userUuid = ReferenceParser.asUuid(userReference)
+                .flatMap(userRepo::findByUuid)
+                .map(UserSalle::getUuid)
+                .orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
+        return canViewUserGroups(userUuid);
+    }
+
+    public boolean canViewUserGroups(UUID userUuid) {
+        Set<String> authorities = auths();
+        if (isAdmin(authorities) || isSelf(userUuid)) {
+            return true;
+        }
 
         int year = academicStateService.getVisibleYear();
+        Set<UUID> targetCenterUuids = new HashSet<>();
+        Set<UUID> targetGroupUuids = new HashSet<>();
 
-        var ugs = userGroupRepo.findByUser_IdAndYearAndDeletedAtIsNull(userId, year);
+        userGroupRepo.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year).forEach(userGroup -> {
+            if (userGroup.getGroup() != null) {
+                targetGroupUuids.add(userGroup.getGroup().getUuid());
+                if (userGroup.getGroup().getCenter() != null) {
+                    targetCenterUuids.add(userGroup.getGroup().getCenter().getUuid());
+                }
+            }
+        });
 
-        var targetCenterIds = ugs.stream()
-                .filter(ug -> ug.getGroup() != null && ug.getGroup().getCenter() != null)
-                .map(ug -> ug.getGroup().getCenter().getId())
-                .collect(Collectors.toSet());
+        userCenterRepo.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year).forEach(userCenter -> {
+            if (userCenter.getCenter() != null) {
+                targetCenterUuids.add(userCenter.getCenter().getUuid());
+            }
+        });
 
-        userCenterRepo.findByUser_IdAndYearAndDeletedAtIsNull(userId, year)
-                .forEach(uc -> {
-                    if (uc.getCenter() != null) targetCenterIds.add(uc.getCenter().getId());
-                });
-
-        for (Long cid : targetCenterIds) {
-            if (as.contains("CENTER:" + cid + ":PASTORAL_DELEGATE:" + year)
-                    || as.contains("CENTER:" + cid + ":GROUP_LEADER:" + year)) {
+        for (UUID centerUuid : targetCenterUuids) {
+            if (authorities.contains("CENTER:" + centerUuid + ":PASTORAL_DELEGATE:" + year)
+                    || authorities.contains("CENTER:" + centerUuid + ":GROUP_LEADER:" + year)) {
                 return true;
             }
         }
-
-        var targetGroupIds = ugs.stream()
-                .filter(ug -> ug.getGroup() != null)
-                .map(ug -> ug.getGroup().getId())
-                .collect(Collectors.toSet());
-
-        for (Long gid : targetGroupIds) {
-            if (as.contains("GROUP:" + gid + ":ANIMATOR:" + year)) {
+        for (UUID groupUuid : targetGroupUuids) {
+            if (authorities.contains("GROUP:" + groupUuid + ":ANIMATOR:" + year)) {
                 return true;
             }
         }
-
         return false;
     }
 
-    public boolean canViewUserCenters(Long userId) {
-        var as = auths();                        // authorities del llamante
-        if (isAdmin(as) || isSelf(userId)) return true;
-
-        Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
-
-        // 1) Centros del llamante (año visible) desde sus authorities "CENTER:{cid}:{ROL}:{year}"
-        var viewerCenters = authorityService.extractCenterIdsForYear(as, year);
-        if (viewerCenters.isEmpty()) return false; // no tiene ningún centro con rol de centro
-
-        // 2) Centros del usuario objetivo (año visible): unión de sus UserCenter + UserGroup.center
-        var targetCenters = new java.util.HashSet<Long>();
-
-        userCenterRepo.findByUser_IdAndYearAndDeletedAtIsNull(userId, year)
-                .forEach(uc -> {
-                    if (uc.getCenter() != null) targetCenters.add(uc.getCenter().getId());
-                });
-
-        userGroupRepo.findByUser_IdAndYearAndDeletedAtIsNull(userId, year)
-                .forEach(ug -> {
-                    if (ug.getGroup() != null && ug.getGroup().getCenter() != null)
-                        targetCenters.add(ug.getGroup().getCenter().getId());
-                });
-
-        // 3) Intersección → permiso
-        for (Long cid : targetCenters) {
-            if (viewerCenters.contains(cid)) return true;
+    public boolean canViewUserCenters(UUID userUuid) {
+        var authorities = auths();
+        if (isAdmin(authorities) || isSelf(userUuid)) {
+            return true;
         }
-        // Si el usuario objetivo no tiene nada, no hay intersección → 403 (el front verá lista vacía si pregunta por sí mismo o admin)
-        return false;
-    }
-
-
-    public boolean canManageCenterAsDelegate(Long centerId) {
-        var as = auths();
-        if (isAdmin(as)) return true;
 
         Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
+        if (year == null) {
+            return false;
+        }
 
-        return as.contains("CENTER:" + centerId + ":PASTORAL_DELEGATE:" + year);
+        var viewerCenters = authorityService.extractCenterIdsForYear(authorities, year);
+        if (viewerCenters.isEmpty()) {
+            return false;
+        }
+
+        Set<UUID> targetCenters = new HashSet<>();
+        userCenterRepo.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year).forEach(userCenter -> {
+            if (userCenter.getCenter() != null) {
+                targetCenters.add(userCenter.getCenter().getUuid());
+            }
+        });
+        userGroupRepo.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year).forEach(userGroup -> {
+            if (userGroup.getGroup() != null && userGroup.getGroup().getCenter() != null) {
+                targetCenters.add(userGroup.getGroup().getCenter().getUuid());
+            }
+        });
+        return targetCenters.stream().anyMatch(viewerCenters::contains);
     }
 
-    public boolean canManageUserCenterAsDelegate(Long userCenterId) {
-        var as = auths();
-        if (isAdmin(as)) return true;
-
+    public boolean canManageCenterAsDelegate(UUID centerUuid) {
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
         Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
+        return year != null && authorities.contains("CENTER:" + centerUuid + ":PASTORAL_DELEGATE:" + year);
+    }
 
-        return userCenterRepo.findById(userCenterId)
-                .map(uc -> uc.getCenter() != null ? uc.getCenter().getId() : null)
-                .map(cid -> as.contains("CENTER:" + cid + ":PASTORAL_DELEGATE:" + year))
+    public boolean canManageUserCenterAsDelegate(UUID userCenterUuid) {
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) {
+            return false;
+        }
+        return userCenterRepo.findById(userCenterUuid)
+                .map(userCenter -> userCenter.getCenter() != null ? userCenter.getCenter().getUuid() : null)
+                .map(centerUuid -> authorities.contains("CENTER:" + centerUuid + ":PASTORAL_DELEGATE:" + year))
                 .orElse(false);
     }
 
-    public boolean hasCenterRole(Long centerId, String... roles) {
-        var auths = auths();
-        if (isAdmin(auths)) return true;
+    public boolean hasCenterRole(UUID centerUuid, String... roles) {
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
         Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
-        var a = SecurityContextHolder.getContext().getAuthentication();
-        if (a == null) return false;
-        Set<String> set = a.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .collect(Collectors.toSet());
-        for (String r : roles) {
-            if (set.contains("CENTER:" + centerId + ":" + r + ":" + year)) return true;
+        if (year == null) {
+            return false;
+        }
+        for (String role : roles) {
+            if (authorities.contains("CENTER:" + centerUuid + ":" + role + ":" + year)) {
+                return true;
+            }
         }
         return false;
     }
 
-    /** Usa año académico visible (igual que en el JWT) para que catequistas tengan acceso a GET /api/users/group/{groupId}. */
-    public boolean hasGroupRole(Long groupId, String... roles) {
-        var auths = auths();
-        if (isAdmin(auths)) return true;
+    public boolean hasGroupRole(UUID groupUuid, String... roles) {
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
         Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
-        var a = SecurityContextHolder.getContext().getAuthentication();
-        if (a == null) return false;
-        Set<String> set = a.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .collect(Collectors.toSet());
-        for (String r : roles) {
-            if (set.contains("GROUP:" + groupId + ":" + r + ":" + year)) return true;
+        if (year == null) {
+            return false;
+        }
+        for (String role : roles) {
+            if (authorities.contains("GROUP:" + groupUuid + ":" + role + ":" + year)) {
+                return true;
+            }
         }
         return false;
     }
 
-    public boolean hasCenterOfGroup(Long groupId, String... roles) {
-        var as = auths();
-        if (as.contains("ROLE_ADMIN")) return true;
-
+    public boolean hasCenterOfGroup(UUID groupUuid, String... roles) {
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
         Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
-
-        var gOpt = groupRepository.findById(groupId);
-        if (gOpt.isEmpty() || gOpt.get().getCenter() == null) return false;
-
-        Long centerId = gOpt.get().getCenter().getId();
-        for (String r : roles) {
-            if (as.contains("CENTER:" + centerId + ":" + r + ":" + year)) return true;
+        if (year == null) {
+            return false;
+        }
+        GroupSalle group = groupRepository.findById(groupUuid).orElse(null);
+        if (group == null || group.getCenter() == null) {
+            return false;
+        }
+        for (String role : roles) {
+            if (authorities.contains("CENTER:" + group.getCenter().getUuid() + ":" + role + ":" + year)) {
+                return true;
+            }
         }
         return false;
     }
 
     public boolean canCreateEvent(EventRequest req) {
-        var as = auths();
-        if (isAdmin(as)) return true;
-
-        if (req == null) return false;
-
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
+        if (req == null || Boolean.TRUE.equals(req.getIsGeneral())) {
+            return false;
+        }
+        UUID centerUuid = requestCenterId(req);
+        if (centerUuid == null) {
+            return false;
+        }
         Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
+        return year != null && (authorities.contains("CENTER:" + centerUuid + ":PASTORAL_DELEGATE:" + year)
+                || authorities.contains("CENTER:" + centerUuid + ":GROUP_LEADER:" + year));
+    }
 
-        // Eventos generales: solo admin (cámbialo a isAnyManagerType() si quieres permitir PD/GL globalmente)
-        if (Boolean.TRUE.equals(req.getIsGeneral())) {
+    public boolean canManageEventForEditOrDelete(UUID eventUuid) {
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) {
+            return false;
+        }
+        var eventOpt = eventService.findById(eventUuid);
+        if (eventOpt.isEmpty() || Boolean.TRUE.equals(eventOpt.get().getIsGeneral())) {
+            return false;
+        }
+        var centerUuids = eventGroupRepo.findByEventUuid(eventUuid).stream()
+                .filter(eventGroup -> eventGroup.getGroupSalle() != null && eventGroup.getGroupSalle().getCenter() != null)
+                .map(eventGroup -> eventGroup.getGroupSalle().getCenter().getUuid())
+                .collect(Collectors.toSet());
+        return centerUuids.stream().anyMatch(centerUuid ->
+                authorities.contains("CENTER:" + centerUuid + ":PASTORAL_DELEGATE:" + year)
+                        || authorities.contains("CENTER:" + centerUuid + ":GROUP_LEADER:" + year));
+    }
+
+    public boolean canDownloadEventReports(UUID eventUuid) {
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) {
+            return false;
+        }
+        Set<UUID> managedCenterUuids = authorityService.extractCenterIdsForYear(authorities, year);
+        if (managedCenterUuids.isEmpty()) {
+            return false;
+        }
+        return eventGroupRepo.findByEventUuid(eventUuid).stream()
+                .filter(eventGroup -> eventGroup.getGroupSalle() != null && eventGroup.getGroupSalle().getCenter() != null)
+                .map(eventGroup -> eventGroup.getGroupSalle().getCenter().getUuid())
+                .anyMatch(managedCenterUuids::contains);
+    }
+
+    public boolean canManageEvent(UUID eventUuid) {
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) {
             return false;
         }
 
-        // Evento local: debe venir centerId y el usuario debe ser PD o GL de ese centro en el año visible
-        Long centerId = req.getCenterId();
-        if (centerId == null) return false;
-
-        return as.contains("CENTER:" + centerId + ":PASTORAL_DELEGATE:" + year)
-                || as.contains("CENTER:" + centerId + ":GROUP_LEADER:" + year);
-    }
-
-    public boolean canManageEventForEditOrDelete(Long eventId) {
-        var as = auths();
-        if (isAdmin(as)) return true;
-
-        Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
-
-        var evOpt = eventService.findById(eventId);
-        if (evOpt.isEmpty()) return false;
-
-        var ev = evOpt.get();
-        if (Boolean.TRUE.equals(ev.getIsGeneral())) return false;
-
-        var centerIds = eventGroupRepo.findByEventId(eventId).stream()
-                .filter(eg -> eg.getGroupSalle() != null && eg.getGroupSalle().getCenter() != null)
-                .map(eg -> eg.getGroupSalle().getCenter().getId())
+        var eventGroups = eventGroupRepo.findByEventUuid(eventUuid);
+        var centerUuids = eventGroups.stream()
+                .filter(eventGroup -> eventGroup.getGroupSalle() != null && eventGroup.getGroupSalle().getCenter() != null)
+                .map(eventGroup -> eventGroup.getGroupSalle().getCenter().getUuid())
                 .collect(Collectors.toSet());
-
-        if (centerIds.isEmpty()) return false; // evento no general sin centros asociados -> denegar
-
-        for (Long cid : centerIds) {
-            if (as.contains("CENTER:" + cid + ":PASTORAL_DELEGATE:" + year)
-                    || as.contains("CENTER:" + cid + ":GROUP_LEADER:" + year)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public boolean canManageEvent(Long eventId) {
-        var as = auths();
-        if (isAdmin(as)) return true;
-
-        Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
-
-        var egs = eventGroupRepo.findByEventId(eventId);
-        var centerIds = egs.stream()
-                .filter(eg -> eg.getGroupSalle()!=null && eg.getGroupSalle().getCenter()!=null)
-                .map(eg -> eg.getGroupSalle().getCenter().getId())
-                .collect(java.util.stream.Collectors.toSet());
-
-        // Pase por centro (PD/GL)
-        for (Long cid : centerIds) {
-            if (as.contains("CENTER:" + cid + ":PASTORAL_DELEGATE:" + year)
-                    || as.contains("CENTER:" + cid + ":GROUP_LEADER:" + year)) {
+        for (UUID centerUuid : centerUuids) {
+            if (authorities.contains("CENTER:" + centerUuid + ":PASTORAL_DELEGATE:" + year)
+                    || authorities.contains("CENTER:" + centerUuid + ":GROUP_LEADER:" + year)) {
                 return true;
             }
         }
 
-        // Pase por catequista (BD)
-        Long meId = currentUserIdOrNull();
-        if (meId != null) {
-            for (var eg : egs) {
-                var g = eg.getGroupSalle();
-                if (g != null && userGroupRepo
-                        .existsByUser_IdAndGroup_IdAndYearAndDeletedAtIsNullAndUserType(meId, g.getId(), year, 1)) {
-                    return true;
-                }
-            }
+        UUID me = currentUserUuidOrNull();
+        if (me == null) {
+            return false;
         }
-        return false;
+        return eventGroups.stream()
+                .map(eventGroup -> eventGroup.getGroupSalle())
+                .filter(group -> group != null)
+                .anyMatch(group -> userGroupRepo.existsByUser_UuidAndGroup_UuidAndYearAndDeletedAtIsNullAndUserType(
+                        me,
+                        group.getUuid(),
+                        year,
+                        1
+                ));
     }
 
-    private Long currentUserIdOrNull() {
-        var a = SecurityContextHolder.getContext().getAuthentication();
-        if (a == null) return null;
-        String email = a.getName();
-        return userRepo.findByEmail(email).map(UserSalle::getId).orElse(null);
-    }
-
-    public boolean canManageEventGroupParticipants(Long eventId, Long groupId) {
-        var as = auths();
-        if (isAdmin(as)) return true;
-
+    public boolean canManageEventGroupParticipants(UUID eventUuid, UUID groupUuid) {
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
         Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
+        if (year == null) {
+            return false;
+        }
 
-        boolean groupIsInEvent = eventGroupRepo.findByEventId(eventId).stream()
-                .anyMatch(eg -> eg.getGroupSalle() != null && groupId.equals(eg.getGroupSalle().getId()));
-        if (!groupIsInEvent) return false;
+        boolean groupIsInEvent = eventGroupRepo.findByEventUuid(eventUuid).stream()
+                .anyMatch(eventGroup -> eventGroup.getGroupSalle() != null && groupUuid.equals(eventGroup.getGroupSalle().getUuid()));
+        if (!groupIsInEvent) {
+            return false;
+        }
 
-        Long meId = currentUserIdOrNull();
-        if (meId != null && userGroupRepo
-                .existsByUser_IdAndGroup_IdAndYearAndDeletedAtIsNullAndUserType(meId, groupId, year, 1)) {
+        UUID me = currentUserUuidOrNull();
+        if (me != null && userGroupRepo.existsByUser_UuidAndGroup_UuidAndYearAndDeletedAtIsNullAndUserType(me, groupUuid, year, 1)) {
             return true;
         }
 
-        Long centerId = eventGroupRepo.findByEventId(eventId).stream()
-                .filter(eg -> eg.getGroupSalle() != null && groupId.equals(eg.getGroupSalle().getId()))
-                .map(eg -> eg.getGroupSalle().getCenter())
-                .filter(Objects::nonNull)
-                .map(Center::getId)
-                .findFirst()
-                .orElse(null);
-
-        if (centerId == null) return false;
-
-        return as.contains("CENTER:" + centerId + ":PASTORAL_DELEGATE:" + year)
-                || as.contains("CENTER:" + centerId + ":GROUP_LEADER:" + year);
+        GroupSalle group = groupRepository.findById(groupUuid).orElse(null);
+        return group != null && group.getCenter() != null && (
+                authorities.contains("CENTER:" + group.getCenter().getUuid() + ":PASTORAL_DELEGATE:" + year)
+                        || authorities.contains("CENTER:" + group.getCenter().getUuid() + ":GROUP_LEADER:" + year)
+        );
     }
 
     public boolean canCreateWeeklySession(com.sallejoven.backend.model.requestDto.WeeklySessionRequest req) {
-        var as = auths();
-        if (isAdmin(as)) return true;
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
+        UUID groupUuid = requestGroupId(req);
+        if (groupUuid == null) {
+            return false;
+        }
+        return hasGroupRole(groupUuid, "ANIMATOR") || hasCenterOfGroup(groupUuid, "PASTORAL_DELEGATE", "GROUP_LEADER");
+    }
 
-        if (req == null) return false;
-
+    public boolean canManageWeeklySessionForEditOrDelete(UUID sessionUuid) {
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
         Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
+        if (year == null) {
+            return false;
+        }
+        var sessionOpt = weeklySessionService.findByIdForEditOrDelete(sessionUuid);
+        if (sessionOpt.isEmpty()) {
+            return false;
+        }
+        var session = sessionOpt.get();
+        var group = session.getGroup();
+        if (group == null) {
+            return false;
+        }
+        if (Integer.valueOf(0).equals(session.getStatus())
+                && authorities.contains("GROUP:" + group.getUuid() + ":ANIMATOR:" + year)) {
+            return true;
+        }
+        return group.getCenter() != null && (
+                authorities.contains("CENTER:" + group.getCenter().getUuid() + ":PASTORAL_DELEGATE:" + year)
+                        || authorities.contains("CENTER:" + group.getCenter().getUuid() + ":GROUP_LEADER:" + year)
+        );
+    }
 
-        Long groupId = req.getGroupId();
-        if (groupId == null) return false;
+    public boolean canViewWeeklySessionGroupParticipants(UUID sessionUuid, UUID groupUuid) {
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) {
+            return false;
+        }
+        var sessionOpt = weeklySessionService.findById(sessionUuid);
+        if (sessionOpt.isEmpty()) {
+            return false;
+        }
+        var session = sessionOpt.get();
+        if (session.getGroup() == null || !groupUuid.equals(session.getGroup().getUuid())) {
+            return false;
+        }
+        if (authorityService.isOnlyAnimator() && !Integer.valueOf(1).equals(session.getStatus())) {
+            return false;
+        }
+        UUID me = currentUserUuidOrNull();
+        if (me != null && userGroupRepo.existsByUser_UuidAndGroup_UuidAndYearAndDeletedAtIsNullAndUserType(me, groupUuid, year, 1)) {
+            return true;
+        }
+        return session.getGroup().getCenter() != null && (
+                authorities.contains("CENTER:" + session.getGroup().getCenter().getUuid() + ":PASTORAL_DELEGATE:" + year)
+                        || authorities.contains("CENTER:" + session.getGroup().getCenter().getUuid() + ":GROUP_LEADER:" + year)
+        );
+    }
 
-        // Verificar si es ANIMATOR del grupo
-        if (hasGroupRole(groupId, "ANIMATOR")) {
+    public boolean canManageWeeklySessionGroupParticipants(UUID sessionUuid, UUID groupUuid) {
+        if (!canViewWeeklySessionGroupParticipants(sessionUuid, groupUuid)) {
+            return false;
+        }
+
+        var authorities = auths();
+        if (isAdmin(authorities)) {
             return true;
         }
 
-        // Verificar si es PASTORAL_DELEGATE o GROUP_LEADER del centro
-        return hasCenterOfGroup(groupId, "PASTORAL_DELEGATE", "GROUP_LEADER");
+        return weeklySessionService.findById(sessionUuid)
+                .map(session -> session.getSessionDateTime() != null
+                        && session.getSessionDateTime().toLocalDate().isEqual(todayMadrid()))
+                .orElse(false);
     }
 
-    public boolean canManageWeeklySessionForEditOrDelete(Long sessionId) {
-        var as = auths();
-        if (isAdmin(as)) return true;
-
-        Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
-
-        var sessionOpt = weeklySessionService.findById(sessionId);
-        if (sessionOpt.isEmpty()) return false;
-
-        var session = sessionOpt.get();
-        var group = session.getGroup();
-        if (group == null || group.getCenter() == null) return false;
-
-        Long centerId = group.getCenter().getId();
-
-        return as.contains("CENTER:" + centerId + ":PASTORAL_DELEGATE:" + year)
-                || as.contains("CENTER:" + centerId + ":GROUP_LEADER:" + year);
-    }
-
-    public boolean canManageWeeklySessionGroupParticipants(Long sessionId, Long groupId) {
-        var as = auths();
-        if (isAdmin(as)) return true;
-
-        Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
-
-        var sessionOpt = weeklySessionService.findById(sessionId);
-        if (sessionOpt.isEmpty()) return false;
-
-        var session = sessionOpt.get();
-        if (!session.getGroup().getId().equals(groupId)) return false;
-
-        // Los catequistas solo pueden pasar lista de sesiones publicadas
-        boolean isOnlyAnimator = authorityService.isOnlyAnimator();
-        if (isOnlyAnimator && session.getStatus() != 1) {
-            return false; // Solo pueden pasar lista de sesiones publicadas
-        }
-
-        Long meId = currentUserIdOrNull();
-        if (meId != null && userGroupRepo
-                .existsByUser_IdAndGroup_IdAndYearAndDeletedAtIsNullAndUserType(meId, groupId, year, 1)) {
-            return true;
-        }
-
-        var group = session.getGroup();
-        if (group == null || group.getCenter() == null) return false;
-
-        Long centerId = group.getCenter().getId();
-
-        return as.contains("CENTER:" + centerId + ":PASTORAL_DELEGATE:" + year)
-                || as.contains("CENTER:" + centerId + ":GROUP_LEADER:" + year);
+    private LocalDate todayMadrid() {
+        return java.time.ZonedDateTime.now(ZoneId.of("Europe/Madrid")).toLocalDate();
     }
 
     public boolean canCreateOrEditVitalSituation(com.sallejoven.backend.model.requestDto.VitalSituationRequest req) {
-        var as = auths();
-        if (isAdmin(as)) return true;
-
-        if (req == null) return false;
-
-        Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
-
-        // PASTORAL_DELEGATE y GROUP_LEADER pueden crear/editar
-        return isAnyManagerType();
+        return isAnyManagerType() || isAdmin(auths());
     }
 
-    public boolean canEditVitalSituation(Long id) {
-        var as = auths();
-        if (isAdmin(as)) return true;
-
-        var vsOpt = vitalSituationService.findById(id);
-        if (vsOpt.isEmpty()) return false;
-
-        var vs = vsOpt.get();
-        // Solo admin puede editar las predefinidas (isDefault = true)
-        if (Boolean.TRUE.equals(vs.isDefault())) {
-            return false;
+    public boolean canEditVitalSituation(UUID uuid) {
+        if (isAdmin(auths())) {
+            return true;
         }
-
-        // PASTORAL_DELEGATE y GROUP_LEADER pueden editar las que crearon
-        return isAnyManagerType();
+        return vitalSituationService.findById(uuid)
+                .filter(vitalSituation -> !Boolean.TRUE.equals(vitalSituation.isDefault()))
+                .isPresent()
+                && isAnyManagerType();
     }
 
-    public boolean canDeleteVitalSituation(Long id) {
-        var as = auths();
-        if (isAdmin(as)) return true;
-
-        var vsOpt = vitalSituationService.findById(id);
-        if (vsOpt.isEmpty()) return false;
-
-        var vs = vsOpt.get();
-        // Solo admin puede eliminar las predefinidas (isDefault = true)
-        if (Boolean.TRUE.equals(vs.isDefault())) {
-            return false;
-        }
-
-        // PASTORAL_DELEGATE y GROUP_LEADER pueden eliminar las que crearon
-        return isAnyManagerType();
+    public boolean canDeleteVitalSituation(UUID uuid) {
+        return canEditVitalSituation(uuid);
     }
 
     public boolean canCreateOrEditVitalSituationSession(com.sallejoven.backend.model.requestDto.VitalSituationSessionRequest req) {
-        var as = auths();
-        if (isAdmin(as)) return true;
-
-        if (req == null) return false;
-
-        Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
-
-        // PASTORAL_DELEGATE y GROUP_LEADER pueden crear/editar
-        return isAnyManagerType();
+        return isAnyManagerType() || isAdmin(auths());
     }
 
-    public boolean canEditVitalSituationSession(Long id) {
-        var as = auths();
-        if (isAdmin(as)) return true;
-
-        var vssOpt = vitalSituationService.findSessionById(id);
-        if (vssOpt.isEmpty()) return false;
-
-        var vss = vssOpt.get();
-        // Solo admin puede editar las predefinidas (isDefault = true)
-        if (Boolean.TRUE.equals(vss.isDefault())) {
-            return false;
+    public boolean canEditVitalSituationSession(UUID uuid) {
+        if (isAdmin(auths())) {
+            return true;
         }
-
-        // PASTORAL_DELEGATE y GROUP_LEADER pueden editar las que crearon
-        return isAnyManagerType();
+        return vitalSituationService.findSessionById(uuid)
+                .filter(session -> !Boolean.TRUE.equals(session.isDefault()))
+                .isPresent()
+                && isAnyManagerType();
     }
 
-    public boolean canDeleteVitalSituationSession(Long id) {
-        var as = auths();
-        if (isAdmin(as)) return true;
-
-        var vssOpt = vitalSituationService.findSessionById(id);
-        if (vssOpt.isEmpty()) return false;
-
-        var vss = vssOpt.get();
-        // Solo admin puede eliminar las predefinidas (isDefault = true)
-        if (Boolean.TRUE.equals(vss.isDefault())) {
-            return false;
-        }
-
-        // PASTORAL_DELEGATE y GROUP_LEADER pueden eliminar las que crearon
-        return isAnyManagerType();
+    public boolean canDeleteVitalSituationSession(UUID uuid) {
+        return canEditVitalSituationSession(uuid);
     }
 
     private static String normalizeRole(String raw) {
-        if (raw == null || raw.isBlank()) return "ROLE_PARTICIPANT";
-        String r = raw.trim().toUpperCase();
-        return r.startsWith("ROLE_") ? r : "ROLE_" + r;
+        if (raw == null || raw.isBlank()) {
+            return "ROLE_PARTICIPANT";
+        }
+        String role = raw.trim().toUpperCase();
+        return role.startsWith("ROLE_") ? role : "ROLE_" + role;
     }
 
-    public boolean canModeratePending(Long pendingId) {
-        var as = auths();
-        if (isAdmin(as)) return true;
+    public boolean canModeratePending(UUID pendingUuid) {
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
+        UserPending pending = userPendingRepo.findById(pendingUuid).orElse(null);
+        if (pending == null) {
+            return false;
+        }
 
-        UserPending p = userPendingRepo.findById(pendingId).orElse(null);
-        if (p == null) return false;
-
-        String role = normalizeRole(p.getRoles());
-        Long centerId = p.getCenterId();
-        Long groupId  = p.getGroupId();
-
-        if (centerId != null) {
-            if (Objects.equals(role, "ROLE_PASTORAL_DELEGATE")) {
+        String role = normalizeRole(pending.getRoles());
+        if (pending.getCenterUuid() != null) {
+            if ("ROLE_PASTORAL_DELEGATE".equals(role)) {
                 return false;
             }
-            return hasCenterRole(centerId, "PASTORAL_DELEGATE");
+            return hasCenterRole(pending.getCenterUuid(), "PASTORAL_DELEGATE");
         }
-
-        if (groupId != null) {
-            GroupSalle g = groupRepository.findById(groupId).orElse(null);
-            if (g == null || g.getCenter() == null) return false;
-            Long cid = g.getCenter().getId();
-            return hasCenterRole(cid, "PASTORAL_DELEGATE", "GROUP_LEADER");
+        if (pending.getGroupUuid() != null) {
+            GroupSalle group = groupRepository.findById(pending.getGroupUuid()).orElse(null);
+            return group != null && group.getCenter() != null
+                    && hasCenterRole(group.getCenter().getUuid(), "PASTORAL_DELEGATE", "GROUP_LEADER");
         }
-
         return false;
     }
 
     public boolean canCreateUser(UserSalleRequest req) {
-        var as = auths();
-        if (isAdmin(as)) return true;
-
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
         Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null || req == null) return false;
+        if (year == null || req == null) {
+            return false;
+        }
+        String role = normalizeRole(req.getRol());
 
-        // normalizar rol solicitado
-        String role = normalizeRole(req.getRol()); // devuelve "ROLE_*"
-
-        // 1) Caso por centro: solo PD y únicamente para crear GROUP_LEADER
-        if (req.getCenterId() != null) {
-            Long centerId = req.getCenterId().longValue();
-            if (!"ROLE_GROUP_LEADER".equals(role)) {
-                // no permitimos que un PD cree otro PD u otros roles por centro
-                return false;
-            }
-            // PD del centro correspondiente
-            return auths().contains("CENTER:" + centerId + ":PASTORAL_DELEGATE:" + year);
+        UUID centerUuid = requestCenterId(req);
+        if (centerUuid != null) {
+            return "ROLE_GROUP_LEADER".equals(role)
+                    && authorities.contains("CENTER:" + centerUuid + ":PASTORAL_DELEGATE:" + year);
         }
 
-        // 2) Caso por grupo: PD o GL del centro del grupo
-        if (req.getGroupId() != null) {
-            Long groupId = req.getGroupId().longValue();
-            GroupSalle g = groupRepository.findById(groupId).orElse(null);
-            if (g == null || g.getCenter() == null) return false;
-            Long cid = g.getCenter().getId();
-
-            return as.contains("CENTER:" + cid + ":PASTORAL_DELEGATE:" + year)
-                    || as.contains("CENTER:" + cid + ":GROUP_LEADER:" + year);
-        }
-
-        // 3) Si no hay ni centerId ni groupId: no autorizado (salvo admin arriba)
-        return false;
-    }
-
-    public boolean canManageUser(Long userId) {
-        var as = auths();
-        if (isAdmin(as)) return true;
-
-        Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
-
-        // Centros del usuario objetivo en el año visible: por UserGroup y por UserCenter
-        var targetCenters = new java.util.HashSet<Long>();
-
-        userGroupRepo.findByUser_IdAndYearAndDeletedAtIsNull(userId, year)
-                .forEach(ug -> {
-                    if (ug.getGroup() != null && ug.getGroup().getCenter() != null)
-                        targetCenters.add(ug.getGroup().getCenter().getId());
-                });
-
-        userCenterRepo.findByUser_IdAndYearAndDeletedAtIsNull(userId, year)
-                .forEach(uc -> {
-                    if (uc.getCenter() != null)
-                        targetCenters.add(uc.getCenter().getId());
-                });
-
-        // El llamante debe ser PD o GL de al menos uno de esos centros
-        for (Long cid : targetCenters) {
-            if (as.contains("CENTER:" + cid + ":PASTORAL_DELEGATE:" + year)
-                    || as.contains("CENTER:" + cid + ":GROUP_LEADER:" + year)) {
-                return true;
-            }
+        UUID groupUuid = requestGroupId(req);
+        if (groupUuid != null) {
+            GroupSalle group = groupRepository.findById(groupUuid).orElse(null);
+            return group != null && group.getCenter() != null && (
+                    authorities.contains("CENTER:" + group.getCenter().getUuid() + ":PASTORAL_DELEGATE:" + year)
+                            || authorities.contains("CENTER:" + group.getCenter().getUuid() + ":GROUP_LEADER:" + year)
+            );
         }
         return false;
     }
 
-    public boolean canEditUserAsAnimator(Long userId) {
-        var as = auths();
+    public boolean canManageUser(UUID userUuid) {
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
         Integer year = academicStateService.getVisibleYearOrNull();
-        if (year == null) return false;
+        if (year == null) {
+            return false;
+        }
 
-        var targetGroupIds = userGroupRepo.findByUser_IdAndYearAndDeletedAtIsNull(userId, year)
-                .stream()
-                .filter(ug -> ug.getGroup() != null)
-                .map(ug -> ug.getGroup().getId())
+        Set<UUID> targetCenters = new HashSet<>();
+        userGroupRepo.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year).forEach(userGroup -> {
+            if (userGroup.getGroup() != null && userGroup.getGroup().getCenter() != null) {
+                targetCenters.add(userGroup.getGroup().getCenter().getUuid());
+            }
+        });
+        userCenterRepo.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year).forEach(userCenter -> {
+            if (userCenter.getCenter() != null) {
+                targetCenters.add(userCenter.getCenter().getUuid());
+            }
+        });
+
+        return targetCenters.stream().anyMatch(centerUuid ->
+                authorities.contains("CENTER:" + centerUuid + ":PASTORAL_DELEGATE:" + year)
+                        || authorities.contains("CENTER:" + centerUuid + ":GROUP_LEADER:" + year));
+    }
+
+    public boolean canEditUserAsAnimator(UUID userUuid) {
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) {
+            return false;
+        }
+        var authorities = auths();
+        var targetGroupUuids = userGroupRepo.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year).stream()
+                .filter(userGroup -> userGroup.getGroup() != null)
+                .map(userGroup -> userGroup.getGroup().getUuid())
                 .collect(Collectors.toSet());
-
-        if (targetGroupIds.isEmpty()) return false;
-
-        for (Long gid : targetGroupIds) {
-            if (as.contains("GROUP:" + gid + ":ANIMATOR:" + year)) {
-                return true;
-            }
-        }
-        return false;
+        return targetGroupUuids.stream()
+                .anyMatch(groupUuid -> authorities.contains("GROUP:" + groupUuid + ":ANIMATOR:" + year));
     }
 
+    public UUID requestCenterId(GroupRequest req) {
+        if (req == null || req.centerUuid() == null || req.centerUuid().isBlank()) {
+            return null;
+        }
+        return ReferenceParser.asUuid(req.centerUuid()).orElse(null);
+    }
+
+    private UUID requestCenterId(UserSalleRequest req) {
+        if (req == null || req.getCenterUuid() == null || req.getCenterUuid().isBlank()) {
+            return null;
+        }
+        return ReferenceParser.asUuid(req.getCenterUuid()).orElse(null);
+    }
+
+    private UUID requestCenterId(EventRequest req) {
+        if (req == null || req.getCenterUuid() == null || req.getCenterUuid().isBlank()) {
+            return null;
+        }
+        return ReferenceParser.asUuid(req.getCenterUuid()).orElse(null);
+    }
+
+    private UUID requestGroupId(UserSalleRequest req) {
+        if (req == null || req.getGroupUuid() == null || req.getGroupUuid().isBlank()) {
+            return null;
+        }
+        return ReferenceParser.asUuid(req.getGroupUuid()).orElse(null);
+    }
+
+    private UUID requestGroupId(com.sallejoven.backend.model.requestDto.WeeklySessionRequest req) {
+        if (req == null || req.getGroupUuid() == null || req.getGroupUuid().isBlank()) {
+            return null;
+        }
+        return ReferenceParser.asUuid(req.getGroupUuid()).orElse(null);
+    }
 }

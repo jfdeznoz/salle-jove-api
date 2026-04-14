@@ -1,8 +1,8 @@
 package com.sallejoven.backend.model.dto;
 
 public record VitalSituationSessionDto(
-    Long id,
-    Long vitalSituationId,
+    java.util.UUID uuid,
+    java.util.UUID vitalSituationUuid,
     String title,
     String pdf,
     Boolean isDefault

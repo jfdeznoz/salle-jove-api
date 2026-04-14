@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestController
@@ -24,21 +25,20 @@ public class ReportController {
 
     private final ReportQueueService reportQueueService;
 
-    @PreAuthorize("@authz.canManageEventForEditOrDelete(#eventId)")
-    @GetMapping("/event/{eventId}")
+    @PreAuthorize("@authz.canDownloadEventReports(#eventReference)")
+    @GetMapping("/event/{eventReference}")
     public ResponseEntity<Map<String, Object>> enqueueEventReports(
-            @PathVariable Long eventId,
+            @PathVariable UUID eventReference,
             @RequestParam("types") String typesCsv,
             @RequestParam(defaultValue = "false") boolean overwrite
     ) throws Exception {
-
         List<ReportType> types = Arrays.stream(typesCsv.split(","))
                 .map(String::trim)
                 .map(Integer::parseInt)
                 .map(i -> ReportType.values()[i])
                 .collect(Collectors.toList());
 
-        ReportQueueResult res = reportQueueService.enqueueEventReports(eventId, types, overwrite);
+        ReportQueueResult res = reportQueueService.enqueueEventReports(eventReference, types, overwrite);
 
         return ResponseEntity.accepted().body(Map.of(
                 "jobId", res.jobId(),

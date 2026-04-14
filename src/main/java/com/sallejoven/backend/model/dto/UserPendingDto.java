@@ -8,6 +8,8 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
+import java.time.LocalDateTime;
+
 @Data
 @EqualsAndHashCode(callSuper = true)
 @SuperBuilder
@@ -17,4 +19,5 @@ public class UserPendingDto extends BaseUserDto {
     private Role rol;
     private String center;
     private Integer stage;
+    private LocalDateTime createdAt;
 }

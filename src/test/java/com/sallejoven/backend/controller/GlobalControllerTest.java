@@ -19,6 +19,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.mockito.Mockito.*;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
@@ -48,7 +49,7 @@ class GlobalControllerTest {
 
     var p = new UserPending();
     var dto = new UserPendingDto();
-    dto.setId(1L);
+    dto.setUuid(UUID.randomUUID());
     dto.setEmail("user@example.com");
 
     when(registrationService.listPending()).thenReturn(List.of(p));
