@@ -145,8 +145,9 @@ export class SalleJovenFargateStack extends cdk.Stack {
         // Permisos para sesiones semanales (PDFs)
         'arn:aws:s3:::sallejoven-events/*/weekly-sessions/*',
         'arn:aws:s3:::sallejoven-events/test/*/weekly-sessions/*',
-        // Situaciones vitales: PDFs de sesiones (test/vital-situation-sessions/... o vital-situation-sessions/...)
-        'arn:aws:s3:::sallejoven-events/*/vital-situation-sessions/*',
+        // Situaciones vitales: PDFs de sesiones sin prefijo de año
+        'arn:aws:s3:::sallejoven-events/vital-situation-sessions/*',
+        'arn:aws:s3:::sallejoven-events/test/vital-situation-sessions/*',
       ],
     }));
 
