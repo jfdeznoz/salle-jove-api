@@ -39,19 +39,10 @@ public class WeeklySessionService {
     private final WeeklySessionUserService weeklySessionUserService;
     private final AuthService authService;
     private final GroupService groupService;
-    private final AuthorityService authorityService;
     private final WeeklySessionMapper weeklySessionMapper;
 
     public Optional<WeeklySession> findById(UUID uuid) {
-        Optional<WeeklySession> sessionOpt = weeklySessionRepository.findById(uuid);
-        if (sessionOpt.isEmpty()) {
-            return Optional.empty();
-        }
-        WeeklySession session = sessionOpt.get();
-        if (authorityService.isOnlyAnimator() && session.getStatus() != 1) {
-            return Optional.empty();
-        }
-        return Optional.of(session);
+        return weeklySessionRepository.findById(uuid);
     }
 
     public Optional<WeeklySession> findByReference(String reference) {
@@ -73,7 +64,7 @@ public class WeeklySessionService {
         LocalDate today = ZonedDateTime.now(ZoneId.of("Europe/Madrid")).toLocalDate();
         int effectiveSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(page, effectiveSize);
-        boolean onlyPublished = authorityService.isOnlyAnimator();
+        boolean onlyPublished = false;
 
         if (sessionDate != null) {
             if (Boolean.TRUE.equals(user.getIsAdmin())) {

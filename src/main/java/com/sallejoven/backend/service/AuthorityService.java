@@ -10,10 +10,12 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthorityService {
@@ -53,12 +55,19 @@ public class AuthorityService {
                     }
                 });
 
-        userGroupRepository.findByUser_UuidAndYearAndDeletedAtIsNullAndUserType(userUuid, year, 1)
+        userGroupRepository.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year).stream()
+                .filter(userGroup -> isAnimatorType(userGroup.getUserType()))
                 .forEach(userGroup -> {
                     UUID groupUuid = userGroup.getGroup() != null ? userGroup.getGroup().getUuid() : null;
-                    if (groupUuid != null) {
-                        authorities.add("GROUP:" + groupUuid + ":ANIMATOR:" + year);
+                    if (groupUuid == null) {
+                        return;
                     }
+                    if (Integer.valueOf(5).equals(userGroup.getUserType())) {
+                        log.warn("Normalizing legacy catechist userType=5 as animator authority for user {} in group {}",
+                                userUuid,
+                                groupUuid);
+                    }
+                    authorities.add("GROUP:" + groupUuid + ":ANIMATOR:" + year);
                 });
 
         return authorities;
@@ -83,8 +92,8 @@ public class AuthorityService {
             return Role.GROUP_LEADER;
         }
 
-        boolean hasAnimator = userGroupRepository
-                .existsByUser_UuidAndYearAndDeletedAtIsNullAndUserType(userUuid, year, 1);
+        boolean hasAnimator = userGroupRepository.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year).stream()
+                .anyMatch(userGroup -> isAnimatorType(userGroup.getUserType()));
         if (hasAnimator) {
             return Role.ANIMATOR;
         }
@@ -133,6 +142,10 @@ public class AuthorityService {
         boolean hasAnimator = !extractAnimatorGroupIdsForYear(auths, year).isEmpty();
         boolean hasCenterRole = !extractCenterIdsForYear(auths, year).isEmpty();
         return hasAnimator && !hasCenterRole;
+    }
+
+    private boolean isAnimatorType(Integer userType) {
+        return Integer.valueOf(1).equals(userType) || Integer.valueOf(5).equals(userType);
     }
 
     private UUID parseUuid(String raw) {

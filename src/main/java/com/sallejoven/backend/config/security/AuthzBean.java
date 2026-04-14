@@ -411,11 +411,7 @@ public class AuthzBean {
         if (session.getGroup() == null || !groupUuid.equals(session.getGroup().getUuid())) {
             return false;
         }
-        if (authorityService.isOnlyAnimator() && !Integer.valueOf(1).equals(session.getStatus())) {
-            return false;
-        }
-        UUID me = currentUserUuidOrNull();
-        if (me != null && userGroupRepo.existsByUser_UuidAndGroup_UuidAndYearAndDeletedAtIsNullAndUserType(me, groupUuid, year, 1)) {
+        if (authorities.contains("GROUP:" + groupUuid + ":ANIMATOR:" + year)) {
             return true;
         }
         UUID centerUuid = groupRepository.findById(groupUuid)

@@ -130,13 +130,9 @@ class AuthzBeanTest {
 
     @Test
     void canManageWeeklySessionGroupParticipants_returnsFalse_forPastSession_nonAdmin() {
-        UUID actorUuid = UUID.randomUUID();
         UUID sessionUuid = UUID.randomUUID();
         UUID centerUuid = UUID.randomUUID();
         UUID groupUuid = UUID.randomUUID();
-
-        UserSalle actor = new UserSalle();
-        actor.setUuid(actorUuid);
 
         Center center = new Center();
         center.setUuid(centerUuid);
@@ -155,16 +151,12 @@ class AuthzBeanTest {
 
         when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
         when(weeklySessionService.findById(sessionUuid)).thenReturn(Optional.of(session));
-        when(authorityService.isOnlyAnimator()).thenReturn(false);
-        when(userRepo.findByEmail("leader@example.com")).thenReturn(Optional.of(actor));
-        when(userGroupRepo.existsByUser_UuidAndGroup_UuidAndYearAndDeletedAtIsNullAndUserType(
-                actorUuid,
-                groupUuid,
-                2025,
-                1)).thenReturn(true);
 
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("leader@example.com", "N/A"));
+                new UsernamePasswordAuthenticationToken(
+                        "animator@example.com",
+                        "N/A",
+                        List.of(new SimpleGrantedAuthority("GROUP:" + groupUuid + ":ANIMATOR:2025"))));
 
         assertThat(authzBean.canViewWeeklySessionGroupParticipants(sessionUuid, groupUuid)).isTrue();
         assertThat(authzBean.canManageWeeklySessionGroupParticipants(sessionUuid, groupUuid)).isFalse();
@@ -249,14 +241,10 @@ class AuthzBeanTest {
     }
 
     @Test
-    void canViewWeeklySessionGroupParticipants_returnsFalse_forAnimatorOnDraftSession() {
-        UUID actorUuid = UUID.randomUUID();
+    void canViewWeeklySessionGroupParticipants_returnsTrue_forAnimatorOnDraftSession() {
         UUID sessionUuid = UUID.randomUUID();
         UUID centerUuid = UUID.randomUUID();
         UUID groupUuid = UUID.randomUUID();
-
-        UserSalle actor = new UserSalle();
-        actor.setUuid(actorUuid);
 
         Center center = new Center();
         center.setUuid(centerUuid);
@@ -275,12 +263,14 @@ class AuthzBeanTest {
 
         when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
         when(weeklySessionService.findById(sessionUuid)).thenReturn(Optional.of(session));
-        when(authorityService.isOnlyAnimator()).thenReturn(true);
 
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("animator@example.com", "N/A"));
+                new UsernamePasswordAuthenticationToken(
+                        "animator@example.com",
+                        "N/A",
+                        List.of(new SimpleGrantedAuthority("GROUP:" + groupUuid + ":ANIMATOR:2025"))));
 
-        assertThat(authzBean.canViewWeeklySessionGroupParticipants(sessionUuid, groupUuid)).isFalse();
+        assertThat(authzBean.canViewWeeklySessionGroupParticipants(sessionUuid, groupUuid)).isTrue();
     }
 
     @Test
@@ -304,7 +294,6 @@ class AuthzBeanTest {
 
         when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
         when(weeklySessionService.findById(sessionUuid)).thenReturn(Optional.of(session));
-        when(authorityService.isOnlyAnimator()).thenReturn(false);
         when(groupRepository.findById(groupUuid)).thenReturn(Optional.of(persistedGroup));
 
         SecurityContextHolder.getContext().setAuthentication(
