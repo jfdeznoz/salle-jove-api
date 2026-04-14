@@ -15,6 +15,7 @@ import com.sallejoven.backend.repository.UserCenterRepository;
 import com.sallejoven.backend.repository.UserGroupRepository;
 import com.sallejoven.backend.repository.UserPendingRepository;
 import com.sallejoven.backend.repository.UserRepository;
+import com.sallejoven.backend.repository.WeeklySessionRepository;
 import com.sallejoven.backend.service.AcademicStateService;
 import com.sallejoven.backend.service.AuthorityService;
 import com.sallejoven.backend.service.EventService;
@@ -28,10 +29,12 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @RequiredArgsConstructor
 @Component("authz")
 public class AuthzBean {
@@ -47,6 +50,7 @@ public class AuthzBean {
     private final AuthorityService authorityService;
     private final UserPendingRepository userPendingRepo;
     private final WeeklySessionService weeklySessionService;
+    private final WeeklySessionRepository weeklySessionRepository;
     private final VitalSituationService vitalSituationService;
 
     private Set<String> auths() {
@@ -88,6 +92,26 @@ public class AuthzBean {
         return !authorityService.extractCenterIdsForYear(authorities, year).isEmpty();
     }
 
+    public boolean hasAnyAnimatorRole() {
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) {
+            return false;
+        }
+        return !authorityService.extractAnimatorGroupIdsForYear(auths(), year).isEmpty();
+    }
+
+    public boolean canSearchUsers() {
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) {
+            return false;
+        }
+        return !authorityService.extractCenterIdsForYear(authorities, year).isEmpty();
+    }
+
     public boolean canViewUserStats(String userReference) {
         UUID userUuid = ReferenceParser.asUuid(userReference)
                 .flatMap(userRepo::findByUuid)
@@ -103,32 +127,10 @@ public class AuthzBean {
         }
 
         int year = academicStateService.getVisibleYear();
-        Set<UUID> targetCenterUuids = new HashSet<>();
-        Set<UUID> targetGroupUuids = new HashSet<>();
-
-        userGroupRepo.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year).forEach(userGroup -> {
-            if (userGroup.getGroup() != null) {
-                targetGroupUuids.add(userGroup.getGroup().getUuid());
-                if (userGroup.getGroup().getCenter() != null) {
-                    targetCenterUuids.add(userGroup.getGroup().getCenter().getUuid());
-                }
-            }
-        });
-
-        userCenterRepo.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year).forEach(userCenter -> {
-            if (userCenter.getCenter() != null) {
-                targetCenterUuids.add(userCenter.getCenter().getUuid());
-            }
-        });
-
+        Set<UUID> targetCenterUuids = loadTargetCenterUuids(userUuid, year);
         for (UUID centerUuid : targetCenterUuids) {
             if (authorities.contains("CENTER:" + centerUuid + ":PASTORAL_DELEGATE:" + year)
                     || authorities.contains("CENTER:" + centerUuid + ":GROUP_LEADER:" + year)) {
-                return true;
-            }
-        }
-        for (UUID groupUuid : targetGroupUuids) {
-            if (authorities.contains("GROUP:" + groupUuid + ":ANIMATOR:" + year)) {
                 return true;
             }
         }
@@ -151,17 +153,7 @@ public class AuthzBean {
             return false;
         }
 
-        Set<UUID> targetCenters = new HashSet<>();
-        userCenterRepo.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year).forEach(userCenter -> {
-            if (userCenter.getCenter() != null) {
-                targetCenters.add(userCenter.getCenter().getUuid());
-            }
-        });
-        userGroupRepo.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year).forEach(userGroup -> {
-            if (userGroup.getGroup() != null && userGroup.getGroup().getCenter() != null) {
-                targetCenters.add(userGroup.getGroup().getCenter().getUuid());
-            }
-        });
+        Set<UUID> targetCenters = loadTargetCenterUuids(userUuid, year);
         return targetCenters.stream().anyMatch(viewerCenters::contains);
     }
 
@@ -183,8 +175,7 @@ public class AuthzBean {
         if (year == null) {
             return false;
         }
-        return userCenterRepo.findById(userCenterUuid)
-                .map(userCenter -> userCenter.getCenter() != null ? userCenter.getCenter().getUuid() : null)
+        return userCenterRepo.findCenterUuidByUserCenterUuid(userCenterUuid)
                 .map(centerUuid -> authorities.contains("CENTER:" + centerUuid + ":PASTORAL_DELEGATE:" + year))
                 .orElse(false);
     }
@@ -355,11 +346,6 @@ public class AuthzBean {
             return false;
         }
 
-        UUID me = currentUserUuidOrNull();
-        if (me != null && userGroupRepo.existsByUser_UuidAndGroup_UuidAndYearAndDeletedAtIsNullAndUserType(me, groupUuid, year, 1)) {
-            return true;
-        }
-
         GroupSalle group = groupRepository.findById(groupUuid).orElse(null);
         return group != null && group.getCenter() != null && (
                 authorities.contains("CENTER:" + group.getCenter().getUuid() + ":PASTORAL_DELEGATE:" + year)
@@ -388,22 +374,23 @@ public class AuthzBean {
         if (year == null) {
             return false;
         }
-        var sessionOpt = weeklySessionService.findByIdForEditOrDelete(sessionUuid);
-        if (sessionOpt.isEmpty()) {
+        var authViewOpt = weeklySessionRepository.findAuthViewByUuid(sessionUuid);
+        if (authViewOpt.isEmpty()) {
             return false;
         }
-        var session = sessionOpt.get();
-        var group = session.getGroup();
-        if (group == null) {
+        var authView = authViewOpt.get();
+        UUID groupUuid = authView.getGroupUuid();
+        UUID centerUuid = authView.getCenterUuid();
+        if (groupUuid == null) {
             return false;
         }
-        if (Integer.valueOf(0).equals(session.getStatus())
-                && authorities.contains("GROUP:" + group.getUuid() + ":ANIMATOR:" + year)) {
+        if (Integer.valueOf(0).equals(authView.getStatus())
+                && authorities.contains("GROUP:" + groupUuid + ":ANIMATOR:" + year)) {
             return true;
         }
-        return group.getCenter() != null && (
-                authorities.contains("CENTER:" + group.getCenter().getUuid() + ":PASTORAL_DELEGATE:" + year)
-                        || authorities.contains("CENTER:" + group.getCenter().getUuid() + ":GROUP_LEADER:" + year)
+        return centerUuid != null && (
+                authorities.contains("CENTER:" + centerUuid + ":PASTORAL_DELEGATE:" + year)
+                        || authorities.contains("CENTER:" + centerUuid + ":GROUP_LEADER:" + year)
         );
     }
 
@@ -431,10 +418,15 @@ public class AuthzBean {
         if (me != null && userGroupRepo.existsByUser_UuidAndGroup_UuidAndYearAndDeletedAtIsNullAndUserType(me, groupUuid, year, 1)) {
             return true;
         }
-        return session.getGroup().getCenter() != null && (
-                authorities.contains("CENTER:" + session.getGroup().getCenter().getUuid() + ":PASTORAL_DELEGATE:" + year)
-                        || authorities.contains("CENTER:" + session.getGroup().getCenter().getUuid() + ":GROUP_LEADER:" + year)
-        );
+        UUID centerUuid = groupRepository.findById(groupUuid)
+                .map(group -> group.getCenter() != null ? group.getCenter().getUuid() : null)
+                .orElse(null);
+        if (centerUuid == null) {
+            log.warn("Denied weekly session participants access because center could not be resolved for group {}", groupUuid);
+            return false;
+        }
+        return authorities.contains("CENTER:" + centerUuid + ":PASTORAL_DELEGATE:" + year)
+                || authorities.contains("CENTER:" + centerUuid + ":GROUP_LEADER:" + year);
     }
 
     public boolean canManageWeeklySessionGroupParticipants(UUID sessionUuid, UUID groupUuid) {
@@ -455,6 +447,58 @@ public class AuthzBean {
 
     private LocalDate todayMadrid() {
         return java.time.ZonedDateTime.now(ZoneId.of("Europe/Madrid")).toLocalDate();
+    }
+
+    private boolean canViewAnyVitalSituation(Set<String> authorities) {
+        if (isAdmin(authorities)) {
+            return true;
+        }
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) {
+            return false;
+        }
+        return !authorityService.extractCenterIdsForYear(authorities, year).isEmpty()
+                || !authorityService.extractAnimatorGroupIdsForYear(authorities, year).isEmpty();
+    }
+
+    public boolean canViewVitalSituations(String groupUuid) {
+        var authorities = auths();
+        if (groupUuid == null || groupUuid.isBlank()) {
+            boolean allowed = canViewAnyVitalSituation(authorities);
+            if (!allowed) {
+                log.warn("Denied global vital situations read access");
+            }
+            return allowed;
+        }
+
+        UUID resolvedGroupUuid = ReferenceParser.asUuid(groupUuid).orElse(null);
+        if (resolvedGroupUuid == null) {
+            log.warn("Denied vital situations read access due to invalid group reference");
+            return false;
+        }
+
+        boolean allowed = hasGroupRole(resolvedGroupUuid, "ANIMATOR")
+                || hasCenterOfGroup(resolvedGroupUuid, "PASTORAL_DELEGATE", "GROUP_LEADER");
+        if (!allowed) {
+            log.warn("Denied vital situations read access for group {}", resolvedGroupUuid);
+        }
+        return allowed;
+    }
+
+    public boolean canViewVitalSituation(String uuidReference) {
+        boolean allowed = canViewAnyVitalSituation(auths());
+        if (!allowed) {
+            log.warn("Denied vital situation detail access for {}", uuidReference);
+        }
+        return allowed;
+    }
+
+    public boolean canViewVitalSituationSession(String uuidReference) {
+        boolean allowed = canViewAnyVitalSituation(auths());
+        if (!allowed) {
+            log.warn("Denied vital situation session list access for {}", uuidReference);
+        }
+        return allowed;
     }
 
     public boolean canCreateOrEditVitalSituation(com.sallejoven.backend.model.requestDto.VitalSituationRequest req) {
@@ -564,17 +608,7 @@ public class AuthzBean {
             return false;
         }
 
-        Set<UUID> targetCenters = new HashSet<>();
-        userGroupRepo.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year).forEach(userGroup -> {
-            if (userGroup.getGroup() != null && userGroup.getGroup().getCenter() != null) {
-                targetCenters.add(userGroup.getGroup().getCenter().getUuid());
-            }
-        });
-        userCenterRepo.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year).forEach(userCenter -> {
-            if (userCenter.getCenter() != null) {
-                targetCenters.add(userCenter.getCenter().getUuid());
-            }
-        });
+        Set<UUID> targetCenters = loadTargetCenterUuids(userUuid, year);
 
         return targetCenters.stream().anyMatch(centerUuid ->
                 authorities.contains("CENTER:" + centerUuid + ":PASTORAL_DELEGATE:" + year)
@@ -587,12 +621,15 @@ public class AuthzBean {
             return false;
         }
         var authorities = auths();
-        var targetGroupUuids = userGroupRepo.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year).stream()
-                .filter(userGroup -> userGroup.getGroup() != null)
-                .map(userGroup -> userGroup.getGroup().getUuid())
-                .collect(Collectors.toSet());
+        var targetGroupUuids = new HashSet<>(userGroupRepo.findDistinctGroupUuidsByUserUuidAndYear(userUuid, year));
         return targetGroupUuids.stream()
                 .anyMatch(groupUuid -> authorities.contains("GROUP:" + groupUuid + ":ANIMATOR:" + year));
+    }
+
+    private Set<UUID> loadTargetCenterUuids(UUID userUuid, Integer year) {
+        Set<UUID> targetCenterUuids = new HashSet<>(userCenterRepo.findDistinctCenterUuidsByUserUuidAndYear(userUuid, year));
+        targetCenterUuids.addAll(userGroupRepo.findDistinctCenterUuidsByUserUuidAndYear(userUuid, year));
+        return targetCenterUuids;
     }
 
     public UUID requestCenterId(GroupRequest req) {

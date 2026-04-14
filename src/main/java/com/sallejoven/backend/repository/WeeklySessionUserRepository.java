@@ -33,6 +33,7 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
         JOIN UserGroup ug
           ON ug.user.uuid = wsu.user.uuid
          AND ug.group.uuid = :groupUuid
+         AND ug.userType = 0
          AND ug.year = :year
          AND ug.deletedAt IS NULL
         WHERE wsu.weeklySession.uuid = :sessionUuid
@@ -44,21 +45,15 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
                                                           @Param("year") Integer year);
 
     @Query("""
-        SELECT DISTINCT wsu
+        SELECT wsu
         FROM WeeklySessionUser wsu
-        JOIN UserGroup ug
-          ON ug.user.uuid = wsu.user.uuid
-         AND ug.group.uuid = wsu.weeklySession.group.uuid
-         AND ug.year = :year
-         AND ug.deletedAt IS NULL
-        JOIN ug.group g
+        JOIN wsu.user u
         WHERE wsu.weeklySession.uuid = :sessionUuid
           AND wsu.deletedAt IS NULL
-          AND wsu.user.deletedAt IS NULL
-        ORDER BY g.center.name ASC, g.stage ASC
+          AND u.deletedAt IS NULL
+        ORDER BY COALESCE(u.lastName, '') ASC, COALESCE(u.name, '') ASC, wsu.uuid ASC
     """)
-    List<WeeklySessionUser> findBySessionUuidOrdered(@Param("sessionUuid") UUID sessionUuid,
-                                                     @Param("year") Integer year);
+    List<WeeklySessionUser> findBySessionUuidOrdered(@Param("sessionUuid") UUID sessionUuid);
 
     @Query("""
         SELECT wsu
@@ -74,6 +69,7 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
         JOIN UserGroup ug
           ON ug.user.uuid = wsu.user.uuid
          AND ug.group.uuid = :groupUuid
+         AND ug.userType = 0
          AND ug.year = :year
          AND ug.deletedAt IS NULL
         WHERE wsu.weeklySession.uuid = :sessionUuid
@@ -85,6 +81,17 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
                                                           @Param("userUuid") UUID userUuid,
                                                           @Param("groupUuid") UUID groupUuid,
                                                           @Param("year") Integer year);
+
+    @Query("""
+        SELECT wsu
+        FROM WeeklySessionUser wsu
+        WHERE wsu.weeklySession.uuid = :sessionUuid
+          AND wsu.user.uuid = :userUuid
+          AND wsu.deletedAt IS NULL
+          AND wsu.user.deletedAt IS NULL
+    """)
+    Optional<WeeklySessionUser> findBySessionUuidAndUserUuid(@Param("sessionUuid") UUID sessionUuid,
+                                                             @Param("userUuid") UUID userUuid);
 
     @Query("""
         SELECT COALESCE(SUM(CASE WHEN wsu.status = 1 THEN 1 ELSE 0 END), 0) AS attendanceCount,
@@ -129,6 +136,7 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
                 FROM UserGroup ug
                 WHERE ug.user.uuid = :userUuid
                   AND ug.group.uuid = :groupUuid
+                  AND ug.userType = 0
                   AND ug.year = :year
                   AND ug.deletedAt IS NULL
            )
@@ -138,7 +146,7 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
                                           @Param("userUuid") UUID userUuid,
                                           @Param("groupUuid") UUID groupUuid,
                                           @Param("year") Integer year,
-                                          @Param("status") int status);
+                                          @Param("status") Integer status);
 
     @Modifying
     @Query("""
@@ -166,6 +174,7 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
           AND wsu.deletedAt IS NULL
           AND u.deletedAt IS NULL
           AND ws.deletedAt IS NULL
+          AND (ws.sessionDateTime < :startOfToday OR wsu.status IS NOT NULL)
           AND EXISTS (
                 SELECT 1
                 FROM UserGroup ug
@@ -176,14 +185,19 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
           )
     """)
     UserSessionAttendanceStatsProjection findUserAttendanceStats(@Param("userUuid") UUID userUuid,
-                                                                 @Param("year") Integer year);
+                                                                 @Param("year") Integer year,
+                                                                 @Param("startOfToday") LocalDateTime startOfToday);
 
     @Query("""
         SELECT ws.sessionDateTime AS date,
                ws.title AS title,
                vs.title AS vitalSituationTitle,
                vss.title AS vitalSituationSessionTitle,
-               CASE WHEN wsu.status = 1 THEN true ELSE false END AS attended,
+               CASE
+                   WHEN wsu.status IS NULL AND ws.sessionDateTime >= :startOfToday THEN null
+                   WHEN wsu.status = 1 THEN true
+                   ELSE false
+               END AS attended,
                wsu.justified AS justified
         FROM WeeklySessionUser wsu
         JOIN wsu.weeklySession ws
@@ -206,6 +220,7 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
     """)
     List<UserRecentSessionProjection> findRecentSessionsByUser(@Param("userUuid") UUID userUuid,
                                                                @Param("year") Integer year,
+                                                               @Param("startOfToday") LocalDateTime startOfToday,
                                                                Pageable pageable);
 
     @Query("""
@@ -250,6 +265,7 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
               AND wsu.deletedAt IS NULL
               AND wsu.weeklySession.deletedAt IS NULL
               AND wsu.weeklySession.group.uuid = ug.group.uuid
+              AND (wsu.weeklySession.sessionDateTime < :startOfToday OR wsu.status IS NOT NULL)
         WHERE ug.group.uuid = :groupUuid
           AND ug.year = :year
           AND ug.userType = 0
@@ -259,7 +275,8 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
         ORDER BY u.lastName ASC, u.name ASC
     """)
     List<GroupMemberAttendanceProjection> findGroupMemberAttendance(@Param("groupUuid") UUID groupUuid,
-                                                                    @Param("year") Integer year);
+                                                                    @Param("year") Integer year,
+                                                                    @Param("startOfToday") LocalDateTime startOfToday);
 
     @Query("""
         SELECT g.uuid AS groupUuid,
@@ -281,11 +298,13 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
           AND wsu.deletedAt IS NULL
           AND u.deletedAt IS NULL
           AND ws.deletedAt IS NULL
+          AND (ws.sessionDateTime < :startOfToday OR wsu.status IS NOT NULL)
         GROUP BY g.uuid, g.stage, ws.uuid
         ORDER BY g.stage ASC, ws.uuid ASC
     """)
     List<CenterGroupSessionRateProjection> findCenterGroupSessionRates(@Param("centerUuid") UUID centerUuid,
-                                                                       @Param("year") Integer year);
+                                                                       @Param("year") Integer year,
+                                                                       @Param("startOfToday") LocalDateTime startOfToday);
 
     @Query("""
         SELECT COUNT(wsu.uuid) AS total,
@@ -304,9 +323,11 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
           AND wsu.deletedAt IS NULL
           AND u.deletedAt IS NULL
           AND ws.deletedAt IS NULL
+          AND (ws.sessionDateTime < :startOfToday OR wsu.status IS NOT NULL)
     """)
     AttendanceTotalsProjection findCenterAttendanceTotals(@Param("centerUuid") UUID centerUuid,
-                                                          @Param("year") Integer year);
+                                                          @Param("year") Integer year,
+                                                          @Param("startOfToday") LocalDateTime startOfToday);
 
     @Query("""
         SELECT COUNT(wsu.uuid) AS total,
@@ -323,8 +344,10 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
           AND wsu.deletedAt IS NULL
           AND u.deletedAt IS NULL
           AND ws.deletedAt IS NULL
+          AND (ws.sessionDateTime < :startOfToday OR wsu.status IS NOT NULL)
     """)
-    AttendanceTotalsProjection findGlobalAttendanceTotals(@Param("year") Integer year);
+    AttendanceTotalsProjection findGlobalAttendanceTotals(@Param("year") Integer year,
+                                                          @Param("startOfToday") LocalDateTime startOfToday);
 
     @Query("""
         SELECT COUNT(DISTINCT ws.uuid)

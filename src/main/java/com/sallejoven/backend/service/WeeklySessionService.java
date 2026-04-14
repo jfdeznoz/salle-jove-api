@@ -103,7 +103,7 @@ public class WeeklySessionService {
     }
 
     @Transactional
-    public WeeklySession saveWeeklySession(WeeklySessionRequest request) {
+    public WeeklySessionDto saveWeeklySession(WeeklySessionRequest request) {
         VitalSituationSession vitalSituationSession = resolveVitalSituationSession(request.getVitalSituationSessionUuid());
         GroupSalle group = resolveGroup(request.getGroupUuid());
 
@@ -120,11 +120,11 @@ public class WeeklySessionService {
         session = weeklySessionRepository.save(session);
         List<UserGroup> targetUserGroups = userGroupService.findByGroupId(group.getUuid());
         weeklySessionUserService.assignSessionToUserGroups(session, targetUserGroups);
-        return session;
+        return weeklySessionMapper.toDto(session);
     }
 
     @Transactional
-    public WeeklySession editWeeklySession(UUID sessionUuid, WeeklySessionEditRequest request) {
+    public WeeklySessionDto editWeeklySession(UUID sessionUuid, WeeklySessionEditRequest request) {
         WeeklySession session = weeklySessionRepository.findById(sessionUuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.WEEKLY_SESSION_NOT_FOUND));
 
@@ -147,7 +147,8 @@ public class WeeklySessionService {
             session.setContent(request.getContent());
         }
 
-        return weeklySessionRepository.save(session);
+        WeeklySession saved = weeklySessionRepository.save(session);
+        return weeklySessionMapper.toDto(saved);
     }
 
     @Transactional

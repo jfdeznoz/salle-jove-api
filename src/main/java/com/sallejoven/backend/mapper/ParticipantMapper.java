@@ -33,8 +33,8 @@ public interface ParticipantMapper {
     @Mapping(target = "attends", source = "status")
     @Mapping(target = "justified", expression = "java(null)")
     @Mapping(target = "justificationReason", expression = "java(null)")
-    @Mapping(target = "userType", expression = "java(null)")
-    ParticipantDto fromEventUser(EventUser eventUser);
+    @Mapping(target = "userType", ignore = true)
+    ParticipantDto toEventParticipant(EventUser eventUser);
 
     @Mapping(target = "uuid", source = "user.uuid")
     @Mapping(target = "name", source = "user.name")
@@ -60,6 +60,44 @@ public interface ParticipantMapper {
     @Mapping(target = "attends", source = "status")
     @Mapping(target = "justified", source = "justified")
     @Mapping(target = "justificationReason", source = "justificationReason")
-    @Mapping(target = "userType", expression = "java(null)")
-    ParticipantDto fromWeeklySessionUser(WeeklySessionUser weeklySessionUser);
+    @Mapping(target = "userType", ignore = true)
+    ParticipantDto toWeeklySessionParticipant(WeeklySessionUser weeklySessionUser);
+
+    default ParticipantDto fromEventUser(EventUser eventUser, Integer userType) {
+        return withUserType(toEventParticipant(eventUser), userType);
+    }
+
+    default ParticipantDto fromWeeklySessionUser(WeeklySessionUser weeklySessionUser, Integer userType) {
+        return withUserType(toWeeklySessionParticipant(weeklySessionUser), userType);
+    }
+
+    private ParticipantDto withUserType(ParticipantDto dto, Integer userType) {
+        return new ParticipantDto(
+                dto.uuid(),
+                dto.name(),
+                dto.lastName(),
+                dto.dni(),
+                dto.phone(),
+                dto.email(),
+                dto.tshirtSize(),
+                dto.healthCardNumber(),
+                dto.intolerances(),
+                dto.chronicDiseases(),
+                dto.city(),
+                dto.address(),
+                dto.motherFullName(),
+                dto.fatherFullName(),
+                dto.motherEmail(),
+                dto.fatherEmail(),
+                dto.fatherPhone(),
+                dto.motherPhone(),
+                dto.birthDate(),
+                dto.gender(),
+                dto.imageAuthorization(),
+                dto.attends(),
+                dto.justified(),
+                dto.justificationReason(),
+                userType
+        );
+    }
 }

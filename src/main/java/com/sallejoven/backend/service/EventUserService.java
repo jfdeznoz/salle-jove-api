@@ -157,6 +157,9 @@ public class EventUserService {
 
         for (AttendanceUpdateDto dto : updates) {
             dto.validate();
+            if (dto.getAttends() == null) {
+                throw new SalleException(ErrorCodes.STATUS_PARTICIPANT_ERROR);
+            }
             UUID userUuid = resolveUserUuid(dto);
             if (userUuid == null) {
                 throw new SalleException(ErrorCodes.USER_NOT_FOUND);

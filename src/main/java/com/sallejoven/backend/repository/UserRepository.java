@@ -109,6 +109,37 @@ public interface UserRepository extends JpaRepository<UserSalle, UUID> {
     List<UserSalle> searchUsersNormalizedByCenterUuids(@Param("normalized") String normalized,
                                                        @Param("centerUuids") Set<UUID> centerUuids);
 
+    @Query(value = """
+    SELECT DISTINCT u.*
+    FROM user_salle u
+    JOIN user_group ug ON ug.user_uuid = u.uuid
+    WHERE u.deleted_at IS NULL
+      AND ug.deleted_at IS NULL
+      AND ug.year = :year
+      AND ug.group_uuid IN (:groupUuids)
+      AND (
+        lower(
+          translate(
+            trim(coalesce(u.name,'') || ' ' || coalesce(u.last_name,'')),
+            'ÁÉÍÓÚÜÀÈÌÒÙÑáéíóúüàèìòùñ',
+            'AEIOUUAEIOUNaeiouuaeioun'
+          )
+        ) LIKE CONCAT('%', :normalized, '%')
+        OR
+        lower(
+          translate(
+            coalesce(u.email,''),
+            'ÁÉÍÓÚÜÀÈÌÒÙÑáéíóúüàèìòùñ',
+            'AEIOUUAEIOUNaeiouuaeioun'
+          )
+        ) LIKE CONCAT('%', :normalized, '%')
+      )
+    ORDER BY u.name NULLS LAST, u.last_name NULLS LAST
+    """, nativeQuery = true)
+    List<UserSalle> searchUsersNormalizedByGroupUuids(@Param("normalized") String normalized,
+                                                      @Param("groupUuids") Set<UUID> groupUuids,
+                                                      @Param("year") Integer year);
+
     @Query("""
         select distinct u
         from UserSalle u

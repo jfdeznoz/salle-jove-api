@@ -156,8 +156,15 @@ public class CenterService {
     }
 
     public List<UserGroup> getActiveUserGroupsForYear(UserSalle user) {
+        if (user == null || user.getUuid() == null) {
+            return List.of();
+        }
+        return getActiveUserGroupsForCurrentYear(user.getUuid());
+    }
+
+    public List<UserGroup> getActiveUserGroupsForCurrentYear(UUID userUuid) {
         int visibleYear = academicStateService.getVisibleYear();
-        return user.getGroups().stream()
+        return userGroupRepository.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, visibleYear).stream()
                 .filter(userGroup -> userGroup.getDeletedAt() == null
                         && userGroup.getGroup() != null
                         && userGroup.getYear() == visibleYear)

@@ -77,23 +77,23 @@ public class UserService {
             return userRepository.searchUsersNormalized(normalized);
         }
 
-        List<UserCenter> userCenters = userCenterService.findByUserForCurrentYear(me.getUuid());
-        if (userCenters == null || userCenters.isEmpty()) {
-            return List.of();
-        }
-
+        List<UserCenter> userCenters = Optional.ofNullable(userCenterService.findByUserForCurrentYear(me.getUuid()))
+                .orElse(List.of());
         Set<UUID> centerUuids = userCenters.stream()
+                .filter(userCenter -> {
+                    Integer userType = userCenter.getUserType();
+                    return userType != null && (userType == 2 || userType == 3);
+                })
                 .map(UserCenter::getCenter)
                 .filter(Objects::nonNull)
                 .map(Center::getUuid)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
-        if (centerUuids.isEmpty()) {
-            return List.of();
+        if (!centerUuids.isEmpty()) {
+            return userRepository.searchUsersNormalizedByCenterUuids(normalized, centerUuids);
         }
-
-        return userRepository.searchUsersNormalizedByCenterUuids(normalized, centerUuids);
+        return List.of();
     }
 
     public List<UserSalle> searchUsers(String rawSearch) {
@@ -202,9 +202,6 @@ public class UserService {
 
         if (eventUuid != null && groupUuid != null) {
             GroupSalle group = groupService.findById(groupUuid);
-            if (roleHelper.isAnimator(role)) {
-                userType = 5;
-            }
             UserGroup userGroup = roleHelper.ensureMembership(saved, group, userType);
             saved = userRepository.save(saved);
             Event event = eventService.findById(eventUuid)

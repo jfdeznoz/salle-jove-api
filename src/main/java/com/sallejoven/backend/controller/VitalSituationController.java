@@ -44,15 +44,20 @@ public class VitalSituationController {
     private final VitalSituationService vitalSituationService;
     private final S3V2Service s3v2Service;
 
+    @PreAuthorize("@authz.canViewVitalSituations(#groupUuid)")
     @GetMapping
     public ResponseEntity<List<VitalSituationDto>> getAllVitalSituations(
-            @RequestParam(required = false) Integer stage) {
-        List<VitalSituationDto> situations = stage != null
+            @RequestParam(required = false) Integer stage,
+            @RequestParam(required = false) String groupUuid) {
+        List<VitalSituationDto> situations = groupUuid != null && !groupUuid.isBlank()
+                ? vitalSituationService.findByGroupReference(groupUuid)
+                : stage != null
                 ? vitalSituationService.findByStage(stage)
                 : vitalSituationService.findAll();
         return ResponseEntity.ok(situations);
     }
 
+    @PreAuthorize("@authz.canViewVitalSituation(#uuid)")
     @GetMapping("/{uuid}")
     public ResponseEntity<VitalSituationDto> getVitalSituationById(@PathVariable String uuid) {
         return vitalSituationService.findByReference(uuid)
@@ -60,6 +65,7 @@ public class VitalSituationController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @PreAuthorize("@authz.canViewVitalSituationSession(#uuid)")
     @GetMapping("/{uuid}/sessions")
     public ResponseEntity<List<VitalSituationSessionDto>> getSessionsByVitalSituation(@PathVariable String uuid) {
         UUID resolved = requireUuid(uuid, ErrorCodes.VITAL_SITUATION_NOT_FOUND);

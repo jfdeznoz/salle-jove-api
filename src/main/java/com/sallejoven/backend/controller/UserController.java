@@ -121,7 +121,7 @@ public class UserController {
         return userAssembler.toSelfDto(user);
     }
 
-    @PreAuthorize("@authz.isAnyManagerType()")
+    @PreAuthorize("@authz.canSearchUsers()")
     @GetMapping("/search")
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<List<UserSelfDto>> searchUsers(@RequestParam("search") @Size(max = 100) String search) {

@@ -89,8 +89,8 @@ public class CenterController {
     @GetMapping("/user/{userId}")
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<List<UserCenterGroupsDto>> userCenters(@PathVariable UUID userId) {
-        UserSalle user = userService.findByUserId(userId);
-        List<UserGroup> userGroups = centerService.getActiveUserGroupsForYear(user);
+        userService.findByUserId(userId);
+        List<UserGroup> userGroups = centerService.getActiveUserGroupsForCurrentYear(userId);
         return ResponseEntity.ok(userAssembler.toUserCenterGroupsDtos(userGroups));
     }
 

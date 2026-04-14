@@ -17,6 +17,23 @@ public interface UserCenterRepository extends JpaRepository<UserCenter, UUID> {
 
     List<UserCenter> findByUser_UuidAndYearAndDeletedAtIsNull(UUID userUuid, Integer year);
 
+    @Query("""
+        select distinct uc.center.uuid
+        from UserCenter uc
+        where uc.user.uuid = :userUuid
+          and uc.year = :year
+          and uc.deletedAt is null
+    """)
+    List<UUID> findDistinctCenterUuidsByUserUuidAndYear(@Param("userUuid") UUID userUuid,
+                                                        @Param("year") Integer year);
+
+    @Query("""
+        select uc.center.uuid
+        from UserCenter uc
+        where uc.uuid = :userCenterUuid
+    """)
+    Optional<UUID> findCenterUuidByUserCenterUuid(@Param("userCenterUuid") UUID userCenterUuid);
+
     boolean existsByUser_UuidAndCenter_UuidAndYearAndDeletedAtIsNullAndUserType(
             UUID userUuid, UUID centerUuid, Integer year, Integer userType
     );

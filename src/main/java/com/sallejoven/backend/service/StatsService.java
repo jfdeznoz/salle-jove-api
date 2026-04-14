@@ -10,6 +10,8 @@ import com.sallejoven.backend.repository.UserGroupRepository;
 import com.sallejoven.backend.repository.WeeklySessionUserRepository;
 import com.sallejoven.backend.repository.projection.AttendanceTotalsProjection;
 import com.sallejoven.backend.repository.projection.CenterGroupSessionRateProjection;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -38,19 +40,20 @@ public class StatsService {
     public UserAttendanceStatsDto getUserAttendanceStats(UUID userUuid, Integer year) {
         userService.findByUserId(userUuid);
         int resolvedYear = resolveYear(year);
+        LocalDateTime startOfToday = startOfTodayMadrid();
 
-        var sessionStats = weeklySessionUserRepository.findUserAttendanceStats(userUuid, resolvedYear);
+        var sessionStats = weeklySessionUserRepository.findUserAttendanceStats(userUuid, resolvedYear, startOfToday);
         var eventStats = eventUserRepository.findUserAttendanceStats(userUuid, resolvedYear);
 
         List<UserAttendanceStatsDto.RecentSessionDto> recentSessions = weeklySessionUserRepository
-                .findRecentSessionsByUser(userUuid, resolvedYear, PageRequest.of(0, 50))
+                .findRecentSessionsByUser(userUuid, resolvedYear, startOfToday, PageRequest.of(0, 50))
                 .stream()
                 .map(row -> new UserAttendanceStatsDto.RecentSessionDto(
                         row.getDate(),
                         row.getTitle(),
                         row.getVitalSituationTitle(),
                         row.getVitalSituationSessionTitle(),
-                        Boolean.TRUE.equals(row.getAttended()),
+                        row.getAttended(),
                         Boolean.TRUE.equals(row.getJustified())))
                 .toList();
 
@@ -79,6 +82,7 @@ public class StatsService {
     public GroupAttendanceStatsDto getGroupAttendanceStats(UUID groupUuid, Integer year) {
         groupService.findById(groupUuid);
         int resolvedYear = resolveYear(year);
+        LocalDateTime startOfToday = startOfTodayMadrid();
 
         List<GroupAttendanceStatsDto.SessionSummaryDto> sessions = weeklySessionUserRepository
                 .findGroupSessionSummaries(groupUuid, resolvedYear)
@@ -94,7 +98,7 @@ public class StatsService {
                 .toList();
 
         List<GroupAttendanceStatsDto.MemberAttendanceDto> members = weeklySessionUserRepository
-                .findGroupMemberAttendance(groupUuid, resolvedYear)
+                .findGroupMemberAttendance(groupUuid, resolvedYear, startOfToday)
                 .stream()
                 .map(row -> new GroupAttendanceStatsDto.MemberAttendanceDto(
                         row.getUserUuid(),
@@ -111,9 +115,10 @@ public class StatsService {
     public CenterAttendanceStatsDto getCenterAttendanceStats(UUID centerUuid, Integer year) {
         centerService.findById(centerUuid);
         int resolvedYear = resolveYear(year);
+        LocalDateTime startOfToday = startOfTodayMadrid();
 
         Map<UUID, GroupRateAccumulator> grouped = new LinkedHashMap<>();
-        for (CenterGroupSessionRateProjection row : weeklySessionUserRepository.findCenterGroupSessionRates(centerUuid, resolvedYear)) {
+        for (CenterGroupSessionRateProjection row : weeklySessionUserRepository.findCenterGroupSessionRates(centerUuid, resolvedYear, startOfToday)) {
             GroupRateAccumulator accumulator = grouped.computeIfAbsent(
                     row.getGroupUuid(),
                     ignored -> new GroupRateAccumulator(row.getStage()));
@@ -131,16 +136,17 @@ public class StatsService {
                         Comparator.nullsLast(Integer::compareTo)))
                 .toList();
 
-        AttendanceTotalsProjection overallTotals = weeklySessionUserRepository.findCenterAttendanceTotals(centerUuid, resolvedYear);
+        AttendanceTotalsProjection overallTotals = weeklySessionUserRepository.findCenterAttendanceTotals(centerUuid, resolvedYear, startOfToday);
         return new CenterAttendanceStatsDto(groups, rate(overallTotals == null ? null : overallTotals.getAttended(),
                 overallTotals == null ? null : overallTotals.getTotal()));
     }
 
     public AdminOverviewDto getAdminOverview(Integer year) {
         int resolvedYear = resolveYear(year);
+        LocalDateTime startOfToday = startOfTodayMadrid();
 
         List<AdminOverviewDto.CenterOverviewDto> centers = centerService.getAllCentersWithGroups().stream()
-                .map(center -> buildCenterOverview(center, resolvedYear))
+                .map(center -> buildCenterOverview(center, resolvedYear, startOfToday))
                 .toList();
 
         List<AdminOverviewDto.CenterOverviewDto> topCenters = centers.stream()
@@ -157,7 +163,7 @@ public class StatsService {
                 .limit(5)
                 .toList();
 
-        AttendanceTotalsProjection globalSessionTotals = weeklySessionUserRepository.findGlobalAttendanceTotals(resolvedYear);
+        AttendanceTotalsProjection globalSessionTotals = weeklySessionUserRepository.findGlobalAttendanceTotals(resolvedYear, startOfToday);
         AttendanceTotalsProjection globalEventTotals = eventUserRepository.findGlobalAttendanceTotals(resolvedYear);
 
         return new AdminOverviewDto(
@@ -174,11 +180,11 @@ public class StatsService {
         );
     }
 
-    private AdminOverviewDto.CenterOverviewDto buildCenterOverview(Center center, int year) {
+    private AdminOverviewDto.CenterOverviewDto buildCenterOverview(Center center, int year, LocalDateTime startOfToday) {
         int groupCount = userGroupRepository.findDistinctGroupUuidsByCenterUuidAndYear(center.getUuid(), year).size();
         int memberCount = toInt(userGroupRepository.countDistinctUsersByCenterUuidAndYear(center.getUuid(), year));
 
-        AttendanceTotalsProjection sessionTotals = weeklySessionUserRepository.findCenterAttendanceTotals(center.getUuid(), year);
+        AttendanceTotalsProjection sessionTotals = weeklySessionUserRepository.findCenterAttendanceTotals(center.getUuid(), year, startOfToday);
         AttendanceTotalsProjection eventTotals = eventUserRepository.findCenterAttendanceTotals(center.getUuid(), year);
 
         return new AdminOverviewDto.CenterOverviewDto(
@@ -207,6 +213,12 @@ public class StatsService {
 
     private int resolveYear(Integer year) {
         return year == null ? academicStateService.getVisibleYear() : year;
+    }
+
+    private LocalDateTime startOfTodayMadrid() {
+        return java.time.ZonedDateTime.now(ZoneId.of("Europe/Madrid"))
+                .toLocalDate()
+                .atStartOfDay();
     }
 
     private static final class GroupRateAccumulator {

@@ -4,6 +4,7 @@ import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.mapper.VitalSituationMapper;
 import com.sallejoven.backend.model.dto.VitalSituationDto;
 import com.sallejoven.backend.model.dto.VitalSituationSessionDto;
+import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.VitalSituation;
 import com.sallejoven.backend.model.entity.VitalSituationSession;
 import com.sallejoven.backend.model.enums.ErrorCodes;
@@ -11,6 +12,7 @@ import com.sallejoven.backend.model.requestDto.VitalSituationEditRequest;
 import com.sallejoven.backend.model.requestDto.VitalSituationRequest;
 import com.sallejoven.backend.model.requestDto.VitalSituationSessionEditRequest;
 import com.sallejoven.backend.model.requestDto.VitalSituationSessionRequest;
+import com.sallejoven.backend.repository.GroupRepository;
 import com.sallejoven.backend.repository.VitalSituationRepository;
 import com.sallejoven.backend.repository.VitalSituationSessionRepository;
 import com.sallejoven.backend.utils.ReferenceParser;
@@ -31,6 +33,7 @@ public class VitalSituationService {
 
     private final VitalSituationRepository vitalSituationRepository;
     private final VitalSituationSessionRepository vitalSituationSessionRepository;
+    private final GroupRepository groupRepository;
     private final S3V2Service s3v2Service;
     private final VitalSituationMapper vitalSituationMapper;
 
@@ -40,6 +43,14 @@ public class VitalSituationService {
 
     public List<VitalSituationDto> findByStage(Integer stage) {
         return vitalSituationRepository.findByStage(stage).stream().map(this::toDto).collect(Collectors.toList());
+    }
+
+    public List<VitalSituationDto> findByGroupReference(String groupReference) {
+        UUID groupUuid = ReferenceParser.asUuid(groupReference)
+                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+        GroupSalle group = groupRepository.findById(groupUuid)
+                .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+        return findByStage(group.getStage());
     }
 
     public Optional<VitalSituationDto> findById(UUID uuid) {

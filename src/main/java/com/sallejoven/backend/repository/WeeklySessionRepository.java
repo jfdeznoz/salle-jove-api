@@ -60,6 +60,23 @@ public interface WeeklySessionRepository extends JpaRepository<WeeklySession, UU
     @Query("SELECT ws FROM WeeklySession ws WHERE ws.uuid = :uuid AND ws.deletedAt IS NULL")
     Optional<WeeklySession> findById(@Param("uuid") UUID uuid);
 
+    interface AuthView {
+        UUID getUuid();
+        Integer getStatus();
+        UUID getGroupUuid();
+        UUID getCenterUuid();
+    }
+
+    @Query("""
+        SELECT ws.uuid AS uuid,
+               ws.status AS status,
+               ws.group.uuid AS groupUuid,
+               ws.group.center.uuid AS centerUuid
+        FROM WeeklySession ws
+        WHERE ws.uuid = :uuid AND ws.deletedAt IS NULL
+    """)
+    Optional<AuthView> findAuthViewByUuid(@Param("uuid") UUID uuid);
+
     @Modifying
     @Query("UPDATE WeeklySession ws SET ws.deletedAt = CURRENT_TIMESTAMP WHERE ws.uuid = :sessionUuid")
     void softDeleteSession(@Param("sessionUuid") UUID sessionUuid);

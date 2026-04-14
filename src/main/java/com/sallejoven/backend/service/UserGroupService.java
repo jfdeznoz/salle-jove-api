@@ -12,7 +12,10 @@ import com.sallejoven.backend.repository.UserRepository;
 import com.sallejoven.backend.repository.projection.SeguroRow;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -106,6 +109,38 @@ public class UserGroupService {
         );
     }
 
+    public List<UserGroup> findByUserForCurrentYear(UUID userUuid) {
+        return userGroupRepository.findByUser_UuidAndYearAndDeletedAtIsNull(
+                userUuid,
+                academicStateService.getVisibleYear()
+        );
+    }
+
+    public Map<UUID, Integer> findActiveRoleMapForGroup(UUID groupUuid, Collection<UUID> userUuids) {
+        if (groupUuid == null || userUuids == null || userUuids.isEmpty()) {
+            return Map.of();
+        }
+
+        return userGroupRepository.findByGroup_UuidAndYearAndDeletedAtIsNullAndUser_UuidIn(
+                        groupUuid,
+                        academicStateService.getVisibleYear(),
+                        userUuids)
+                .stream()
+                .filter(userGroup -> userGroup.getUser() != null && userGroup.getUser().getUuid() != null)
+                .collect(Collectors.toMap(
+                        userGroup -> userGroup.getUser().getUuid(),
+                        userGroup -> normalizeGroupUserType(userGroup.getUserType()),
+                        (left, right) -> left
+                ));
+    }
+
+    public int normalizeGroupUserType(Integer userType) {
+        if (Integer.valueOf(5).equals(userType)) {
+            return 1;
+        }
+        return userType != null ? userType : 0;
+    }
+
     public boolean existsActiveForUserInYear(UUID userUuid, int year) {
         return userGroupRepository.existsByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year);
     }
@@ -156,7 +191,8 @@ public class UserGroupService {
 
     @Transactional
     public UserGroup addUserToGroup(UUID userUuid, UUID groupUuid, int userType) {
-        if (userType != 0 && userType != 1 && userType != 5) {
+        int normalizedUserType = normalizeGroupUserType(userType);
+        if (normalizedUserType != 0 && normalizedUserType != 1) {
             throw new SalleException(ErrorCodes.USER_TYPE_NOT_VALID);
         }
 
@@ -172,7 +208,7 @@ public class UserGroupService {
             if (wasSoftDeleted) {
                 existing.setDeletedAt(null);
             }
-            existing.setUserType(userType);
+            existing.setUserType(normalizedUserType);
             if (wasSoftDeleted) {
                 eventUserService.assignFutureGroupEventsToUser(existing.getUser(), group);
             }
@@ -185,7 +221,7 @@ public class UserGroupService {
         UserGroup newUserGroup = UserGroup.builder()
                 .user(user)
                 .group(group)
-                .userType(userType)
+                .userType(normalizedUserType)
                 .year(year)
                 .build();
         userGroupRepository.save(newUserGroup);
@@ -206,7 +242,8 @@ public class UserGroupService {
 
     @Transactional
     public void changeRoleByUserAndGroup(UUID userUuid, UUID groupUuid, int newUserType) {
-        if (newUserType != 0 && newUserType != 1 && newUserType != 5) {
+        int normalizedUserType = normalizeGroupUserType(newUserType);
+        if (normalizedUserType != 0 && normalizedUserType != 1) {
             throw new SalleException(ErrorCodes.USER_TYPE_NOT_VALID);
         }
 
@@ -215,7 +252,7 @@ public class UserGroupService {
                 .findByUser_UuidAndGroup_UuidAndYearAndDeletedAtIsNull(userUuid, groupUuid, year)
                 .orElseThrow(() -> new SalleException(ErrorCodes.USER_GROUP_NOT_ASSIGNED));
 
-        userGroup.setUserType(newUserType);
+        userGroup.setUserType(normalizedUserType);
     }
 
     public List<SeguroRow> findSeguroRowsForCurrentYear() {

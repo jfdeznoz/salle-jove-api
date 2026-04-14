@@ -43,9 +43,9 @@ public class WeeklySessionUser {
     @JoinColumn(name = "user_uuid", nullable = false, referencedColumnName = "uuid")
     private UserSalle user;
 
-    /** 0=NO_ATTENDS, 1=ATTENDS */
-    @Column(nullable = false)
-    private int status;
+    /** null=PENDING, 0=NO_ATTENDS, 1=ATTENDS */
+    @Column(nullable = true)
+    private Integer status;
 
     @Column(nullable = false)
     @Builder.Default

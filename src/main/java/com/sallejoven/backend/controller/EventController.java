@@ -14,6 +14,7 @@ import com.sallejoven.backend.model.requestDto.FinalizeUploadsReq;
 import com.sallejoven.backend.model.requestDto.ToggleBlockedRequest;
 import com.sallejoven.backend.service.CenterService;
 import com.sallejoven.backend.service.EventService;
+import com.sallejoven.backend.service.UserGroupService;
 import com.sallejoven.backend.service.EventUserService;
 import com.sallejoven.backend.service.GroupService;
 import com.sallejoven.backend.service.S3V2Service;
@@ -53,6 +54,7 @@ public class EventController {
     private final EventAssembler eventAssembler;
     private final ParticipantMapper participantMapper;
     private final S3V2Service s3v2Service;
+    private final UserGroupService userGroupService;
 
     @GetMapping("/paged")
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
@@ -143,7 +145,18 @@ public class EventController {
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<List<ParticipantDto>> getParticipantsByGroupAndEvent(@RequestParam UUID eventId, @RequestParam UUID groupId) {
         List<EventUser> eventUsers = eventUserService.findByEventIdAndGroupId(eventId, groupId);
-        return ResponseEntity.ok(eventUsers.stream().map(participantMapper::fromEventUser).collect(Collectors.toList()));
+        var userTypes = userGroupService.findActiveRoleMapForGroup(
+                groupId,
+                eventUsers.stream()
+                        .map(eventUser -> eventUser.getUser() != null ? eventUser.getUser().getUuid() : null)
+                        .filter(java.util.Objects::nonNull)
+                        .toList()
+        );
+        return ResponseEntity.ok(eventUsers.stream()
+                .map(eventUser -> participantMapper.fromEventUser(
+                        eventUser,
+                        userTypes.getOrDefault(eventUser.getUser().getUuid(), 0)))
+                .collect(Collectors.toList()));
     }
 
     @PreAuthorize("@authz.canManageEventGroupParticipants(#eventId, #groupId)")

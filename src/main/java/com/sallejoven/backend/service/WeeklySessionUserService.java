@@ -16,6 +16,7 @@ import java.time.ZoneId;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -44,15 +45,42 @@ public class WeeklySessionUserService {
     }
 
     public List<WeeklySessionUser> findBySessionIdAndGroupId(UUID sessionUuid, UUID groupUuid) {
-        return weeklySessionUserRepository.findBySessionUuidAndGroupUuid(
-                sessionUuid,
-                groupUuid,
-                academicStateService.getVisibleYear()
-        );
+        int year = academicStateService.getVisibleYear();
+        List<WeeklySessionUser> sessionUsers = weeklySessionUserRepository.findBySessionUuidOrdered(sessionUuid)
+                .stream()
+                .filter(sessionUser -> sessionUser.getWeeklySession() != null
+                        && sessionUser.getWeeklySession().getGroup() != null
+                        && groupUuid.equals(sessionUser.getWeeklySession().getGroup().getUuid()))
+                .toList();
+
+        if (sessionUsers.isEmpty()) {
+            return List.of();
+        }
+
+        Set<UUID> participantUserUuids = userGroupRepository
+                .findByGroup_UuidAndYearAndDeletedAtIsNullAndUser_UuidIn(
+                        groupUuid,
+                        year,
+                        sessionUsers.stream()
+                                .map(WeeklySessionUser::getUser)
+                                .filter(user -> user != null && user.getUuid() != null)
+                                .map(user -> user.getUuid())
+                                .toList())
+                .stream()
+                .filter(userGroup -> Integer.valueOf(0).equals(userGroup.getUserType()))
+                .map(UserGroup::getUser)
+                .filter(user -> user != null && user.getUuid() != null)
+                .map(user -> user.getUuid())
+                .collect(java.util.stream.Collectors.toSet());
+
+        return sessionUsers.stream()
+                .filter(sessionUser -> sessionUser.getUser() != null
+                        && participantUserUuids.contains(sessionUser.getUser().getUuid()))
+                .toList();
     }
 
     public List<WeeklySessionUser> findBySessionIdOrdered(UUID sessionUuid) {
-        return weeklySessionUserRepository.findBySessionUuidOrdered(sessionUuid, academicStateService.getVisibleYear());
+        return weeklySessionUserRepository.findBySessionUuidOrdered(sessionUuid);
     }
 
     @Transactional
@@ -77,7 +105,7 @@ public class WeeklySessionUserService {
         WeeklySessionUser sessionUser = WeeklySessionUser.builder()
                 .weeklySession(session)
                 .user(userGroup.getUser())
-                .status(0)
+                .status(null)
                 .build();
         return weeklySessionUserRepository.save(sessionUser);
     }
@@ -96,7 +124,7 @@ public class WeeklySessionUserService {
                 .map(userGroup -> WeeklySessionUser.builder()
                         .weeklySession(session)
                         .user(userGroup.getUser())
-                        .status(0)
+                        .status(null)
                         .build())
                 .toList();
 
@@ -106,7 +134,7 @@ public class WeeklySessionUserService {
     }
 
     @Transactional
-    public int updateAttendanceForUserInGroup(UUID sessionUuid, UUID userUuid, UUID groupUuid, int status) {
+    public int updateAttendanceForUserInGroup(UUID sessionUuid, UUID userUuid, UUID groupUuid, Integer status) {
         return weeklySessionUserRepository.updateStatusBySessionUserAndGroup(
                 sessionUuid,
                 userUuid,
@@ -123,30 +151,31 @@ public class WeeklySessionUserService {
         }
         WeeklySession session = weeklySessionRepository.findById(sessionUuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.WEEKLY_SESSION_NOT_FOUND));
+        int year = academicStateService.getVisibleYear();
 
         ensureAttendanceEditable(session);
 
         for (AttendanceUpdateDto dto : updates) {
             dto.validate();
+            validateWeeklyAttendanceUpdate(dto);
             UUID userUuid = resolveUserUuid(dto);
             if (userUuid == null) {
                 throw new SalleException(ErrorCodes.USER_NOT_FOUND);
             }
 
-            WeeklySessionUser sessionUser = weeklySessionUserRepository.findBySessionUserAndGroup(
+            boolean isParticipantInGroup = userGroupRepository.findActiveByUserGroupYear(userUuid, groupUuid, year)
+                    .map(userGroup -> Integer.valueOf(0).equals(userGroup.getUserType()))
+                    .orElse(false);
+            if (!isParticipantInGroup) {
+                throw new SalleException(ErrorCodes.USER_NOT_FOUND);
+            }
+
+            WeeklySessionUser sessionUser = weeklySessionUserRepository.findBySessionUuidAndUserUuid(
                             sessionUuid,
-                            userUuid,
-                            groupUuid,
-                            academicStateService.getVisibleYear())
+                            userUuid)
                     .orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
 
-            sessionUser.setStatus(dto.getAttends());
-            if (dto.getJustified() != null) {
-                sessionUser.setJustified(dto.getJustified());
-            }
-            if (dto.getJustificationReason() != null || Boolean.FALSE.equals(dto.getJustified())) {
-                sessionUser.setJustificationReason(dto.getJustificationReason());
-            }
+            applyWeeklyAttendanceUpdate(sessionUser, dto);
 
             weeklySessionUserRepository.save(sessionUser);
         }
@@ -172,6 +201,41 @@ public class WeeklySessionUserService {
             return ReferenceParser.asUuid(dto.getUserUuid()).orElse(null);
         }
         return null;
+    }
+
+    private void validateWeeklyAttendanceUpdate(AttendanceUpdateDto dto) {
+        if (Boolean.TRUE.equals(dto.getJustified())) {
+            if (!Integer.valueOf(0).equals(dto.getAttends())) {
+                throw new SalleException(ErrorCodes.STATUS_PARTICIPANT_ERROR);
+            }
+            if (dto.getJustificationReason() == null || dto.getJustificationReason().trim().isEmpty()) {
+                throw new SalleException(ErrorCodes.STATUS_PARTICIPANT_ERROR);
+            }
+        }
+    }
+
+    private void applyWeeklyAttendanceUpdate(WeeklySessionUser sessionUser, AttendanceUpdateDto dto) {
+        Integer attends = dto.getAttends();
+
+        if (attends == null) {
+            sessionUser.setStatus(null);
+            sessionUser.setJustified(false);
+            sessionUser.setJustificationReason(null);
+            return;
+        }
+
+        if (attends == 1) {
+            sessionUser.setStatus(1);
+            sessionUser.setJustified(false);
+            sessionUser.setJustificationReason(null);
+            return;
+        }
+
+        sessionUser.setStatus(0);
+        sessionUser.setJustified(Boolean.TRUE.equals(dto.getJustified()));
+        sessionUser.setJustificationReason(Boolean.TRUE.equals(dto.getJustified())
+                ? dto.getJustificationReason().trim()
+                : null);
     }
 
     private void ensureAttendanceEditable(WeeklySession session) {

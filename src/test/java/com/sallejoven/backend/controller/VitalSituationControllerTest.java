@@ -9,6 +9,7 @@ import com.sallejoven.backend.model.entity.VitalSituationSession;
 import com.sallejoven.backend.service.S3V2Service;
 import com.sallejoven.backend.service.VitalSituationService;
 import java.util.Map;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,7 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -45,6 +47,63 @@ class VitalSituationControllerTest {
     @MockitoBean VitalSituationService vitalSituationService;
     @MockitoBean S3V2Service s3v2Service;
     @MockitoBean(name = "authz") AuthzBean authz;
+
+    @Test
+    @WithMockUser
+    void getAllVitalSituations_returnsForbidden_whenReadAuthorizationFails() throws Exception {
+        when(authz.canViewVitalSituations(null)).thenReturn(false);
+
+        mockMvc.perform(get("/api/vital-situations"))
+                .andExpect(status().isForbidden());
+
+        verify(authz).canViewVitalSituations(null);
+        verifyNoMoreInteractions(authz, vitalSituationService, s3v2Service);
+    }
+
+    @Test
+    @WithMockUser
+    void getAllVitalSituations_filtersByGroupUuid_whenProvided() throws Exception {
+        UUID groupUuid = UUID.randomUUID();
+        UUID vsUuid = UUID.randomUUID();
+        when(authz.canViewVitalSituations(groupUuid.toString())).thenReturn(true);
+        when(vitalSituationService.findByGroupReference(groupUuid.toString())).thenReturn(List.of(
+                new VitalSituationDto(vsUuid, "Jerusalen", new Integer[]{8}, false)));
+
+        mockMvc.perform(get("/api/vital-situations").param("groupUuid", groupUuid.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].uuid").value(vsUuid.toString()))
+                .andExpect(jsonPath("$[0].stages[0]").value(8));
+
+        verify(authz).canViewVitalSituations(groupUuid.toString());
+        verify(vitalSituationService).findByGroupReference(groupUuid.toString());
+        verifyNoMoreInteractions(authz, vitalSituationService, s3v2Service);
+    }
+
+    @Test
+    @WithMockUser
+    void getVitalSituationById_returnsForbidden_whenReadAuthorizationFails() throws Exception {
+        UUID uuid = UUID.randomUUID();
+        when(authz.canViewVitalSituation(uuid.toString())).thenReturn(false);
+
+        mockMvc.perform(get("/api/vital-situations/{uuid}", uuid))
+                .andExpect(status().isForbidden());
+
+        verify(authz).canViewVitalSituation(uuid.toString());
+        verifyNoMoreInteractions(authz, vitalSituationService, s3v2Service);
+    }
+
+    @Test
+    @WithMockUser
+    void getSessionsByVitalSituation_returnsForbidden_whenReadAuthorizationFails() throws Exception {
+        UUID uuid = UUID.randomUUID();
+        when(authz.canViewVitalSituationSession(uuid.toString())).thenReturn(false);
+
+        mockMvc.perform(get("/api/vital-situations/{uuid}/sessions", uuid))
+                .andExpect(status().isForbidden());
+
+        verify(authz).canViewVitalSituationSession(uuid.toString());
+        verifyNoMoreInteractions(authz, vitalSituationService, s3v2Service);
+    }
 
     @Test
     @WithMockUser

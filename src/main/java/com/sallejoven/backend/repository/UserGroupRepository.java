@@ -85,6 +85,26 @@ public interface UserGroupRepository extends JpaRepository<UserGroup, UUID> {
 
     List<UserGroup> findByUser_UuidAndYearAndDeletedAtIsNull(UUID userUuid, Integer year);
 
+    @Query("""
+        select distinct ug.group.uuid
+        from UserGroup ug
+        where ug.user.uuid = :userUuid
+          and ug.year = :year
+          and ug.deletedAt is null
+    """)
+    List<UUID> findDistinctGroupUuidsByUserUuidAndYear(@Param("userUuid") UUID userUuid,
+                                                       @Param("year") Integer year);
+
+    @Query("""
+        select distinct ug.group.center.uuid
+        from UserGroup ug
+        where ug.user.uuid = :userUuid
+          and ug.year = :year
+          and ug.deletedAt is null
+    """)
+    List<UUID> findDistinctCenterUuidsByUserUuidAndYear(@Param("userUuid") UUID userUuid,
+                                                        @Param("year") Integer year);
+
     @Query("SELECT DISTINCT ug.group.uuid FROM UserGroup ug WHERE ug.group.center.uuid = :centerUuid AND ug.year = :year AND ug.deletedAt IS NULL")
     List<UUID> findDistinctGroupUuidsByCenterUuidAndYear(@Param("centerUuid") UUID centerUuid,
                                                          @Param("year") Integer year);
@@ -133,6 +153,10 @@ public interface UserGroupRepository extends JpaRepository<UserGroup, UUID> {
     List<UserGroup> findByUser_UuidAndYearAndDeletedAtIsNullAndUserType(UUID userUuid,
                                                                         Integer year,
                                                                         Integer userType);
+
+    List<UserGroup> findByGroup_UuidAndYearAndDeletedAtIsNullAndUser_UuidIn(UUID groupUuid,
+                                                                             Integer year,
+                                                                             Collection<UUID> userUuids);
 
     boolean existsByUser_UuidAndYearAndDeletedAtIsNullAndUserType(UUID userUuid, Integer year, Integer userType);
 

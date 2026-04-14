@@ -70,20 +70,16 @@ public class WeeklySessionController {
 
     @PreAuthorize("@authz.canCreateWeeklySession(#request)")
     @PostMapping(value = "/", consumes = MediaType.APPLICATION_JSON_VALUE)
-    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<WeeklySessionDto> createWeeklySession(@Valid @RequestBody WeeklySessionRequest request) {
-        WeeklySession session = weeklySessionService.saveWeeklySession(request);
-        return ResponseEntity.ok(weeklySessionService.toDto(session));
+        return ResponseEntity.ok(weeklySessionService.saveWeeklySession(request));
     }
 
     @PreAuthorize("@authz.canManageWeeklySessionForEditOrDelete(#sessionUuid)")
     @PutMapping(value = "/{sessionUuid}", consumes = MediaType.APPLICATION_JSON_VALUE)
-    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<WeeklySessionDto> editWeeklySession(
             @PathVariable UUID sessionUuid,
             @Valid @RequestBody WeeklySessionEditRequest request) {
-        WeeklySession session = weeklySessionService.editWeeklySession(sessionUuid, request);
-        return ResponseEntity.ok(weeklySessionService.toDto(session));
+        return ResponseEntity.ok(weeklySessionService.editWeeklySession(sessionUuid, request));
     }
 
     @PreAuthorize("@authz.canManageWeeklySessionForEditOrDelete(#sessionUuid)")
@@ -106,7 +102,7 @@ public class WeeklySessionController {
                 .orElseThrow(() -> new SalleException(ErrorCodes.WEEKLY_SESSION_NOT_FOUND));
         List<WeeklySessionUser> sessionUsers = weeklySessionUserService.findBySessionIdAndGroupId(sessionUuid, groupUuid);
         return ResponseEntity.ok(sessionUsers.stream()
-                .map(participantMapper::fromWeeklySessionUser)
+                .map(sessionUser -> participantMapper.fromWeeklySessionUser(sessionUser, 0))
                 .collect(Collectors.toList()));
     }
 
