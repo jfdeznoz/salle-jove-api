@@ -8,7 +8,6 @@ import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.entity.WeeklySession;
 import com.sallejoven.backend.model.enums.ErrorCodes;
 import java.time.LocalDateTime;
-import org.hibernate.LazyInitializationException;
 import com.sallejoven.backend.repository.CenterRepository;
 import com.sallejoven.backend.repository.EventGroupRepository;
 import com.sallejoven.backend.repository.GroupRepository;
@@ -299,11 +298,9 @@ class AuthzBeanTest {
 
         GroupSalle detachedLazyGroup = mock(GroupSalle.class);
         when(detachedLazyGroup.getUuid()).thenReturn(groupUuid);
-        when(detachedLazyGroup.getCenter()).thenThrow(new LazyInitializationException("no session"));
 
         WeeklySession session = mock(WeeklySession.class);
         when(session.getGroup()).thenReturn(detachedLazyGroup);
-        when(session.getStatus()).thenReturn(1);
 
         when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
         when(weeklySessionService.findById(sessionUuid)).thenReturn(Optional.of(session));
