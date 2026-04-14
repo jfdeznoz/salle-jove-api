@@ -167,12 +167,7 @@ public class AuthService {
     }
 
     private void saveUserRefreshToken(UserSalle userInfoEntity, String refreshToken) {
-        var refreshTokenEntity = RefreshToken.builder()
-                .user(userInfoEntity)
-                .token(refreshToken)
-                .revoked(false)
-                .build();
-        refreshTokenEntity.setId(null);
+        var refreshTokenEntity = RefreshToken.issue(userInfoEntity, refreshToken);
         refreshTokenRepo.save(refreshTokenEntity);
     }
 

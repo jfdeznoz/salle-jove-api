@@ -55,4 +55,13 @@ public class RefreshToken {
         this.uuid = id;
     }
 
+    public static RefreshToken issue(UserSalle user, String token) {
+        return RefreshToken.builder()
+                .uuid(UUID.randomUUID())
+                .user(user)
+                .token(token)
+                .revoked(false)
+                .build();
+    }
+
 }
