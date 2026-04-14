@@ -3,21 +3,23 @@ package com.sallejoven.backend.model.entity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.time.LocalDateTime;
-import com.fasterxml.jackson.annotation.JsonFormat;
+import java.util.UUID;
 
-@Data
+@Getter
+@Setter
+@EqualsAndHashCode(of = "uuid")
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -26,11 +28,11 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 public class VitalSituationSession {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "uuid", nullable = false, unique = true, updatable = false, columnDefinition = "uuid")
+    private UUID uuid;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "vital_situation_id", nullable = false)
+    @JoinColumn(name = "vital_situation_uuid", nullable = false, referencedColumnName = "uuid")
     private VitalSituation vitalSituation;
 
     @Column(nullable = false)
@@ -44,7 +46,20 @@ public class VitalSituationSession {
     private Boolean isDefault = false;
 
     @Column(name = "deleted_at")
-    @JsonFormat(pattern="yyyy-MM-dd HH:mm:ss")
     private LocalDateTime deletedAt;
-}
 
+    @jakarta.persistence.PrePersist
+    private void ensureUuid() {
+        if (uuid == null) {
+            uuid = UUID.randomUUID();
+        }
+    }
+
+    public UUID getId() {
+        return uuid;
+    }
+
+    public void setId(UUID id) {
+        this.uuid = id;
+    }
+}

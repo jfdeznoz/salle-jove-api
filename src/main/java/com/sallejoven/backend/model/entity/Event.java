@@ -2,20 +2,22 @@ package com.sallejoven.backend.model.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import com.fasterxml.jackson.annotation.JsonFormat;
+import java.util.UUID;
 
-@Data
+@Getter
+@Setter
+@EqualsAndHashCode(of = "uuid")
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -24,8 +26,8 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 public class Event {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "uuid", nullable = false, unique = true, updatable = false, columnDefinition = "uuid")
+    private UUID uuid;
 
     @Column(nullable = false)
     private String name;
@@ -34,11 +36,9 @@ public class Event {
     private String description;
 
     @Column(name = "event_date", nullable = false)
-    @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate eventDate;
 
     @Column(name = "end_date")
-    @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate endDate;
 
     private Boolean divided;
@@ -55,7 +55,6 @@ public class Event {
     private Integer[] stages;
 
     @Column(name = "deleted_at")
-    @JsonFormat(pattern="yyyy-MM-dd HH:mm:ss")
     private LocalDateTime deletedAt;
 
     @Column(name = "is_general")
@@ -63,4 +62,19 @@ public class Event {
 
     @Column(name = "is_blocked")
     private Boolean isBlocked;
+
+    @jakarta.persistence.PrePersist
+    private void ensureUuid() {
+        if (uuid == null) {
+            uuid = UUID.randomUUID();
+        }
+    }
+
+    public UUID getId() {
+        return uuid;
+    }
+
+    public void setId(UUID id) {
+        this.uuid = id;
+    }
 }

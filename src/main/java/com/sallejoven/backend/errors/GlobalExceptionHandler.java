@@ -86,7 +86,7 @@ public class GlobalExceptionHandler {
         Error out = new Error(HttpStatus.CONFLICT);
         out.setMessage("Data conflict");
         out.setPath(req.getRequestURI());
-        out.setDebugMessage(safe(mostSpecific(ex)));
+        out.setDebugMessage(null);
         log.error("409 Data conflict on {}: {}", req.getRequestURI(), mostSpecific(ex));
         return out;
     }
@@ -124,7 +124,7 @@ public class GlobalExceptionHandler {
         Error out = new Error(HttpStatus.INTERNAL_SERVER_ERROR);
         out.setMessage("Internal Server Error");
         out.setPath(req.getRequestURI());
-        out.setDebugMessage(safe(ex.getMessage())); // si prefieres, pon null en prod
+        out.setDebugMessage(null);
         log.error("500 Unhandled exception on {}: {}", req.getRequestURI(), ex.getMessage(), ex);
         return out;
     }

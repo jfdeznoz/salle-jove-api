@@ -15,4 +15,7 @@ import lombok.experimental.SuperBuilder;
 @AllArgsConstructor
 public class UserSelfDto extends BaseUserDto {
     private Role rol;
+    // Enriched fields — only populated in search results
+    private String centerName;
+    private java.util.List<String> groupNames;
 }

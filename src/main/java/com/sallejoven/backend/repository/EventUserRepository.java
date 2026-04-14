@@ -1,13 +1,12 @@
 package com.sallejoven.backend.repository;
 
 import com.sallejoven.backend.model.entity.EventUser;
-
+import com.sallejoven.backend.repository.projection.AttendanceTotalsProjection;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
-
-import jakarta.transaction.Transactional;
+import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -15,128 +14,238 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface EventUserRepository extends JpaRepository<EventUser, Long> {
-    @Query("""
-        SELECT eu
-        FROM EventUser eu
-        JOIN eu.userGroup ug
-        JOIN ug.group g
-        JOIN ug.user u
-        WHERE eu.event.id = :eventId
-          AND g.id = :groupId
-          AND eu.deletedAt IS NULL
-          AND u.deletedAt IS NULL
-    """)
-    List<EventUser> findByEventIdAndGroupId(@Param("eventId") Long eventId,
-                                            @Param("groupId") Long groupId);
+public interface EventUserRepository extends JpaRepository<EventUser, UUID> {
 
-    /*@Query("""
+    @Query("""
         SELECT DISTINCT eu
         FROM EventUser eu
-        JOIN eu.userGroup ug
-        JOIN ug.user u
-        JOIN ug.group g
-        WHERE eu.event.id  = :eventId
+        JOIN UserGroup ug
+          ON ug.user.uuid = eu.user.uuid
+         AND ug.group.uuid = :groupUuid
+         AND ug.year = :year
+         AND ug.deletedAt IS NULL
+        WHERE eu.event.uuid = :eventUuid
           AND eu.deletedAt IS NULL
-          AND u.deletedAt  IS NULL
-          AND eu.status    = 1
+          AND eu.user.deletedAt IS NULL
+    """)
+    List<EventUser> findByEventUuidAndGroupUuid(@Param("eventUuid") UUID eventUuid,
+                                                @Param("groupUuid") UUID groupUuid,
+                                                @Param("year") Integer year);
+
+    @Query("""
+        SELECT DISTINCT eu
+        FROM EventUser eu
+        JOIN UserGroup ug
+          ON ug.user.uuid = eu.user.uuid
+         AND ug.year = :year
+         AND ug.deletedAt IS NULL
+        JOIN ug.group g
+        WHERE eu.event.uuid = :eventUuid
+          AND eu.deletedAt IS NULL
+          AND eu.user.deletedAt IS NULL
         ORDER BY g.center.name ASC, g.stage ASC
     """)
-    List<EventUser> findConfirmedByEventIdOrdered(@Param("eventId") Long eventId);*/
+    List<EventUser> findByEventUuidOrdered(@Param("eventUuid") UUID eventUuid,
+                                           @Param("year") Integer year);
 
     @Query("""
         SELECT eu
         FROM EventUser eu
-        JOIN eu.userGroup ug
-        JOIN ug.user u
-        JOIN ug.group g
-        WHERE eu.event.id  = :eventId
-          AND eu.deletedAt IS NULL
-          AND u.deletedAt  IS NULL
-        ORDER BY g.center.name ASC, g.stage ASC
-    """)
-    List<EventUser> findByEventIdOrdered(@Param("eventId") Long eventId);
-
-    @Query("""
-        SELECT eu
-        FROM EventUser eu
-        WHERE eu.id = :id
+        WHERE eu.uuid = :uuid
           AND eu.deletedAt IS NULL
     """)
-    Optional<EventUser> findById(@Param("id") Long id);
+    Optional<EventUser> findById(@Param("uuid") UUID uuid);
 
     @Modifying
     @Query("""
         UPDATE EventUser eu
            SET eu.deletedAt = CURRENT_TIMESTAMP
-         WHERE eu.event.id = :eventId
+         WHERE eu.event.uuid = :eventUuid
            AND eu.deletedAt IS NULL
     """)
-    void softDeleteByEventId(@Param("eventId") Long eventId);
+    void softDeleteByEventUuid(@Param("eventUuid") UUID eventUuid);
 
     @Query("""
-        SELECT eu.userGroup.id
+        SELECT eu.user.uuid
         FROM EventUser eu
-        WHERE eu.event.id = :eventId
+        WHERE eu.event.uuid = :eventUuid
     """)
-    List<Long> findUserGroupIdsByEvent(@Param("eventId") Long eventId);
+    List<UUID> findUserUuidsByEvent(@Param("eventUuid") UUID eventUuid);
 
     @Modifying
     @Query("""
         UPDATE EventUser eu
            SET eu.status = :status
-         WHERE eu.event.id = :eventId
-           AND eu.userGroup.id IN (
-                SELECT ug.id
+         WHERE eu.event.uuid = :eventUuid
+           AND eu.user.uuid = :userUuid
+           AND eu.user.uuid IN (
+                SELECT ug.user.uuid
                 FROM UserGroup ug
-                WHERE ug.user.id  = :userId
-                  AND ug.group.id = :groupId
+                WHERE ug.user.uuid = :userUuid
+                  AND ug.group.uuid = :groupUuid
+                  AND ug.year = :year
+                  AND ug.deletedAt IS NULL
            )
            AND eu.deletedAt IS NULL
     """)
-    int updateStatusByEventUserAndGroup(@Param("eventId") Long eventId,
-                                        @Param("userId") Long userId,
-                                        @Param("groupId") Long groupId,
+    int updateStatusByEventUserAndGroup(@Param("eventUuid") UUID eventUuid,
+                                        @Param("userUuid") UUID userUuid,
+                                        @Param("groupUuid") UUID groupUuid,
+                                        @Param("year") Integer year,
                                         @Param("status") int status);
 
     @Modifying
     @Query("""
         UPDATE EventUser eu
            SET eu.deletedAt = CURRENT_TIMESTAMP
-         WHERE eu.event.id    = :eventId
-           AND eu.userGroup.id IN :userGroupIds
-           AND eu.deletedAt    IS NULL
+         WHERE eu.event.uuid = :eventUuid
+           AND eu.user.uuid IN :userUuids
+           AND eu.deletedAt IS NULL
     """)
-    int softDeleteByEventIdAndUserGroupIds(@Param("eventId") Long eventId,
-                                           @Param("userGroupIds") Collection<Long> userGroupIds);
+    int softDeleteByEventUuidAndUserUuids(@Param("eventUuid") UUID eventUuid,
+                                          @Param("userUuids") Collection<UUID> userUuids);
 
     @Modifying
-    @Query("UPDATE EventUser eu SET eu.deletedAt = :when WHERE eu.userGroup.id IN :ugIds AND eu.deletedAt IS NULL")
-    int softDeleteByUserGroupIdIn(@Param("ugIds") List<Long> ugIds, @Param("when") LocalDateTime when);
+    @Query("UPDATE EventUser eu SET eu.deletedAt = :when WHERE eu.user.uuid IN :userUuids AND eu.deletedAt IS NULL")
+    int softDeleteByUserUuidIn(@Param("userUuids") List<UUID> userUuids, @Param("when") LocalDateTime when);
 
-    // 1) IDs únicos (sin ORDER BY)
     @Query("""
-    select distinct eu.id
+    select eu.uuid
     from EventUser eu
-      join eu.userGroup ug
-      join ug.user u
-      join ug.group g
-    where eu.event.id  = :eventId
+    where eu.event.uuid = :eventUuid
       and eu.deletedAt is null
-      and u.deletedAt  is null
-      and eu.status    = 1
+      and eu.status = 1
 """)
-    List<Long> findConfirmedIds(@Param("eventId") Long eventId);
+    List<UUID> findConfirmedUuids(@Param("eventUuid") UUID eventUuid);
 
     @Query("""
-        select eu
+        select distinct eu
         from EventUser eu
-          join fetch eu.userGroup ug
-          join fetch ug.user u
-          join fetch ug.group g
-          join fetch g.center c
-        where eu.id in :ids
-        order by c.name asc, g.stage asc, coalesce(u.lastName,''), coalesce(u.name,''), eu.id
+        join UserGroup ug
+          on ug.user.uuid = eu.user.uuid
+         and ug.year = :year
+         and ug.deletedAt is null
+        join ug.group g
+        join g.center c
+        where eu.uuid in :uuids
+        order by c.name asc, g.stage asc, coalesce(eu.user.lastName,''), coalesce(eu.user.name,''), eu.uuid
     """)
-    List<EventUser> findByIdInFetchOrdered(@Param("ids") List<Long> ids);
+    List<EventUser> findByUuidInFetchOrdered(@Param("uuids") List<UUID> uuids,
+                                             @Param("year") Integer year);
+
+    @Query("""
+        SELECT COUNT(eu.uuid) AS total,
+               COALESCE(SUM(CASE WHEN eu.status = 1 THEN 1 ELSE 0 END), 0) AS attended
+        FROM EventUser eu
+        JOIN eu.user u
+        JOIN eu.event e
+        WHERE u.uuid = :userUuid
+          AND eu.deletedAt IS NULL
+          AND u.deletedAt IS NULL
+          AND e.deletedAt IS NULL
+          AND EXISTS (
+                SELECT 1
+                FROM UserGroup ug
+                JOIN EventGroup eg
+                  ON eg.groupSalle.uuid = ug.group.uuid
+                WHERE ug.user.uuid = u.uuid
+                  AND ug.year = :year
+                  AND ug.deletedAt IS NULL
+                  AND eg.event.uuid = e.uuid
+                  AND eg.deletedAt IS NULL
+          )
+    """)
+    AttendanceTotalsProjection findUserAttendanceStats(@Param("userUuid") UUID userUuid,
+                                                       @Param("year") Integer year);
+
+    @Query("""
+        SELECT COUNT(eu.uuid) AS total,
+               COALESCE(SUM(CASE WHEN eu.status = 1 THEN 1 ELSE 0 END), 0) AS attended
+        FROM EventUser eu
+        JOIN eu.user u
+        JOIN eu.event e
+        WHERE eu.deletedAt IS NULL
+          AND u.deletedAt IS NULL
+          AND e.deletedAt IS NULL
+          AND EXISTS (
+                SELECT 1
+                FROM UserGroup ug
+                JOIN EventGroup eg
+                  ON eg.groupSalle.uuid = ug.group.uuid
+                WHERE ug.user.uuid = u.uuid
+                  AND ug.year = :year
+                  AND ug.deletedAt IS NULL
+                  AND ug.group.center.uuid = :centerUuid
+                  AND eg.event.uuid = e.uuid
+                  AND eg.deletedAt IS NULL
+          )
+    """)
+    AttendanceTotalsProjection findCenterAttendanceTotals(@Param("centerUuid") UUID centerUuid,
+                                                          @Param("year") Integer year);
+
+    @Query("""
+        SELECT COUNT(eu.uuid) AS total,
+               COALESCE(SUM(CASE WHEN eu.status = 1 THEN 1 ELSE 0 END), 0) AS attended
+        FROM EventUser eu
+        JOIN eu.user u
+        JOIN eu.event e
+        WHERE eu.deletedAt IS NULL
+          AND u.deletedAt IS NULL
+          AND e.deletedAt IS NULL
+          AND EXISTS (
+                SELECT 1
+                FROM UserGroup ug
+                JOIN EventGroup eg
+                  ON eg.groupSalle.uuid = ug.group.uuid
+                WHERE ug.user.uuid = u.uuid
+                  AND ug.year = :year
+                  AND ug.deletedAt IS NULL
+                  AND eg.event.uuid = e.uuid
+                  AND eg.deletedAt IS NULL
+          )
+    """)
+    AttendanceTotalsProjection findGlobalAttendanceTotals(@Param("year") Integer year);
+
+    @Query("""
+        SELECT COUNT(DISTINCT e.uuid)
+        FROM EventUser eu
+        JOIN eu.event e
+        JOIN eu.user u
+        WHERE eu.deletedAt IS NULL
+          AND u.deletedAt IS NULL
+          AND e.deletedAt IS NULL
+          AND EXISTS (
+                SELECT 1
+                FROM UserGroup ug
+                JOIN EventGroup eg
+                  ON eg.groupSalle.uuid = ug.group.uuid
+                WHERE ug.user.uuid = u.uuid
+                  AND ug.year = :year
+                  AND ug.deletedAt IS NULL
+                  AND eg.event.uuid = e.uuid
+                  AND eg.deletedAt IS NULL
+          )
+    """)
+    Long countDistinctEventsByYear(@Param("year") Integer year);
+
+    @Query("select eu from EventUser eu where eu.user.uuid = :userUuid")
+    List<EventUser> findAllByUserIncludingDeleted(@Param("userUuid") UUID userUuid);
+
+    @Modifying
+    @Query("""
+        update EventUser eu
+           set eu.deletedAt = null
+         where eu.user.uuid = :userUuid
+           and eu.deletedAt is not null
+    """)
+    int reactivateByUser(@Param("userUuid") UUID userUuid);
+
+    @Query("""
+        select eu from EventUser eu
+         where eu.event.uuid = :eventUuid
+           and eu.user.uuid = :userUuid
+           and eu.deletedAt is null
+    """)
+    Optional<EventUser> findActiveByEventAndUser(@Param("eventUuid") UUID eventUuid,
+                                                 @Param("userUuid") UUID userUuid);
 }

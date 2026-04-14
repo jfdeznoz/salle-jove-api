@@ -8,13 +8,14 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
 import java.util.Date;
+import java.util.UUID;
 
 @Data
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 public abstract class BaseUserDto {
-    private Long id;
+    private UUID uuid;
     private String name;
     private String lastName;
     private String dni;

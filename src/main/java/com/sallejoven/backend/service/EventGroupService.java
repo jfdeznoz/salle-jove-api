@@ -3,9 +3,10 @@ package com.sallejoven.backend.service;
 import com.sallejoven.backend.model.entity.EventGroup;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.repository.EventGroupRepository;
+import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import java.util.List;
 
 @RequiredArgsConstructor
 @Service
@@ -13,9 +14,9 @@ public class EventGroupService {
 
     private final EventGroupRepository eventGroupRepository;
 
-    public EventGroup findFirstActiveByEventId(Long eventId) {
+    public EventGroup findFirstActiveByEventId(UUID eventUuid) {
         return eventGroupRepository
-                .findFirstByEvent_IdAndDeletedAtIsNullOrderByIdAsc(eventId)
+                .findFirstByEvent_UuidAndDeletedAtIsNullOrderByUuidAsc(eventUuid)
                 .orElse(null);
     }
 
@@ -23,61 +24,42 @@ public class EventGroupService {
         return eventGroupRepository.saveAll(eventGroups);
     }
 
-    public List<EventGroup> getEventGroupsByEventId(Long eventId) {
-        return eventGroupRepository.findByEventId(eventId);
-    }    
-
-    public List<EventGroup> getEventGroupsByEventIdAndGroupIds(Long eventId, List<Long> groupIds) {
-        return eventGroupRepository.findByEvent_IdAndGroupSalle_IdIn(eventId, groupIds);
+    public List<EventGroup> getEventGroupsByEventId(UUID eventUuid) {
+        return eventGroupRepository.findByEventUuid(eventUuid);
     }
 
-    public List<EventGroup> getEventGroupsByGroupId(Long groupId) {
-        return eventGroupRepository.findByGroupSalle_Id(groupId);
+    public List<EventGroup> getEventGroupsByEventIdAndGroupIds(UUID eventUuid, List<UUID> groupUuids) {
+        return eventGroupRepository.findByEvent_UuidAndGroupSalle_UuidIn(eventUuid, groupUuids);
     }
 
-    public void deleteEventGroupsByEventAndGroups(Long eventId, List<GroupSalle> groups) {
-        if (groups == null || groups.isEmpty()) return;
-
-        List<Long> groupIds = groups.stream()
-            .map(GroupSalle::getId)
-            .toList();
-
-        eventGroupRepository.deleteByEvent_IdAndGroupSalle_IdIn(eventId, groupIds);
+    public List<EventGroup> getEventGroupsByGroupId(UUID groupUuid) {
+        return eventGroupRepository.findByGroupSalle_Uuid(groupUuid);
     }
 
-    public void softDeleteByEventId(Long eventId) {
-        eventGroupRepository.softDeleteByEventId(eventId);
-    }
+    public void deleteEventGroupsByEventAndGroups(UUID eventUuid, List<GroupSalle> groups) {
+        if (groups == null || groups.isEmpty()) {
+            return;
+        }
 
-    public List<EventGroup> getEventGroupsByEventAndCenter(Long eventId, Long centerId) {
-        return eventGroupRepository.findByEventIdAndCenterId(eventId, centerId);
-    }
-
-    public List<EventGroup> getEventGroupsByEventAndCenters(Long eventId, List<Long> centerIds) {
-        if (centerIds == null || centerIds.isEmpty()) return List.of();
-        return eventGroupRepository.findByEventIdAndCenterIds(eventId, centerIds);
-    }
-
-    /*@Transactional
-    public void assignEventToUserGroups(Long eventId, Collection<Long> userGroupIds) {
-        if (userGroupIds == null || userGroupIds.isEmpty()) return;
-
-        Event event = eventService.findById(eventId)
-                .orElseThrow(() -> new IllegalArgumentException("Evento no encontrado ID: " + eventId));
-
-        List<EventUser> batch = userGroupIds.stream()
-                .map(ugId -> EventUser.builder()
-                        .event(event)
-                        .userGroup(UserGroup.builder().id(ugId).build())
-                        .status(0)
-                        .build())
+        List<UUID> groupUuids = groups.stream()
+                .map(GroupSalle::getUuid)
                 .toList();
 
-        try {
-            eventUserService.saveAll(batch);
-        } catch (DataIntegrityViolationException dup) {
-            log.debug("Asignaciones duplicadas para eventId={}", eventId, dup);
-        }
-    }*/
+        eventGroupRepository.deleteByEvent_UuidAndGroupSalle_UuidIn(eventUuid, groupUuids);
+    }
 
+    public void softDeleteByEventId(UUID eventUuid) {
+        eventGroupRepository.softDeleteByEventUuid(eventUuid);
+    }
+
+    public List<EventGroup> getEventGroupsByEventAndCenter(UUID eventUuid, UUID centerUuid) {
+        return eventGroupRepository.findByEventUuidAndCenterUuid(eventUuid, centerUuid);
+    }
+
+    public List<EventGroup> getEventGroupsByEventAndCenters(UUID eventUuid, List<UUID> centerUuids) {
+        if (centerUuids == null || centerUuids.isEmpty()) {
+            return List.of();
+        }
+        return eventGroupRepository.findByEventUuidAndCenterUuids(eventUuid, centerUuids);
+    }
 }

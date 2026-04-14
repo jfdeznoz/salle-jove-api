@@ -1,15 +1,14 @@
 // src/main/java/.../controller/GlobalController.java
 package com.sallejoven.backend.controller;
 
-import com.sallejoven.backend.config.security.AuthzBean;
-import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.dto.GlobalStateDto;
 import com.sallejoven.backend.model.dto.UserPendingDto;
 import com.sallejoven.backend.model.entity.UserPending;
 import com.sallejoven.backend.model.requestDto.GlobalLockRequest;
 import com.sallejoven.backend.service.AcademicStateService;
 import com.sallejoven.backend.service.RegistrationService;
-import com.sallejoven.backend.utils.SalleConverters;
+import com.sallejoven.backend.service.assembler.UserAssembler;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -23,22 +22,17 @@ public class GlobalController {
 
     private final AcademicStateService academicStateService;
     private final RegistrationService registrationService;
-    private final SalleConverters converters;
+    private final UserAssembler userAssembler;
 
     @PreAuthorize("isAuthenticated()")
     @GetMapping("/state")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<GlobalStateDto> getGlobalState() {
         boolean locked = academicStateService.isLocked();
 
         List<UserPending> pendings = registrationService.listPending();
         List<UserPendingDto> dtos = pendings.stream()
-                .map(p -> {
-                    try {
-                        return converters.userPendingToDto(p);
-                    } catch (SalleException e) {
-                        throw new RuntimeException("Error convirtiendo UserPending -> DTO", e);
-                    }
-                })
+                .map(userAssembler::toPendingDto)
                 .toList();
 
         GlobalStateDto dto = GlobalStateDto.builder()
@@ -51,8 +45,8 @@ public class GlobalController {
 
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/lock")
-    public ResponseEntity<Void> setLock(@RequestBody GlobalLockRequest req) {
-        academicStateService.setLocked(req.isLocked());
+    public ResponseEntity<Void> setLock(@Valid @RequestBody GlobalLockRequest req) {
+        academicStateService.setLocked(req.locked());
         return ResponseEntity.noContent().build();
     }
 

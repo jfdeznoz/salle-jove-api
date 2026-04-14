@@ -2,11 +2,11 @@ package com.sallejoven.backend.repository;
 
 import com.sallejoven.backend.model.entity.Event;
 import com.sallejoven.backend.model.entity.GroupSalle;
-
 import java.time.LocalDate;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,26 +16,39 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface EventRepository extends JpaRepository<Event, Long> {
+public interface EventRepository extends JpaRepository<Event, UUID> {
 
-    @Query("""
-    SELECT e
-      FROM Event e
-     WHERE e.deletedAt IS NULL
-       AND e.isGeneral = true
+    default Optional<Event> findByUuid(UUID uuid) {
+        return findById(uuid);
+    }
+
+    @Query(value = """
+    SELECT e.*
+      FROM event e
+     WHERE e.deleted_at IS NULL
+       AND e.is_general = true
+       AND e.stages && CAST(:userStages AS integer[])
        AND (
-            (:isPast = true  AND e.endDate <  :today)
-         OR (:isPast = false AND (e.endDate IS NULL OR e.endDate >= :today))
+            (:isPast = true  AND e.end_date <  :today)
+         OR (:isPast = false AND (e.end_date IS NULL OR e.end_date >= :today))
        )
-     ORDER BY e.eventDate ASC
-""")
-    Page<Event> findGeneralEvents(@Param("isPast") boolean isPast,
-                                  @Param("today")  LocalDate today,
+     ORDER BY e.event_date ASC
+""", countQuery = """
+    SELECT COUNT(*)
+      FROM event e
+     WHERE e.deleted_at IS NULL
+       AND e.is_general = true
+       AND e.stages && CAST(:userStages AS integer[])
+       AND (
+            (:isPast = true  AND e.end_date <  :today)
+         OR (:isPast = false AND (e.end_date IS NULL OR e.end_date >= :today))
+       )
+""", nativeQuery = true)
+    Page<Event> findGeneralEvents(@Param("userStages") Integer[] userStages,
+                                  @Param("isPast") boolean isPast,
+                                  @Param("today") LocalDate today,
                                   Pageable pageable);
 
-    /**
-     * 2) Sólo locales de los grupos dados
-     */
     @Query("""
     SELECT eg.event
       FROM EventGroup eg
@@ -50,30 +63,46 @@ public interface EventRepository extends JpaRepository<Event, Long> {
      ORDER BY eg.event.eventDate ASC
 """)
     Page<Event> findEventsByGroupsAndPastStatus(@Param("groups") List<GroupSalle> groups,
-                                                @Param("isPast")  boolean isPast,
-                                                @Param("today")   LocalDate today,
+                                                @Param("isPast") boolean isPast,
+                                                @Param("today") LocalDate today,
                                                 Pageable pageable);
 
-    /**
-     * 3) Unión de generales + locales (para isGeneral == null en NO-admin)
-     */
-    @Query("""
-    SELECT DISTINCT e
-      FROM Event e
-      LEFT JOIN EventGroup eg
-        ON eg.event = e
-       AND eg.deletedAt IS NULL
-     WHERE e.deletedAt IS NULL
-       AND ( e.isGeneral = true OR eg.groupSalle IN :groups )
+    @Query(value = """
+    SELECT DISTINCT e.*
+      FROM event e
+      LEFT JOIN event_group eg
+        ON eg.event_uuid = e.uuid
+       AND eg.deleted_at IS NULL
+     WHERE e.deleted_at IS NULL
        AND (
-            (:isPast = true  AND e.endDate <  :today)
-         OR (:isPast = false AND (e.endDate IS NULL OR e.endDate >= :today))
+            (e.is_general = true AND e.stages && CAST(:userStages AS integer[]))
+         OR (e.is_general = false AND eg.group_uuid = ANY(CAST(:groupUuids AS uuid[])))
        )
-     ORDER BY e.eventDate ASC
-""")
-    Page<Event> findGeneralOrUserLocalEvents(@Param("groups") List<GroupSalle> groups,
-                                             @Param("isPast")  boolean isPast,
-                                             @Param("today")   LocalDate today,
+       AND (
+            (:isPast = true  AND e.end_date <  :today)
+         OR (:isPast = false AND (e.end_date IS NULL OR e.end_date >= :today))
+       )
+     ORDER BY e.event_date ASC
+""", countQuery = """
+    SELECT COUNT(DISTINCT e.uuid)
+      FROM event e
+      LEFT JOIN event_group eg
+        ON eg.event_uuid = e.uuid
+       AND eg.deleted_at IS NULL
+     WHERE e.deleted_at IS NULL
+       AND (
+            (e.is_general = true AND e.stages && CAST(:userStages AS integer[]))
+         OR (e.is_general = false AND eg.group_uuid = ANY(CAST(:groupUuids AS uuid[])))
+       )
+       AND (
+            (:isPast = true  AND e.end_date <  :today)
+         OR (:isPast = false AND (e.end_date IS NULL OR e.end_date >= :today))
+       )
+""", nativeQuery = true)
+    Page<Event> findGeneralOrUserLocalEvents(@Param("groupUuids") UUID[] groupUuids,
+                                             @Param("userStages") Integer[] userStages,
+                                             @Param("isPast") boolean isPast,
+                                             @Param("today") LocalDate today,
                                              Pageable pageable);
 
     @Query("""
@@ -97,13 +126,63 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     @Query("SELECT e FROM Event e WHERE (e.endDate IS NULL OR e.endDate >= :now) AND e.deletedAt IS NULL")
     Page<Event> findFutureEvents(@Param("now") Date now, Pageable pageable);
 
-    @Query("SELECT e FROM Event e WHERE e.id = :id AND e.deletedAt IS NULL")
-    Optional<Event> findById(@Param("id") Long id);
+    @Query("SELECT e FROM Event e WHERE e.uuid = :uuid AND e.deletedAt IS NULL")
+    Optional<Event> findById(@Param("uuid") UUID uuid);
 
     @Query("SELECT e FROM Event e WHERE e.deletedAt IS NULL")
     Page<Event> findAll(Pageable pageable);
 
     @Modifying
-    @Query("UPDATE Event e SET e.deletedAt = CURRENT_TIMESTAMP WHERE e.id = :eventId")
-    void softDeleteEvent(@Param("eventId") Long eventId);
+    @Query("UPDATE Event e SET e.deletedAt = CURRENT_TIMESTAMP WHERE e.uuid = :eventUuid")
+    void softDeleteEvent(@Param("eventUuid") UUID eventUuid);
+
+    @Query("""
+    SELECT e FROM Event e
+     WHERE e.deletedAt IS NULL
+       AND e.eventDate <= :endDate
+       AND COALESCE(e.endDate, e.eventDate) >= :startDate
+       AND (:isGeneral IS NULL OR e.isGeneral = :isGeneral)
+     ORDER BY e.eventDate ASC
+""")
+    Page<Event> findAdminByDateRange(@Param("isGeneral") Boolean isGeneral,
+                                     @Param("startDate") LocalDate startDate,
+                                     @Param("endDate") LocalDate endDate,
+                                     Pageable pageable);
+
+    @Query(value = """
+    SELECT DISTINCT e.*
+      FROM event e
+      LEFT JOIN event_group eg
+       ON eg.event_uuid = e.uuid
+       AND eg.deleted_at IS NULL
+     WHERE e.deleted_at IS NULL
+       AND e.event_date <= :endDate
+       AND COALESCE(e.end_date, e.event_date) >= :startDate
+       AND (:isGeneral IS NULL OR e.is_general = :isGeneral)
+       AND (
+            (e.is_general = true AND e.stages && CAST(:userStages AS integer[]))
+         OR (e.is_general = false AND eg.group_uuid = ANY(CAST(:groupUuids AS uuid[])))
+       )
+     ORDER BY e.event_date ASC
+""", countQuery = """
+    SELECT COUNT(DISTINCT e.uuid)
+      FROM event e
+      LEFT JOIN event_group eg
+        ON eg.event_uuid = e.uuid
+       AND eg.deleted_at IS NULL
+     WHERE e.deleted_at IS NULL
+       AND e.event_date <= :endDate
+       AND COALESCE(e.end_date, e.event_date) >= :startDate
+       AND (:isGeneral IS NULL OR e.is_general = :isGeneral)
+       AND (
+            (e.is_general = true AND e.stages && CAST(:userStages AS integer[]))
+         OR (e.is_general = false AND eg.group_uuid = ANY(CAST(:groupUuids AS uuid[])))
+       )
+""", nativeQuery = true)
+    Page<Event> findByDateRangeAndGroups(@Param("groupUuids") UUID[] groupUuids,
+                                         @Param("userStages") Integer[] userStages,
+                                         @Param("isGeneral") Boolean isGeneral,
+                                         @Param("startDate") LocalDate startDate,
+                                         @Param("endDate") LocalDate endDate,
+                                         Pageable pageable);
 }

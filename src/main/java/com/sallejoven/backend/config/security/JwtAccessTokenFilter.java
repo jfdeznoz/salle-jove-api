@@ -29,6 +29,7 @@ public class JwtAccessTokenFilter extends OncePerRequestFilter {
 
     private final RSAKeyRecord rsaKeyRecord;
     private final JwtTokenUtils jwtTokenUtils;
+    private final JwtDecoder jwtDecoderBean;
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
@@ -37,11 +38,12 @@ public class JwtAccessTokenFilter extends OncePerRequestFilter {
         try{
             log.info("[JwtAccessTokenFilter:doFilterInternal] :: Started ");
 
-            log.info("[JwtAccessTokenFilter:doFilterInternal]Filtering the Http Request:{}",request.getRequestURI());
-            
+            log.info("[JwtAccessTokenFilter:doFilterInternal] Filtering the Http Request:{}", request.getRequestURI());
+
             final String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
-            
-            JwtDecoder jwtDecoder =  NimbusJwtDecoder.withPublicKey(rsaKeyRecord.rsaPublicKey()).build();
+
+            JwtDecoder jwtDecoder = jwtDecoderBean != null ? jwtDecoderBean
+                    : NimbusJwtDecoder.withPublicKey(rsaKeyRecord.rsaPublicKey()).build();
 
             if(!authHeader.startsWith(TokenType.Bearer.name())){
                 filterChain.doFilter(request,response);

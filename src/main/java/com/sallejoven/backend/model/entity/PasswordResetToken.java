@@ -2,20 +2,24 @@ package com.sallejoven.backend.model.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.time.Instant;
+import java.util.UUID;
 
 // PasswordResetToken.java
-@Data
+@Getter
+@Setter
+@EqualsAndHashCode(of = "uuid")
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -27,8 +31,8 @@ import java.time.Instant;
 })
 public class PasswordResetToken {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "uuid", nullable = false, unique = true, updatable = false, columnDefinition = "uuid")
+    private UUID uuid;
 
     @Column(nullable = false, unique = true, length = 200)
     private String token; // base64url
@@ -45,5 +49,18 @@ public class PasswordResetToken {
     @Column(nullable = false)
     private boolean used = false;
 
-    // getters/setters
+    @PrePersist
+    void ensureUuid() {
+        if (uuid == null) {
+            uuid = UUID.randomUUID();
+        }
+    }
+
+    public UUID getId() {
+        return uuid;
+    }
+
+    public void setId(UUID id) {
+        this.uuid = id;
+    }
 }

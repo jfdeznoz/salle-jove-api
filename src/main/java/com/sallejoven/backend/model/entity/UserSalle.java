@@ -4,25 +4,27 @@ import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.ToString;
 import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
-import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fasterxml.jackson.annotation.JsonIgnore;
+import java.util.UUID;
 import org.hibernate.annotations.SQLRestriction;
 
-@Data
+@Getter
+@Setter
+@EqualsAndHashCode(of = "uuid")
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -31,8 +33,8 @@ import org.hibernate.annotations.SQLRestriction;
 public class UserSalle {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "uuid", nullable = false, unique = true, updatable = false, columnDefinition = "uuid")
+    private UUID uuid;
 
     @Column(nullable = false)
     private String name;
@@ -68,7 +70,6 @@ public class UserSalle {
     private Boolean imageAuthorization;
 
     @Column(nullable = false)
-    @JsonFormat(pattern = "yyyy-MM-dd")
     private Date birthDate;
 
     @Column
@@ -77,7 +78,6 @@ public class UserSalle {
     @Column(nullable = false)
     private Boolean isAdmin;
 
-    @JsonIgnore
     @ToString.Exclude
     private String password;
 
@@ -89,7 +89,6 @@ public class UserSalle {
     private Set<UserGroup> groups = new HashSet<>();
 
     @Column(name = "deleted_at")
-    @JsonFormat(pattern="yyyy-MM-dd HH:mm:ss")
     private LocalDateTime deletedAt;
 
     private Integer gender;
@@ -112,4 +111,18 @@ public class UserSalle {
     @Column(name = "mother_phone")
     private String motherPhone;
 
+    @PrePersist
+    private void ensureUuid() {
+        if (uuid == null) {
+            uuid = UUID.randomUUID();
+        }
+    }
+
+    public UUID getId() {
+        return uuid;
+    }
+
+    public void setId(UUID id) {
+        this.uuid = id;
+    }
 }

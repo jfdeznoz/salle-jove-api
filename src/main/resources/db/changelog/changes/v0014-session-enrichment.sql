@@ -1,0 +1,5 @@
+ALTER TABLE weekly_session ADD COLUMN IF NOT EXISTS observations TEXT;
+ALTER TABLE weekly_session ADD COLUMN IF NOT EXISTS content TEXT;
+ALTER TABLE weekly_session_user ADD COLUMN IF NOT EXISTS justified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE weekly_session_user ADD COLUMN IF NOT EXISTS justification_reason VARCHAR(300);
+ALTER TABLE event ALTER COLUMN description DROP NOT NULL;

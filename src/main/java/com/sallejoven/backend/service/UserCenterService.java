@@ -8,12 +8,13 @@ import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.repository.CenterRepository;
 import com.sallejoven.backend.repository.UserCenterRepository;
 import com.sallejoven.backend.repository.UserRepository;
-import jakarta.transaction.Transactional;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-
+import com.sallejoven.backend.utils.ReferenceParser;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -24,48 +25,55 @@ public class UserCenterService {
     private final CenterRepository centerRepo;
     private final AcademicStateService academicStateService;
 
-    public List<UserCenter> findByUserForCurrentYear(Long userId) throws SalleException {
+    public List<UserCenter> findByUserForCurrentYear(UUID userUuid) {
         int year = academicStateService.getVisibleYear();
-        return userCenterRepo.findByUser_IdAndYearAndDeletedAtIsNull(userId, year);
+        return userCenterRepo.findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, year);
     }
 
-    public List<UserCenter> findActiveByCenterForCurrentYear(Long centerId) throws SalleException {
+    public UserCenter findByReference(String reference) {
+        return ReferenceParser.asUuid(reference)
+                .flatMap(userCenterRepo::findByUuid)
+                .orElseThrow(() -> new SalleException(ErrorCodes.USER_CENTER_NOT_FOUND));
+    }
+
+    public List<UserCenter> findActiveByCenterForCurrentYear(UUID centerUuid) {
         int year = academicStateService.getVisibleYear();
-        return userCenterRepo.findByCenter_IdAndYearAndDeletedAtIsNull(centerId, year);
+        return userCenterRepo.findByCenter_UuidAndYearAndDeletedAtIsNull(centerUuid, year);
     }
 
     @Transactional
-    public UserCenter findByUserAndCenter(Long userId, Long centerId) throws SalleException {
+    public UserCenter findByUserAndCenter(UUID userUuid, UUID centerUuid) {
         int year = academicStateService.getVisibleYear();
-
-        return userCenterRepo.findByUser_IdAndCenter_IdAndYearAndDeletedAtIsNull(userId, centerId, year)
+        return userCenterRepo.findByUser_UuidAndCenter_UuidAndYearAndDeletedAtIsNull(userUuid, centerUuid, year)
                 .orElseThrow(() -> new SalleException(ErrorCodes.USER_CENTER_NOT_FOUND));
     }
 
     @Transactional
-    public UserCenter addCenterRole(Long userId, Long centerId, Integer userType) throws SalleException {
+    public UserCenter addCenterRole(UUID userUuid, UUID centerUuid, Integer userType) {
         if (userType == null || (userType != 2 && userType != 3)) {
             throw new SalleException(ErrorCodes.USER_TYPE_CENTER_NOT_VALID);
         }
         int year = academicStateService.getVisibleYear();
 
-        boolean exists = userCenterRepo.existsByUser_IdAndCenter_IdAndYearAndDeletedAtIsNullAndUserType(
-                userId, centerId, year, userType
+        boolean exists = userCenterRepo.existsByUser_UuidAndCenter_UuidAndYearAndDeletedAtIsNullAndUserType(
+                userUuid,
+                centerUuid,
+                year,
+                userType
         );
-
         if (exists) {
             throw new SalleException(ErrorCodes.USER_TYPE_CENTER_EXISTS);
         }
 
-        UserSalle user = userRepo.findById(userId)
+        UserSalle user = userRepo.findById(userUuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
-        Center center = centerRepo.findById(centerId)
+        Center center = centerRepo.findById(centerUuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.CENTER_NOT_FOUND));
 
         UserCenter saved = UserCenter.builder()
                 .user(user)
                 .center(center)
-                .userType(userType) // 2=GROUP_LEADER, 3=PASTORAL_DELEGATE
+                .userType(userType)
                 .year(year)
                 .build();
 
@@ -73,41 +81,47 @@ public class UserCenterService {
     }
 
     @Transactional
-    public void softDelete(Long userCenterId) throws SalleException {
-        UserCenter uc = userCenterRepo.findById(userCenterId)
+    public void softDelete(UUID userCenterUuid) {
+        UserCenter userCenter = userCenterRepo.findById(userCenterUuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.USER_CENTER_NOT_FOUND));
-        uc.setDeletedAt(LocalDateTime.now());
-        userCenterRepo.save(uc);
+        userCenter.setDeletedAt(LocalDateTime.now());
+        userCenterRepo.save(userCenter);
     }
 
     @Transactional
-    public UserCenter updateCenterRole(Long userCenterId, Integer userType) throws SalleException {
+    public void hardDeleteAllForCenter(UUID centerUuid) {
+        userCenterRepo.hardDeleteByCenterUuid(centerUuid);
+    }
+
+    @Transactional
+    public UserCenter updateCenterRole(UUID userCenterUuid, Integer userType) {
         if (userType == null || (userType != 2 && userType != 3)) {
             throw new SalleException(ErrorCodes.USER_TYPE_CENTER_NOT_VALID);
         }
 
-        UserCenter uc = userCenterRepo.findByIdAndDeletedAtIsNull(userCenterId)
+        UserCenter userCenter = userCenterRepo.findByUuidAndDeletedAtIsNull(userCenterUuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.USER_CENTER_NOT_FOUND));
 
         int year = academicStateService.getVisibleYear();
-        if (uc.getYear() != year) {
+        if (userCenter.getYear() != year) {
             throw new SalleException(ErrorCodes.USER_CENTER_NOT_FOUND);
         }
 
-        if (uc.getUserType() != null && uc.getUserType().intValue() == userType.intValue()) {
-            return uc;
+        if (userType.equals(userCenter.getUserType())) {
+            return userCenter;
         }
 
-        boolean duplicate = userCenterRepo.existsByUser_IdAndCenter_IdAndYearAndDeletedAtIsNullAndUserType(
-                uc.getUser().getId(), uc.getCenter().getId(), year, userType
+        boolean duplicate = userCenterRepo.existsByUser_UuidAndCenter_UuidAndYearAndDeletedAtIsNullAndUserType(
+                userCenter.getUser().getUuid(),
+                userCenter.getCenter().getUuid(),
+                year,
+                userType
         );
-
         if (duplicate) {
             throw new SalleException(ErrorCodes.USER_TYPE_CENTER_EXISTS);
         }
 
-        uc.setUserType(userType);
-        return userCenterRepo.save(uc);
+        userCenter.setUserType(userType);
+        return userCenterRepo.save(userCenter);
     }
-
 }

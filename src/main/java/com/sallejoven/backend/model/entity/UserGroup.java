@@ -1,10 +1,10 @@
 package com.sallejoven.backend.model.entity;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "user_group")
@@ -14,15 +14,15 @@ import java.time.LocalDateTime;
 public class UserGroup {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "uuid", nullable = false, unique = true, updatable = false, columnDefinition = "uuid")
+    private UUID uuid;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_salle", nullable = false)
+    @JoinColumn(name = "user_uuid", nullable = false, referencedColumnName = "uuid")
     private UserSalle user;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "group_salle", nullable = false)
+    @JoinColumn(name = "group_uuid", nullable = false, referencedColumnName = "uuid")
     private GroupSalle group;
 
     /** 0=PARTICIPANT, 1=ANIMATOR */
@@ -33,14 +33,24 @@ public class UserGroup {
     private Integer year;
 
     @Column(name = "deleted_at")
-    @JsonFormat(pattern="yyyy-MM-dd HH:mm:ss")
     private LocalDateTime deletedAt;
 
     @PrePersist
     @PreUpdate
     private void validateRole() {
+        if (uuid == null) {
+            uuid = UUID.randomUUID();
+        }
         if (userType == null || (userType != 0 && userType != 1)) {
             throw new IllegalArgumentException("User_type must be 0 (PARTICIPANT) or 1 (ANIMATOR)");
         }
+    }
+
+    public UUID getId() {
+        return uuid;
+    }
+
+    public void setId(UUID id) {
+        this.uuid = id;
     }
 }

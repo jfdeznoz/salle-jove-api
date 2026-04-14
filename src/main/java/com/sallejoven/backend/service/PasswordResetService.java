@@ -4,7 +4,7 @@ import com.sallejoven.backend.model.entity.PasswordResetToken;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.repository.PasswordResetTokenRepository;
 import com.sallejoven.backend.repository.UserRepository;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Value; // <--- Spring @Value
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.javamail.JavaMailSender;

@@ -1,7 +1,7 @@
 package com.sallejoven.backend.model.requestDto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -13,23 +13,23 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class RequestWeeklySession {
+public class WeeklySessionEditRequest {
 
-    private Long id;
+    private String uuid;
 
-    @NotNull
-    private Long vitalSituationSessionId;
+    private String vitalSituationSessionUuid;
 
-    @NotNull
+    @Size(max = 150)
     private String title;
 
-    @NotNull
-    private Long groupId;
+    private String groupUuid;
 
-    @NotNull
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm")
     private LocalDateTime sessionDateTime;
 
-    private Integer status; // 0=DRAFT, 1=PUBLISHED, 2=ARCHIVED
-}
+    @Size(max = 2000)
+    private String observations;
 
+    @Size(max = 2000)
+    private String content;
+}

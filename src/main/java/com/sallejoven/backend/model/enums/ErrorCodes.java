@@ -26,7 +26,14 @@ public enum ErrorCodes {
     AWS_CREDENTIALS_NOT_CONFIGURED("No se pueden subir archivos: credenciales de AWS no configuradas", "E022"),
     VITAL_SITUATION_NOT_FOUND("Situación vital no encontrada", "E023"),
     VITAL_SITUATION_SESSION_NOT_FOUND("Sesión de situación vital no encontrada", "E024"),
-    WEEKLY_SESSION_NOT_FOUND("Sesión semanal no encontrada", "E025");
+    WEEKLY_SESSION_NOT_FOUND("Sesión semanal no encontrada", "E025"),
+    CENTER_ALREADY_EXISTS("Ya existe un centro con ese nombre y ciudad", "E026"),
+    CENTER_HAS_GROUPS("No se puede eliminar un centro que todavía tiene grupos asignados", "E027"),
+    SESSION_LOCKED("La sesión no se puede modificar: está archivada o fuera de fecha", "E028"),
+    MERGE_STAGE_CONFLICT("Los centros tienen grupos con las mismas etapas", "E029"),
+    USER_NOT_DELETED("El usuario no está eliminado", "E030"),
+    INVALID_MERGE_TARGET("El usuario origen de la fusión no puede ser el mismo que el usuario base", "E031"),
+    EMAIL_IN_USE("Email ya en uso por otro usuario activo", "E032");
 
     private final String message;
     private final String errorCode;

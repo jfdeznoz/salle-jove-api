@@ -6,21 +6,30 @@ import com.sallejoven.backend.model.entity.WeeklySession;
 import com.sallejoven.backend.model.entity.WeeklySessionUser;
 import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.model.requestDto.AttendanceUpdateDto;
+import com.sallejoven.backend.repository.UserGroupRepository;
+import com.sallejoven.backend.repository.WeeklySessionRepository;
 import com.sallejoven.backend.repository.WeeklySessionUserRepository;
-import jakarta.transaction.Transactional;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-
+import com.sallejoven.backend.utils.ReferenceParser;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
 public class WeeklySessionUserService {
 
     private final WeeklySessionUserRepository weeklySessionUserRepository;
+    private final WeeklySessionRepository weeklySessionRepository;
+    private final AcademicStateService academicStateService;
+    private final UserGroupRepository userGroupRepository;
 
     public void saveAll(List<WeeklySessionUser> users) {
         weeklySessionUserRepository.saveAll(users);
@@ -30,88 +39,166 @@ public class WeeklySessionUserService {
         weeklySessionUserRepository.save(user);
     }
 
-    public Optional<WeeklySessionUser> findById(Long id) {
-        return weeklySessionUserRepository.findById(id);
+    public Optional<WeeklySessionUser> findById(UUID uuid) {
+        return weeklySessionUserRepository.findById(uuid);
     }
 
-    public List<WeeklySessionUser> findBySessionIdAndGroupId(Long sessionId, Long groupId) {
-        return weeklySessionUserRepository.findBySessionIdAndGroupId(sessionId, groupId);
+    public List<WeeklySessionUser> findBySessionIdAndGroupId(UUID sessionUuid, UUID groupUuid) {
+        return weeklySessionUserRepository.findBySessionUuidAndGroupUuid(
+                sessionUuid,
+                groupUuid,
+                academicStateService.getVisibleYear()
+        );
     }
 
-    public List<WeeklySessionUser> findBySessionIdOrdered(Long sessionId) {
-        return weeklySessionUserRepository.findBySessionIdOrdered(sessionId);
+    public List<WeeklySessionUser> findBySessionIdOrdered(UUID sessionUuid) {
+        return weeklySessionUserRepository.findBySessionUuidOrdered(sessionUuid, academicStateService.getVisibleYear());
     }
 
     @Transactional
-    public void softDeleteBySessionId(Long sessionId) {
-        weeklySessionUserRepository.softDeleteBySessionId(sessionId);
+    public void softDeleteBySessionId(UUID sessionUuid) {
+        weeklySessionUserRepository.softDeleteBySessionUuid(sessionUuid);
     }
 
     @Transactional
-    public int softDeleteBySessionIdAndUserGroupIds(Long sessionId, Collection<Long> userGroupIds) {
-        if (userGroupIds == null || userGroupIds.isEmpty()) return 0;
-        return weeklySessionUserRepository.softDeleteBySessionIdAndUserGroupIds(sessionId, userGroupIds);
+    public int softDeleteBySessionIdAndUserGroupIds(UUID sessionUuid, Collection<UUID> userGroupUuids) {
+        if (userGroupUuids == null || userGroupUuids.isEmpty()) {
+            return 0;
+        }
+        List<UUID> userUuids = userGroupRepository.findDistinctUserUuidsByUuidIn(userGroupUuids);
+        if (userUuids.isEmpty()) {
+            return 0;
+        }
+        return weeklySessionUserRepository.softDeleteBySessionUuidAndUserUuids(sessionUuid, userUuids);
     }
 
-    /** Asigna un único UserGroup a una sesión semanal. */
     @Transactional
     public WeeklySessionUser assignSessionToUserGroup(WeeklySession session, UserGroup userGroup) {
-        WeeklySessionUser wsu = WeeklySessionUser.builder()
+        WeeklySessionUser sessionUser = WeeklySessionUser.builder()
                 .weeklySession(session)
-                .userGroup(userGroup)
-                .status(0) // Default: no asiste
+                .user(userGroup.getUser())
+                .status(0)
                 .build();
-        return weeklySessionUserRepository.save(wsu);
+        return weeklySessionUserRepository.save(sessionUser);
     }
 
     @Transactional
     public void assignSessionToUserGroups(WeeklySession session, Collection<UserGroup> userGroups) {
-        if (userGroups == null || userGroups.isEmpty()) return;
+        if (userGroups == null || userGroups.isEmpty()) {
+            return;
+        }
 
-        List<Long> already = weeklySessionUserRepository.findUserGroupIdsBySession(session.getId());
-
+        List<UUID> already = weeklySessionUserRepository.findUserUuidsBySession(session.getUuid());
         List<WeeklySessionUser> toInsert = userGroups.stream()
-                .filter(ug -> ug != null && ug.getId() != null && !already.contains(ug.getId()))
-                .map(ug -> assignSessionToUserGroup(session, ug))
+                .filter(userGroup -> userGroup != null && userGroup.getUser() != null)
+                .filter(userGroup -> userGroup.getUser().getUuid() != null)
+                .filter(userGroup -> !already.contains(userGroup.getUser().getUuid()))
+                .map(userGroup -> WeeklySessionUser.builder()
+                        .weeklySession(session)
+                        .user(userGroup.getUser())
+                        .status(0)
+                        .build())
                 .toList();
 
         if (!toInsert.isEmpty()) {
-            saveAll(toInsert);
+            weeklySessionUserRepository.saveAll(toInsert);
         }
     }
 
     @Transactional
-    public int updateAttendanceForUserInGroup(Long sessionId, Long userId, Long groupId, int status) {
-        return weeklySessionUserRepository.updateStatusBySessionUserAndGroup(sessionId, userId, groupId, status);
+    public int updateAttendanceForUserInGroup(UUID sessionUuid, UUID userUuid, UUID groupUuid, int status) {
+        return weeklySessionUserRepository.updateStatusBySessionUserAndGroup(
+                sessionUuid,
+                userUuid,
+                groupUuid,
+                academicStateService.getVisibleYear(),
+                status
+        );
     }
 
     @Transactional
-    public void updateParticipantsAttendance(Long sessionId, List<AttendanceUpdateDto> updates, Long groupId)
-            throws SalleException {
+    public void updateParticipantsAttendance(UUID sessionUuid, List<AttendanceUpdateDto> updates, UUID groupUuid) {
+        if (groupUuid == null) {
+            throw new SalleException(ErrorCodes.GROUP_NOT_FOUND);
+        }
+        WeeklySession session = weeklySessionRepository.findById(sessionUuid)
+                .orElseThrow(() -> new SalleException(ErrorCodes.WEEKLY_SESSION_NOT_FOUND));
 
-        if (groupId == null) throw new SalleException(ErrorCodes.GROUP_NOT_FOUND);
+        ensureAttendanceEditable(session);
 
         for (AttendanceUpdateDto dto : updates) {
             dto.validate();
-            Long userId = dto.getUserId();
-            if (userId == null) throw new SalleException(ErrorCodes.USER_NOT_FOUND);
-
-            int updated = updateAttendanceForUserInGroup(
-                    sessionId, userId, groupId, dto.getAttends());
-
-            if (updated == 0) {
+            UUID userUuid = resolveUserUuid(dto);
+            if (userUuid == null) {
                 throw new SalleException(ErrorCodes.USER_NOT_FOUND);
             }
+
+            WeeklySessionUser sessionUser = weeklySessionUserRepository.findBySessionUserAndGroup(
+                            sessionUuid,
+                            userUuid,
+                            groupUuid,
+                            academicStateService.getVisibleYear())
+                    .orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
+
+            sessionUser.setStatus(dto.getAttends());
+            if (dto.getJustified() != null) {
+                sessionUser.setJustified(dto.getJustified());
+            }
+            if (dto.getJustificationReason() != null || Boolean.FALSE.equals(dto.getJustified())) {
+                sessionUser.setJustificationReason(dto.getJustificationReason());
+            }
+
+            weeklySessionUserRepository.save(sessionUser);
         }
     }
 
-    public void softDeleteByUserGroupIds(List<Long> userGroupIds, LocalDateTime when) {
-        weeklySessionUserRepository.softDeleteByUserGroupIdIn(userGroupIds, when);
+    public void softDeleteByUserGroupIds(List<UUID> userGroupUuids, LocalDateTime when) {
+        if (userGroupUuids == null || userGroupUuids.isEmpty()) {
+            return;
+        }
+        List<UUID> userUuids = userGroupRepository.findDistinctUserUuidsByUuidIn(userGroupUuids);
+        if (userUuids.isEmpty()) {
+            return;
+        }
+        weeklySessionUserRepository.softDeleteByUserUuidIn(userUuids, when);
     }
 
-    public void softDeleteByUserGroupIds(List<Long> userGroupIds) {
-        LocalDateTime now = LocalDateTime.now();
-        weeklySessionUserRepository.softDeleteByUserGroupIdIn(userGroupIds, now);
+    public void softDeleteByUserGroupIds(List<UUID> userGroupUuids) {
+        softDeleteByUserGroupIds(userGroupUuids, LocalDateTime.now());
+    }
+
+    private UUID resolveUserUuid(AttendanceUpdateDto dto) {
+        if (dto.getUserUuid() != null && !dto.getUserUuid().isBlank()) {
+            return ReferenceParser.asUuid(dto.getUserUuid()).orElse(null);
+        }
+        return null;
+    }
+
+    private void ensureAttendanceEditable(WeeklySession session) {
+        if (Integer.valueOf(2).equals(session.getStatus())) {
+            throw new SalleException(ErrorCodes.SESSION_LOCKED);
+        }
+
+        if (isCurrentUserAdmin()) {
+            return;
+        }
+
+        if (session.getSessionDateTime() == null
+                || !session.getSessionDateTime().toLocalDate().isEqual(todayMadrid())) {
+            throw new SalleException(ErrorCodes.SESSION_LOCKED);
+        }
+    }
+
+    private boolean isCurrentUserAdmin() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null) {
+            return false;
+        }
+        return authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_ADMIN".equals(authority.getAuthority()));
+    }
+
+    private LocalDate todayMadrid() {
+        return java.time.ZonedDateTime.now(ZoneId.of("Europe/Madrid")).toLocalDate();
     }
 }
-

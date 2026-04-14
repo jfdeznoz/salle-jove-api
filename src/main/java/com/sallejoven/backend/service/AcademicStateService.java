@@ -16,7 +16,7 @@ public class AcademicStateService {
 
     private final AcademicStateRepository repo;
 
-    public int getVisibleYear() throws SalleException {
+    public int getVisibleYear() {
         return repo.findById((short)1)
                 .orElseThrow(() -> new SalleException(ErrorCodes.ACADEMIC_STATE_NOT_INITIALIZED))
                 .getVisibleYear();
@@ -44,6 +44,7 @@ public class AcademicStateService {
                 .orElse(false);
     }
 
+    @Transactional
     public void setLocked(boolean locked) {
         AcademicState state = repo.findById((short) 1)
                 .orElseThrow(() -> new IllegalStateException("Academic state not found"));
