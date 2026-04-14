@@ -16,28 +16,31 @@ permissions:
 
 jobs:
   test:
-    name: Run Maven tests (JDK 17)
+    name: Run Maven tests (JDK 21)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
           cache: 'maven'
 
       - name: Build & Test
-        run: mvn -B clean verify
+        run: ./mvnw -B clean verify
 
-      - name: Upload surefire reports (on failure)
+      - name: Upload test reports (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: surefire-reports
-          path: target/surefire-reports
+          name: test-reports
+          path: |
+            target/surefire-reports
+            target/failsafe-reports
+          if-no-files-found: ignore
 
   build-push:
     name: Build & Push to ECR (Docker builds with JDK 21)
