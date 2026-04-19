@@ -43,12 +43,13 @@ public class EventUserService {
         return eventUserRepository.findById(uuid);
     }
 
-    public List<EventUser> findConfirmedByEventIdOrdered(UUID eventUuid) {
+    @Transactional(readOnly = true)
+    public List<EventUser> findConfirmedByEventIdForReport(UUID eventUuid) {
         var uuids = eventUserRepository.findConfirmedUuids(eventUuid);
         if (uuids.isEmpty()) {
             return List.of();
         }
-        return eventUserRepository.findByUuidInFetchOrdered(uuids, academicStateService.getVisibleYear());
+        return eventUserRepository.findByUuidInFetchForReport(uuids);
     }
 
     public List<EventUser> findByEventIdAndGroupId(UUID eventUuid, UUID groupUuid) {

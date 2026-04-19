@@ -5,6 +5,7 @@ import com.sallejoven.backend.model.dto.ReportQueueResult;
 import com.sallejoven.backend.model.entity.Event;
 import com.sallejoven.backend.model.entity.EventUser;
 import com.sallejoven.backend.model.entity.GroupSalle;
+import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.TshirtSizeEnum;
 import com.sallejoven.backend.model.enums.ReportType;
@@ -21,6 +22,7 @@ import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,8 +61,9 @@ public class ReportQueueService {
         Set<UUID> scopedCenterUuids = fullAccess
                 ? Set.of()
                 : authorityService.extractCenterIdsForYear(currentAuth, year);
-        List<EventUser> participants = filterParticipantsByScope(
-                eventUserService.findConfirmedByEventIdOrdered(eventUuid),
+        List<EventUser> participants = prepareParticipantsForReport(
+                eventUserService.findConfirmedByEventIdForReport(eventUuid),
+                year,
                 fullAccess,
                 scopedCenterUuids
         );
@@ -72,7 +75,7 @@ public class ReportQueueService {
 
         // 2) subimos input.json a S3 (con prefijo si toca)
         String inputKeyWithPrefix = withPrefix(inputKeyNoPrefix); // test/... si procede
-        byte[] body = om.writeValueAsBytes(buildInputJson(event, participants, fullAccess, scopedCenterUuids));
+        byte[] body = om.writeValueAsBytes(buildInputJson(event, participants, year, fullAccess, scopedCenterUuids));
         putObject(bucket, inputKeyWithPrefix, "application/json", body);
 
         // 3) construimos y enviamos el mensaje a SQS (sin prefijo en las rutas; Lambda añade test/ si env=local)
@@ -108,7 +111,6 @@ public class ReportQueueService {
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("jobId", jobId);
-        payload.put("eventId", 0); // no aplica
         payload.put("types", List.of("SEGURO_GENERAL")); // ← clave para la Lambda
         payload.put("s3InputKey", inputKeyNoPrefix);
         payload.put("outputPrefix", outputPrefixNoPrefix);
@@ -141,12 +143,12 @@ public class ReportQueueService {
     private Map<String, Object> buildInputJson(
             Event event,
             List<EventUser> eus,
+            int year,
             boolean fullAccess,
             Set<UUID> scopedCenterUuids
     ) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("event", Map.of(
-                "eventId", event.getId(),
                 "eventUuid", event.getUuid(),
                 "name", Optional.ofNullable(event.getName()).orElse(""),
                 "description", Optional.ofNullable(event.getDescription()).orElse(""),
@@ -157,7 +159,8 @@ public class ReportQueueService {
 
         List<Map<String, Object>> participants = eus.stream().map(eu -> {
             UserSalle u = eu.getUser();
-            GroupSalle g = resolveGroupForReport(u, fullAccess, scopedCenterUuids);
+            UserGroup membership = resolveMembershipForReport(u, year, fullAccess, scopedCenterUuids);
+            GroupSalle g = membership != null ? membership.getGroup() : null;
 
             Integer sizeIdx = Optional.ofNullable(u.getTshirtSize()).map(TshirtSizeEnum::fromIndex)
                     .map(Enum::ordinal).orElse(-1);
@@ -183,11 +186,7 @@ public class ReportQueueService {
             part.put("chronicDiseases", Optional.ofNullable(u.getChronicDiseases()).orElse(""));
             part.put("imageAuthorization", Boolean.TRUE.equals(u.getImageAuthorization()));
             part.put("tshirtSize", sizeIdx);
-            part.put("userType", g == null ? 0 : Optional.ofNullable(u.getGroups().stream()
-                    .filter(ug -> ug.getDeletedAt() == null && ug.getGroup() != null && ug.getGroup().getUuid().equals(g.getUuid()))
-                    .map(ug -> ug.getUserType())
-                    .findFirst()
-                    .orElse(0)).orElse(0));
+            part.put("userType", membership == null ? 0 : Optional.ofNullable(membership.getUserType()).orElse(0));
             part.put("group", Map.of(
                     "stage", g != null ? Optional.ofNullable(g.getStage()).orElse(0) : 0,
                     "center", centerMap
@@ -199,31 +198,84 @@ public class ReportQueueService {
         return m;
     }
 
-    private List<EventUser> filterParticipantsByScope(
+    List<EventUser> prepareParticipantsForReport(
             List<EventUser> participants,
+            int year,
             boolean fullAccess,
             Set<UUID> scopedCenterUuids
     ) {
-        if (fullAccess) {
-            return participants;
-        }
         return participants.stream()
-                .filter(eventUser -> resolveGroupForReport(eventUser.getUser(), false, scopedCenterUuids) != null)
+                .map(eventUser -> new ReportParticipant(
+                        eventUser,
+                        resolveMembershipForReport(eventUser.getUser(), year, fullAccess, scopedCenterUuids)
+                ))
+                .filter(participant -> participant.membership() != null)
+                .sorted(reportParticipantComparator())
+                .map(ReportParticipant::eventUser)
                 .toList();
     }
 
-    private GroupSalle resolveGroupForReport(UserSalle user, boolean fullAccess, Set<UUID> scopedCenterUuids) {
+    UserGroup resolveMembershipForReport(UserSalle user, int year, boolean fullAccess, Set<UUID> scopedCenterUuids) {
         if (user == null || user.getGroups() == null) {
             return null;
         }
         return user.getGroups().stream()
                 .filter(userGroup -> userGroup.getDeletedAt() == null)
-                .map(userGroup -> userGroup.getGroup())
-                .filter(group -> group != null)
-                .filter(group -> fullAccess
-                        || (group.getCenter() != null && scopedCenterUuids.contains(group.getCenter().getUuid())))
+                .filter(userGroup -> userGroup.getYear() != null && userGroup.getYear() == year)
+                .filter(userGroup -> userGroup.getGroup() != null)
+                .filter(userGroup -> fullAccess || belongsToScopedCenter(userGroup, scopedCenterUuids))
+                .sorted(reportMembershipComparator())
                 .findFirst()
                 .orElse(null);
+    }
+
+    private Comparator<ReportParticipant> reportParticipantComparator() {
+        return Comparator
+                .comparing((ReportParticipant participant) -> centerNameOf(participant.membership()))
+                .thenComparing(participant -> stageOf(participant.membership()))
+                .thenComparing(participant -> safe(participant.eventUser().getUser() == null
+                        ? null
+                        : participant.eventUser().getUser().getLastName()))
+                .thenComparing(participant -> safe(participant.eventUser().getUser() == null
+                        ? null
+                        : participant.eventUser().getUser().getName()))
+                .thenComparing(participant -> participant.eventUser().getUuid(), Comparator.nullsLast(Comparator.naturalOrder()));
+    }
+
+    private Comparator<UserGroup> reportMembershipComparator() {
+        return Comparator
+                .comparing((UserGroup membership) -> centerNameOf(membership))
+                .thenComparing(membership -> stageOf(membership))
+                .thenComparing(membership -> membership.getGroup() == null ? null : membership.getGroup().getUuid(),
+                        Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(UserGroup::getUuid, Comparator.nullsLast(Comparator.naturalOrder()));
+    }
+
+    private boolean belongsToScopedCenter(UserGroup membership, Set<UUID> scopedCenterUuids) {
+        return membership.getGroup() != null
+                && membership.getGroup().getCenter() != null
+                && scopedCenterUuids.contains(membership.getGroup().getCenter().getUuid());
+    }
+
+    private String centerNameOf(UserGroup membership) {
+        if (membership == null || membership.getGroup() == null || membership.getGroup().getCenter() == null) {
+            return "\uFFFF";
+        }
+        return safe(membership.getGroup().getCenter().getName());
+    }
+
+    private int stageOf(UserGroup membership) {
+        if (membership == null || membership.getGroup() == null || membership.getGroup().getStage() == null) {
+            return Integer.MAX_VALUE;
+        }
+        return membership.getGroup().getStage();
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value;
+    }
+
+    private record ReportParticipant(EventUser eventUser, UserGroup membership) {
     }
 
     private String buildOutputPrefix(int year, UUID eventUuid, boolean fullAccess, Set<UUID> scopedCenterUuids) {

@@ -115,23 +115,21 @@ public interface EventUserRepository extends JpaRepository<EventUser, UUID> {
     where eu.event.uuid = :eventUuid
       and eu.deletedAt is null
       and eu.status = 1
+      and eu.user.deletedAt is null
 """)
     List<UUID> findConfirmedUuids(@Param("eventUuid") UUID eventUuid);
 
     @Query("""
         select distinct eu
         from EventUser eu
-        join UserGroup ug
-          on ug.user.uuid = eu.user.uuid
-         and ug.year = :year
-         and ug.deletedAt is null
-        join ug.group g
-        join g.center c
+        join fetch eu.user u
+        left join fetch u.groups ug
+        left join fetch ug.group g
+        left join fetch g.center
         where eu.uuid in :uuids
-        order by c.name asc, g.stage asc, coalesce(eu.user.lastName,''), coalesce(eu.user.name,''), eu.uuid
+          and eu.deletedAt is null
     """)
-    List<EventUser> findByUuidInFetchOrdered(@Param("uuids") List<UUID> uuids,
-                                             @Param("year") Integer year);
+    List<EventUser> findByUuidInFetchForReport(@Param("uuids") List<UUID> uuids);
 
     @Query("""
         SELECT COUNT(eu.uuid) AS total,

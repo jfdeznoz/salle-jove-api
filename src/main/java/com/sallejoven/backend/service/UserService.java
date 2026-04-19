@@ -463,11 +463,12 @@ public class UserService {
     private void migrateUserCentersFrom(UserSalle base, UserSalle source) {
         UUID baseUuid = base.getUuid();
         userCenterRepository.findAllByUserIncludingDeleted(source.getUuid()).forEach(uc -> {
-            UUID centerUuid = uc.getCenter().getUuid();
-            Integer year = uc.getYear();
-            boolean conflict = userCenterRepository
-                    .findActiveByUserCenterYear(baseUuid, centerUuid, year)
-                    .isPresent();
+            boolean conflict = userCenterRepository.existsByUser_UuidAndCenter_UuidAndYearAndDeletedAtIsNullAndUserType(
+                    baseUuid,
+                    uc.getCenter().getUuid(),
+                    uc.getYear(),
+                    uc.getUserType()
+            );
             if (!conflict) {
                 uc.setUser(base);
                 uc.setDeletedAt(null);
@@ -507,10 +508,74 @@ public class UserService {
     }
 
     private void reactivateOwnRelations(UUID userUuid) {
-        userGroupRepository.reactivateByUser(userUuid);
-        userCenterRepository.reactivateByUser(userUuid);
-        eventUserRepository.reactivateByUser(userUuid);
-        weeklySessionUserRepository.reactivateByUser(userUuid);
+        reactivateOwnUserGroups(userUuid);
+        reactivateOwnUserCenters(userUuid);
+        reactivateOwnEventUsers(userUuid);
+        reactivateOwnWeeklySessionUsers(userUuid);
+    }
+
+    private void reactivateOwnUserGroups(UUID userUuid) {
+        userGroupRepository.findDeletedByUser(userUuid).forEach(userGroup -> {
+            boolean conflict = userGroupRepository.findActiveByUserGroupYear(
+                    userUuid,
+                    userGroup.getGroup().getUuid(),
+                    userGroup.getYear()
+            ).isPresent();
+            if (!conflict) {
+                userGroup.setDeletedAt(null);
+                userGroupRepository.save(userGroup);
+            }
+        });
+    }
+
+    private void reactivateOwnUserCenters(UUID userUuid) {
+        userCenterRepository.findAllByUserIncludingDeleted(userUuid).forEach(userCenter -> {
+            if (userCenter.getDeletedAt() == null) {
+                return;
+            }
+            boolean conflict = userCenterRepository.existsByUser_UuidAndCenter_UuidAndYearAndDeletedAtIsNullAndUserType(
+                    userUuid,
+                    userCenter.getCenter().getUuid(),
+                    userCenter.getYear(),
+                    userCenter.getUserType()
+            );
+            if (!conflict) {
+                userCenter.setDeletedAt(null);
+                userCenterRepository.save(userCenter);
+            }
+        });
+    }
+
+    private void reactivateOwnEventUsers(UUID userUuid) {
+        eventUserRepository.findAllByUserIncludingDeleted(userUuid).forEach(eventUser -> {
+            if (eventUser.getDeletedAt() == null) {
+                return;
+            }
+            boolean conflict = eventUserRepository.findActiveByEventAndUser(
+                    eventUser.getEvent().getUuid(),
+                    userUuid
+            ).stream().anyMatch(active -> !active.getUuid().equals(eventUser.getUuid()));
+            if (!conflict) {
+                eventUser.setDeletedAt(null);
+                eventUserRepository.save(eventUser);
+            }
+        });
+    }
+
+    private void reactivateOwnWeeklySessionUsers(UUID userUuid) {
+        weeklySessionUserRepository.findAllByUserIncludingDeleted(userUuid).forEach(sessionUser -> {
+            if (sessionUser.getDeletedAt() == null) {
+                return;
+            }
+            boolean conflict = weeklySessionUserRepository.findActiveBySessionAndUser(
+                    sessionUser.getWeeklySession().getUuid(),
+                    userUuid
+            ).stream().anyMatch(active -> !active.getUuid().equals(sessionUser.getUuid()));
+            if (!conflict) {
+                sessionUser.setDeletedAt(null);
+                weeklySessionUserRepository.save(sessionUser);
+            }
+        });
     }
 
     private static void normalizeUserStrings(UserSalle user) {
