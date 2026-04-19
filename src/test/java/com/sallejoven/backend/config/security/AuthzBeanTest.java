@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.time.ZoneId;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,6 +45,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class AuthzBeanTest {
+
+    private static final ZoneId MADRID_ZONE = ZoneId.of("Europe/Madrid");
 
     @Mock UserCenterRepository userCenterRepo;
     @Mock UserRepository userRepo;
@@ -258,7 +261,7 @@ class AuthzBeanTest {
 
             @Override
             public LocalDateTime getSessionDateTime() {
-                return LocalDateTime.now().plusHours(2);
+                return LocalDateTime.now(MADRID_ZONE).plusHours(2);
             }
         };
 
@@ -303,7 +306,7 @@ class AuthzBeanTest {
 
             @Override
             public LocalDateTime getSessionDateTime() {
-                return LocalDateTime.now().minusHours(2);
+                return LocalDateTime.now(MADRID_ZONE).minusHours(2);
             }
         };
 
