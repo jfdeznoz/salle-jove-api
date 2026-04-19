@@ -117,28 +117,30 @@ public class AuthzBean {
                 .flatMap(userRepo::findByUuid)
                 .map(UserSalle::getUuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
-        return canViewUserGroups(userUuid);
+        return canViewUserProfile(userUuid);
+    }
+
+    public boolean canViewGroupStats(String groupReference) {
+        UUID groupUuid = ReferenceParser.asUuid(groupReference)
+                .flatMap(groupRepository::findByUuid)
+                .map(GroupSalle::getUuid)
+                .orElse(null);
+        if (groupUuid == null) {
+            return false;
+        }
+        return hasGroupRole(groupUuid, "ANIMATOR") || hasCenterOfGroup(groupUuid, "PASTORAL_DELEGATE", "GROUP_LEADER");
     }
 
     public boolean canViewUserGroups(UUID userUuid) {
-        Set<String> authorities = auths();
-        if (isAdmin(authorities) || isSelf(userUuid)) {
-            return true;
-        }
-
-        int year = academicStateService.getVisibleYear();
-        Set<UUID> targetCenterUuids = loadTargetCenterUuids(userUuid, year);
-        for (UUID centerUuid : targetCenterUuids) {
-            if (authorities.contains("CENTER:" + centerUuid + ":PASTORAL_DELEGATE:" + year)
-                    || authorities.contains("CENTER:" + centerUuid + ":GROUP_LEADER:" + year)) {
-                return true;
-            }
-        }
-        return false;
+        return canViewUserProfile(userUuid);
     }
 
     public boolean canViewUserCenters(UUID userUuid) {
-        var authorities = auths();
+        return canViewUserProfile(userUuid);
+    }
+
+    private boolean canViewUserProfile(UUID userUuid) {
+        Set<String> authorities = auths();
         if (isAdmin(authorities) || isSelf(userUuid)) {
             return true;
         }
@@ -148,13 +150,28 @@ public class AuthzBean {
             return false;
         }
 
-        var viewerCenters = authorityService.extractCenterIdsForYear(authorities, year);
-        if (viewerCenters.isEmpty()) {
+        return canViewUserProfileAsCenterManager(authorities, userUuid, year)
+                || canViewUserProfileAsAnimator(authorities, userUuid, year);
+    }
+
+    private boolean canViewUserProfileAsCenterManager(Set<String> authorities, UUID userUuid, int year) {
+        Set<UUID> targetCenters = loadTargetCenterUuids(userUuid, year);
+        return targetCenters.stream().anyMatch(centerUuid ->
+                authorities.contains("CENTER:" + centerUuid + ":PASTORAL_DELEGATE:" + year)
+                        || authorities.contains("CENTER:" + centerUuid + ":GROUP_LEADER:" + year));
+    }
+
+    private boolean canViewUserProfileAsAnimator(Set<String> authorities, UUID userUuid, int year) {
+        Set<UUID> animatorGroupUuids = authorityService.extractAnimatorGroupIdsForYear(authorities, year);
+        if (animatorGroupUuids.isEmpty()) {
             return false;
         }
 
-        Set<UUID> targetCenters = loadTargetCenterUuids(userUuid, year);
-        return targetCenters.stream().anyMatch(viewerCenters::contains);
+        return userGroupRepo.findByUser_UuidAndYearAndDeletedAtIsNullAndUserType(userUuid, year, 0).stream()
+                .map(userGroup -> userGroup.getGroup() != null ? userGroup.getGroup().getUuid() : null)
+                .filter(groupUuid -> groupUuid != null && animatorGroupUuids.contains(groupUuid))
+                .findAny()
+                .isPresent();
     }
 
     public boolean canManageCenterAsDelegate(UUID centerUuid) {
@@ -384,8 +401,9 @@ public class AuthzBean {
         if (groupUuid == null) {
             return false;
         }
-        if (Integer.valueOf(0).equals(authView.getStatus())
-                && authorities.contains("GROUP:" + groupUuid + ":ANIMATOR:" + year)) {
+        if (authorities.contains("GROUP:" + groupUuid + ":ANIMATOR:" + year)
+                && authView.getSessionDateTime() != null
+                && authView.getSessionDateTime().isAfter(java.time.LocalDateTime.now(ZoneId.of("Europe/Madrid")))) {
             return true;
         }
         return centerUuid != null && (
@@ -439,6 +457,10 @@ public class AuthzBean {
                 .map(session -> session.getSessionDateTime() != null
                         && session.getSessionDateTime().toLocalDate().isEqual(todayMadrid()))
                 .orElse(false);
+    }
+
+    public boolean canUpdateWeeklySessionGroupParticipants(UUID sessionUuid, UUID groupUuid) {
+        return canViewWeeklySessionGroupParticipants(sessionUuid, groupUuid);
     }
 
     private LocalDate todayMadrid() {
@@ -533,6 +555,10 @@ public class AuthzBean {
         return canEditVitalSituationSession(uuid);
     }
 
+    public boolean isCurrentUserAdmin() {
+        return isAdmin(auths());
+    }
+
     private static String normalizeRole(String raw) {
         if (raw == null || raw.isBlank()) {
             return "ROLE_PARTICIPANT";
@@ -617,9 +643,7 @@ public class AuthzBean {
             return false;
         }
         var authorities = auths();
-        var targetGroupUuids = new HashSet<>(userGroupRepo.findDistinctGroupUuidsByUserUuidAndYear(userUuid, year));
-        return targetGroupUuids.stream()
-                .anyMatch(groupUuid -> authorities.contains("GROUP:" + groupUuid + ":ANIMATOR:" + year));
+        return canViewUserProfileAsAnimator(authorities, userUuid, year);
     }
 
     private Set<UUID> loadTargetCenterUuids(UUID userUuid, Integer year) {

@@ -1,6 +1,7 @@
 package com.sallejoven.backend.model.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.sallejoven.backend.model.enums.WeeklySessionWarningType;
 
 import java.util.Date;
 
@@ -29,5 +30,7 @@ public record ParticipantDto(
     Integer attends,
     Boolean justified,
     String justificationReason,
+    WeeklySessionWarningType warningType,
+    String warningComment,
     Integer userType
 ) {}

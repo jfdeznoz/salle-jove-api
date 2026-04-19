@@ -4,13 +4,17 @@ import java.util.List;
 
 public record CenterAttendanceStatsDto(
         List<GroupStatsDto> groups,
-        Double overallRate
+        Double overallRate,
+        Integer overallYellowWarnings,
+        Integer overallRedWarnings
 ) {
 
     public record GroupStatsDto(
             java.util.UUID groupUuid,
             Integer stage,
             Integer sessionsCount,
-            Double avgAttendanceRate
+            Double avgAttendanceRate,
+            Integer yellowWarnings,
+            Integer redWarnings
     ) {}
 }

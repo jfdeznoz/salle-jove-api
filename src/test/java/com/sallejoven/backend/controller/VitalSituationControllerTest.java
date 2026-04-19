@@ -151,6 +151,49 @@ class VitalSituationControllerTest {
 
     @Test
     @WithMockUser
+    void updateVitalSituationDefaultFlag_returnsForbidden_whenUserIsNotAdmin() throws Exception {
+        UUID uuid = UUID.randomUUID();
+        when(authz.isCurrentUserAdmin()).thenReturn(false);
+
+        mockMvc.perform(put("/api/vital-situations/{uuid}/default-flag", uuid)
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"isDefault":true}
+                                """))
+                .andExpect(status().isForbidden());
+
+        verify(authz).isCurrentUserAdmin();
+        verifyNoMoreInteractions(authz, vitalSituationService, s3v2Service);
+    }
+
+    @Test
+    @WithMockUser
+    void updateVitalSituationDefaultFlag_updatesValue_whenUserIsAdmin() throws Exception {
+        UUID uuid = UUID.randomUUID();
+        when(authz.isCurrentUserAdmin()).thenReturn(true);
+        when(vitalSituationService.setVitalSituationDefaultFlag(uuid, true)).thenReturn(
+                VitalSituation.builder().uuid(uuid).title("Jerusalen").stages(new Integer[]{8}).isDefault(true).build());
+        when(vitalSituationService.findById(uuid)).thenReturn(Optional.of(
+                new VitalSituationDto(uuid, "Jerusalen", new Integer[]{8}, true)));
+
+        mockMvc.perform(put("/api/vital-situations/{uuid}/default-flag", uuid)
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"isDefault":true}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isDefault").value(true));
+
+        verify(authz).isCurrentUserAdmin();
+        verify(vitalSituationService).setVitalSituationDefaultFlag(uuid, true);
+        verify(vitalSituationService).findById(uuid);
+        verifyNoMoreInteractions(authz, vitalSituationService, s3v2Service);
+    }
+
+    @Test
+    @WithMockUser
     void updateVitalSituationSession_allowsPartialPayload_withoutTitle() throws Exception {
         UUID sessionUuid = UUID.randomUUID();
         UUID vitalSituationUuid = UUID.randomUUID();
@@ -171,6 +214,50 @@ class VitalSituationControllerTest {
 
         verify(authz).canEditVitalSituationSession(sessionUuid);
         verify(vitalSituationService).updateVitalSituationSession(any(), any());
+        verify(vitalSituationService).findSessionById(sessionUuid);
+        verifyNoMoreInteractions(authz, vitalSituationService, s3v2Service);
+    }
+
+    @Test
+    @WithMockUser
+    void updateVitalSituationSessionDefaultFlag_returnsForbidden_whenUserIsNotAdmin() throws Exception {
+        UUID sessionUuid = UUID.randomUUID();
+        when(authz.isCurrentUserAdmin()).thenReturn(false);
+
+        mockMvc.perform(put("/api/vital-situations/sessions/{uuid}/default-flag", sessionUuid)
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"isDefault":true}
+                                """))
+                .andExpect(status().isForbidden());
+
+        verify(authz).isCurrentUserAdmin();
+        verifyNoMoreInteractions(authz, vitalSituationService, s3v2Service);
+    }
+
+    @Test
+    @WithMockUser
+    void updateVitalSituationSessionDefaultFlag_updatesValue_whenUserIsAdmin() throws Exception {
+        UUID sessionUuid = UUID.randomUUID();
+        UUID vitalSituationUuid = UUID.randomUUID();
+        when(authz.isCurrentUserAdmin()).thenReturn(true);
+        when(vitalSituationService.setVitalSituationSessionDefaultFlag(sessionUuid, true)).thenReturn(
+                VitalSituationSession.builder().uuid(sessionUuid).title("Sesion").isDefault(true).build());
+        when(vitalSituationService.findSessionById(sessionUuid)).thenReturn(Optional.of(
+                new VitalSituationSessionDto(sessionUuid, vitalSituationUuid, "Sesion", null, true)));
+
+        mockMvc.perform(put("/api/vital-situations/sessions/{uuid}/default-flag", sessionUuid)
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"isDefault":true}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isDefault").value(true));
+
+        verify(authz).isCurrentUserAdmin();
+        verify(vitalSituationService).setVitalSituationSessionDefaultFlag(sessionUuid, true);
         verify(vitalSituationService).findSessionById(sessionUuid);
         verifyNoMoreInteractions(authz, vitalSituationService, s3v2Service);
     }

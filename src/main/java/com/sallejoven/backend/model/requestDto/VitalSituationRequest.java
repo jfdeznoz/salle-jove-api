@@ -20,4 +20,6 @@ public class VitalSituationRequest {
 
     @NotEmpty
     private Integer[] stages;
+
+    private Boolean isDefault;
 }

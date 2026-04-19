@@ -49,6 +49,14 @@ public class UserGroupService {
         return userGroupRepository.findByGroupUuidAndYear(groupUuid, academicStateService.getVisibleYear());
     }
 
+    public List<UserGroup> findParticipantsByGroupId(UUID groupUuid) {
+        return userGroupRepository.findByGroup_UuidAndYearAndDeletedAtIsNullAndUserType(
+                groupUuid,
+                academicStateService.getVisibleYear(),
+                0
+        );
+    }
+
     public List<UserGroup> findByStages(Collection<Integer> stages) {
         return userGroupRepository.findByGroupStagesAndYear(stages, academicStateService.getVisibleYear());
     }

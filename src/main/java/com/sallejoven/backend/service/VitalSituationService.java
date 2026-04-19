@@ -22,8 +22,10 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Slf4j
 @Service
@@ -36,6 +38,7 @@ public class VitalSituationService {
     private final GroupRepository groupRepository;
     private final S3V2Service s3v2Service;
     private final VitalSituationMapper vitalSituationMapper;
+    private final AuthService authService;
 
     public List<VitalSituationDto> findAll() {
         return vitalSituationRepository.findAllActive().stream().map(this::toDto).collect(Collectors.toList());
@@ -95,7 +98,7 @@ public class VitalSituationService {
         VitalSituation vitalSituation = VitalSituation.builder()
                 .title(request.getTitle())
                 .stages(request.getStages())
-                .isDefault(false)
+                .isDefault(resolveIsDefaultForCreate(request.getIsDefault()))
                 .build();
         return vitalSituationRepository.save(vitalSituation);
     }
@@ -126,7 +129,7 @@ public class VitalSituationService {
         VitalSituationSession session = VitalSituationSession.builder()
                 .vitalSituation(vitalSituation)
                 .title(request.getTitle())
-                .isDefault(false)
+                .isDefault(resolveIsDefaultForCreate(request.getIsDefault()))
                 .build();
         return vitalSituationSessionRepository.save(session);
     }
@@ -141,6 +144,24 @@ public class VitalSituationService {
         if (request.getVitalSituationUuid() != null && !request.getVitalSituationUuid().isBlank()) {
             session.setVitalSituation(resolveVitalSituation(request.getVitalSituationUuid()));
         }
+        return vitalSituationSessionRepository.save(session);
+    }
+
+    @Transactional
+    public VitalSituation setVitalSituationDefaultFlag(UUID uuid, boolean isDefault) {
+        ensureCurrentUserIsAdmin();
+        VitalSituation vitalSituation = vitalSituationRepository.findById(uuid)
+                .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_NOT_FOUND));
+        vitalSituation.setIsDefault(isDefault);
+        return vitalSituationRepository.save(vitalSituation);
+    }
+
+    @Transactional
+    public VitalSituationSession setVitalSituationSessionDefaultFlag(UUID uuid, boolean isDefault) {
+        ensureCurrentUserIsAdmin();
+        VitalSituationSession session = vitalSituationSessionRepository.findById(uuid)
+                .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_SESSION_NOT_FOUND));
+        session.setIsDefault(isDefault);
         return vitalSituationSessionRepository.save(session);
     }
 
@@ -188,5 +209,26 @@ public class VitalSituationService {
                 .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_NOT_FOUND));
         return vitalSituationRepository.findByUuid(uuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.VITAL_SITUATION_NOT_FOUND));
+    }
+
+    private Boolean resolveIsDefaultForCreate(Boolean requestedIsDefault) {
+        if (isCurrentUserAdmin()) {
+            return Boolean.TRUE.equals(requestedIsDefault);
+        }
+        return false;
+    }
+
+    private void ensureCurrentUserIsAdmin() {
+        if (isCurrentUserAdmin()) {
+            return;
+        }
+        throw new ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "Solo un admin puede cambiar entre creada y predefinida"
+        );
+    }
+
+    private boolean isCurrentUserAdmin() {
+        return Boolean.TRUE.equals(authService.getCurrentUser().getIsAdmin());
     }
 }

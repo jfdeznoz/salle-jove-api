@@ -8,6 +8,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
@@ -56,6 +57,9 @@ public class WeeklySessionUser {
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
+
+    @OneToOne(mappedBy = "weeklySessionUser", fetch = FetchType.LAZY)
+    private WeeklySessionBehaviorWarning behaviorWarning;
 
     @PrePersist
     private void ensureUuid() {

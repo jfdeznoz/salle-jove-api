@@ -25,4 +25,6 @@ public class VitalSituationSessionRequest {
     private String pdfUpload;
 
     private Boolean wantPdfUpload;
+
+    private Boolean isDefault;
 }

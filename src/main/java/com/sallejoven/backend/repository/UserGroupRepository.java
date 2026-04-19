@@ -41,6 +41,10 @@ public interface UserGroupRepository extends JpaRepository<UserGroup, UUID> {
     List<UserGroup> findByGroupUuidAndYear(@Param("groupUuid") UUID groupUuid,
                                            @Param("year") Integer year);
 
+    List<UserGroup> findByGroup_UuidAndYearAndDeletedAtIsNullAndUserType(UUID groupUuid,
+                                                                         Integer year,
+                                                                         Integer userType);
+
     @Query("""
         select ug
         from UserGroup ug

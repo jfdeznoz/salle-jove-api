@@ -8,6 +8,8 @@ public record AdminOverviewDto(
         List<CenterOverviewDto> bottomCenters,
         Double globalSessionRate,
         Double globalEventRate,
+        Integer totalYellowWarnings,
+        Integer totalRedWarnings,
         Integer totalUsers,
         Integer totalSessions,
         Integer totalEvents
@@ -20,6 +22,8 @@ public record AdminOverviewDto(
             Integer groupCount,
             Integer memberCount,
             Double sessionRate,
-            Double eventRate
+            Double eventRate,
+            Integer yellowWarnings,
+            Integer redWarnings
     ) {}
 }

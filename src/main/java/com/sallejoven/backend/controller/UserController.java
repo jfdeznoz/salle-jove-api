@@ -1,5 +1,6 @@
 package com.sallejoven.backend.controller;
 
+import com.sallejoven.backend.config.security.AuthzBean;
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.mapper.UserMapper;
 import com.sallejoven.backend.model.dto.UserDto;
@@ -56,6 +57,7 @@ public class UserController {
     private final CenterService centerService;
     private final UserGroupService userGroupService;
     private final UserCenterService userCenterService;
+    private final AuthzBean authzBean;
 
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping
@@ -79,7 +81,10 @@ public class UserController {
     @GetMapping("/group/{groupUuid}")
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<List<UserDto>> getUsersByGroupId(@PathVariable UUID groupUuid) {
-        List<UserGroup> users = userGroupService.findByGroupId(groupUuid);
+        boolean canViewFullRoster = authzBean.hasCenterOfGroup(groupUuid, "PASTORAL_DELEGATE", "GROUP_LEADER");
+        List<UserGroup> users = canViewFullRoster
+                ? userGroupService.findByGroupId(groupUuid)
+                : userGroupService.findParticipantsByGroupId(groupUuid);
         List<UserDto> result = users.stream()
                 .map(userMapper::toUserDtoFromUserGroup)
                 .collect(Collectors.toList());

@@ -5,7 +5,9 @@ import com.sallejoven.backend.mapper.CenterMapper;
 import com.sallejoven.backend.mapper.GroupMapper;
 import com.sallejoven.backend.model.dto.CenterDto;
 import com.sallejoven.backend.model.dto.GroupDto;
+import com.sallejoven.backend.model.dto.UserCenterGroupsDto;
 import com.sallejoven.backend.model.dto.UserGroupDto;
+import com.sallejoven.backend.model.dto.WeeklySessionSummaryDto;
 import com.sallejoven.backend.model.entity.Center;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserCenter;
@@ -47,6 +49,7 @@ public class CenterService {
     private final UserGroupRepository userGroupRepository;
     private final CenterMapper centerMapper;
     private final GroupMapper groupMapper;
+    private final WeeklySessionService weeklySessionService;
 
     public Center findById(UUID uuid) {
         return centerRepository.findById(uuid)
@@ -171,6 +174,27 @@ public class CenterService {
                 .toList();
     }
 
+    public List<UserCenterGroupsDto> getCentersForUserWithWeeklySummary(UserSalle me, List<Role> roles) {
+        List<UserCenterGroupsRaw> raws = getCentersForUserRaw(me, roles);
+        if (raws.isEmpty()) {
+            return List.of();
+        }
+
+        List<UUID> groupUuids = raws.stream()
+                .flatMap(raw -> raw.groups().stream())
+                .map(UserGroupDto::groupUuid)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<UUID, WeeklySessionSummaryDto> summaries =
+                weeklySessionService.getWeeklySummaryByGroupIds(groupUuids);
+
+        return raws.stream()
+                .map(raw -> toUserCenterGroupsDto(raw, summaries))
+                .sorted(Comparator.comparing(UserCenterGroupsDto::centerName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
     public List<GroupSalle> getGroupsForCenter(Center center) {
         return groupService.findByCenter(center);
     }
@@ -190,7 +214,7 @@ public class CenterService {
         for (Center center : getAllCentersWithGroups()) {
             List<GroupSalle> groups = groupService.findGroupsByCenterIdForYear(center.getUuid(), year);
             List<UserGroupDto> dtos = groups.stream()
-                    .map(group -> new UserGroupDto(UserType.ADMIN.toInt(), group.getUuid(), null, group.getStage()))
+                    .map(group -> new UserGroupDto(UserType.ADMIN.toInt(), group.getUuid(), null, group.getStage(), null))
                     .toList();
             raws.add(new UserCenterGroupsRaw(center, dtos));
         }
@@ -217,7 +241,7 @@ public class CenterService {
             Center center = userCenter.getCenter();
             int roleCode = userCenter.getUserType() != null ? userCenter.getUserType() : UserType.PARTICIPANT.toInt();
             List<UserGroupDto> dtos = groupService.findGroupsByCenterIdForYear(center.getUuid(), year).stream()
-                    .map(group -> new UserGroupDto(roleCode, group.getUuid(), null, group.getStage()))
+                    .map(group -> new UserGroupDto(roleCode, group.getUuid(), null, group.getStage(), null))
                     .toList();
             result.add(new UserCenterGroupsRaw(center, dtos));
         }
@@ -246,11 +270,51 @@ public class CenterService {
                             userGroup.getUserType() != null ? userGroup.getUserType() : UserType.PARTICIPANT.toInt(),
                             userGroup.getGroup().getUuid(),
                             userGroup.getUuid(),
-                            userGroup.getGroup().getStage()))
+                            userGroup.getGroup().getStage(),
+                            null))
                     .toList();
             raws.add(new UserCenterGroupsRaw(entry.getKey(), dtos));
         }
         return raws;
+    }
+
+    private UserCenterGroupsDto toUserCenterGroupsDto(
+            UserCenterGroupsRaw raw,
+            Map<UUID, WeeklySessionSummaryDto> summaries) {
+        List<UserGroupDto> groups = raw.groups().stream()
+                .map(group -> new UserGroupDto(
+                        group.userType(),
+                        group.groupUuid(),
+                        group.uuid(),
+                        group.stage(),
+                        summaryOrZero(summaries.get(group.groupUuid()))))
+                .sorted(Comparator.comparing(UserGroupDto::stage, Comparator.nullsLast(Integer::compareTo)))
+                .toList();
+
+        int currentWeekCount = groups.stream()
+                .map(UserGroupDto::weeklySessionSummary)
+                .filter(Objects::nonNull)
+                .mapToInt(summary -> summary.currentWeekCount() != null ? summary.currentWeekCount() : 0)
+                .sum();
+        int previousWeekCount = groups.stream()
+                .map(UserGroupDto::weeklySessionSummary)
+                .filter(Objects::nonNull)
+                .mapToInt(summary -> summary.previousWeekCount() != null ? summary.previousWeekCount() : 0)
+                .sum();
+
+        return new UserCenterGroupsDto(
+                raw.center().getUuid(),
+                raw.center().getName(),
+                raw.center().getCity(),
+                groups,
+                new WeeklySessionSummaryDto(currentWeekCount, previousWeekCount));
+    }
+
+    private WeeklySessionSummaryDto summaryOrZero(WeeklySessionSummaryDto summary) {
+        if (summary != null) {
+            return summary;
+        }
+        return new WeeklySessionSummaryDto(0, 0);
     }
 
     private List<GroupSalle> resolveGroupsToFork(UUID sourceCenterUuid, ForkCenterRequest request) {

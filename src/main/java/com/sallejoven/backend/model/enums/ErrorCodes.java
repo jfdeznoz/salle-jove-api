@@ -33,7 +33,9 @@ public enum ErrorCodes {
     MERGE_STAGE_CONFLICT("Los centros tienen grupos con las mismas etapas", "E029"),
     USER_NOT_DELETED("El usuario no está eliminado", "E030"),
     INVALID_MERGE_TARGET("El usuario origen de la fusión no puede ser el mismo que el usuario base", "E031"),
-    EMAIL_IN_USE("Email ya en uso por otro usuario activo", "E032");
+    EMAIL_IN_USE("Email ya en uso por otro usuario activo", "E032"),
+    WEEKLY_SESSION_WARNING_INVALID("El aviso personal de la sesión no es válido", "E033"),
+    NOTIFICATION_NOT_FOUND("Notificación no encontrada", "E034");
 
     private final String message;
     private final String errorCode;

@@ -101,7 +101,7 @@ public class UserAssembler {
                             .map(groupMapper::toUserGroupDto)
                             .sorted(Comparator.comparing(UserGroupDto::stage, Comparator.nullsLast(Integer::compareTo)))
                             .toList();
-                    return new UserCenterGroupsDto(center.getUuid(), center.getName(), center.getCity(), groupDtos);
+                    return new UserCenterGroupsDto(center.getUuid(), center.getName(), center.getCity(), groupDtos, null);
                 })
                 .sorted(Comparator.comparing(UserCenterGroupsDto::centerName, String.CASE_INSENSITIVE_ORDER))
                 .toList();

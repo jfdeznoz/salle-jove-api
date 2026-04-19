@@ -1,16 +1,16 @@
 package com.sallejoven.backend.repository.projection;
 
-import com.sallejoven.backend.model.enums.WeeklySessionWarningType;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-public interface UserRecentSessionProjection {
+public interface UserLedSessionProjection {
     UUID getSessionUuid();
     LocalDateTime getDate();
     String getTitle();
     String getVitalSituationTitle();
     String getVitalSituationSessionTitle();
-    Boolean getAttended();
-    Boolean getJustified();
-    WeeklySessionWarningType getWarningType();
+    String getContent();
+    String getObservations();
+    String getCenterName();
+    Integer getStage();
 }

@@ -2,11 +2,15 @@ package com.sallejoven.backend.service;
 
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.UserGroup;
+import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.entity.WeeklySession;
+import com.sallejoven.backend.model.entity.WeeklySessionBehaviorWarning;
 import com.sallejoven.backend.model.entity.WeeklySessionUser;
 import com.sallejoven.backend.model.enums.ErrorCodes;
+import com.sallejoven.backend.model.enums.WeeklySessionWarningType;
 import com.sallejoven.backend.model.requestDto.AttendanceUpdateDto;
 import com.sallejoven.backend.repository.UserGroupRepository;
+import com.sallejoven.backend.repository.WeeklySessionBehaviorWarningRepository;
 import com.sallejoven.backend.repository.WeeklySessionRepository;
 import com.sallejoven.backend.repository.WeeklySessionUserRepository;
 import com.sallejoven.backend.utils.ReferenceParser;
@@ -29,8 +33,11 @@ public class WeeklySessionUserService {
 
     private final WeeklySessionUserRepository weeklySessionUserRepository;
     private final WeeklySessionRepository weeklySessionRepository;
+    private final WeeklySessionBehaviorWarningRepository weeklySessionBehaviorWarningRepository;
     private final AcademicStateService academicStateService;
     private final UserGroupRepository userGroupRepository;
+    private final AuthService authService;
+    private final ObservationNotificationService observationNotificationService;
 
     public void saveAll(List<WeeklySessionUser> users) {
         weeklySessionUserRepository.saveAll(users);
@@ -152,12 +159,13 @@ public class WeeklySessionUserService {
         WeeklySession session = weeklySessionRepository.findById(sessionUuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.WEEKLY_SESSION_NOT_FOUND));
         int year = academicStateService.getVisibleYear();
-
-        ensureAttendanceEditable(session);
+        boolean currentUserAdmin = isCurrentUserAdmin();
+        boolean attendanceEditable = isAttendanceEditable(session, currentUserAdmin);
+        List<ObservationNotificationService.PersonalWarningNotificationItem> warningNotifications = new java.util.ArrayList<>();
+        UserSalle actor = authService.getCurrentUser();
 
         for (AttendanceUpdateDto dto : updates) {
             dto.validate();
-            validateWeeklyAttendanceUpdate(dto);
             UUID userUuid = resolveUserUuid(dto);
             if (userUuid == null) {
                 throw new SalleException(ErrorCodes.USER_NOT_FOUND);
@@ -175,9 +183,16 @@ public class WeeklySessionUserService {
                             userUuid)
                     .orElseThrow(() -> new SalleException(ErrorCodes.USER_NOT_FOUND));
 
+            validateWeeklyAttendanceUpdate(dto, sessionUser, attendanceEditable);
             applyWeeklyAttendanceUpdate(sessionUser, dto);
+            maybeUpsertWarning(sessionUser, dto, actor)
+                    .ifPresent(warningNotifications::add);
 
             weeklySessionUserRepository.save(sessionUser);
+        }
+
+        if (!warningNotifications.isEmpty()) {
+            observationNotificationService.notifyPersonalWarnings(session, warningNotifications, actor);
         }
     }
 
@@ -203,7 +218,13 @@ public class WeeklySessionUserService {
         return null;
     }
 
-    private void validateWeeklyAttendanceUpdate(AttendanceUpdateDto dto) {
+    private void validateWeeklyAttendanceUpdate(AttendanceUpdateDto dto,
+                                                WeeklySessionUser sessionUser,
+                                                boolean attendanceEditable) {
+        if (!attendanceEditable) {
+            validatePastSessionJustificationOnlyUpdate(dto, sessionUser);
+        }
+
         if (Boolean.TRUE.equals(dto.getJustified())) {
             if (!Integer.valueOf(0).equals(dto.getAttends())) {
                 throw new SalleException(ErrorCodes.STATUS_PARTICIPANT_ERROR);
@@ -211,6 +232,12 @@ public class WeeklySessionUserService {
             if (dto.getJustificationReason() == null || dto.getJustificationReason().trim().isEmpty()) {
                 throw new SalleException(ErrorCodes.STATUS_PARTICIPANT_ERROR);
             }
+        }
+
+        boolean hasWarningType = dto.getWarningType() != null;
+        boolean hasWarningComment = dto.getWarningComment() != null && !dto.getWarningComment().trim().isEmpty();
+        if (hasWarningType != hasWarningComment) {
+            throw new SalleException(ErrorCodes.WEEKLY_SESSION_WARNING_INVALID);
         }
     }
 
@@ -238,19 +265,80 @@ public class WeeklySessionUserService {
                 : null);
     }
 
-    private void ensureAttendanceEditable(WeeklySession session) {
+    private void validatePastSessionJustificationOnlyUpdate(AttendanceUpdateDto dto, WeeklySessionUser sessionUser) {
+        if (!Integer.valueOf(0).equals(sessionUser.getStatus())) {
+            throw new SalleException(ErrorCodes.SESSION_LOCKED);
+        }
+        if (!Integer.valueOf(0).equals(dto.getAttends())) {
+            throw new SalleException(ErrorCodes.SESSION_LOCKED);
+        }
+        if (dto.getWarningType() != null || (dto.getWarningComment() != null && !dto.getWarningComment().isBlank())) {
+            throw new SalleException(ErrorCodes.SESSION_LOCKED);
+        }
+    }
+
+    private Optional<ObservationNotificationService.PersonalWarningNotificationItem> maybeUpsertWarning(
+            WeeklySessionUser sessionUser,
+            AttendanceUpdateDto dto,
+            UserSalle actor) {
+        WeeklySessionBehaviorWarning existingWarning = weeklySessionBehaviorWarningRepository
+                .findByWeeklySessionUserUuidIncludingDeleted(sessionUser.getUuid())
+                .orElse(null);
+        WeeklySessionWarningType previousType = existingWarning != null && existingWarning.getDeletedAt() == null
+                ? existingWarning.getWarningType()
+                : null;
+        String previousComment = existingWarning != null && existingWarning.getDeletedAt() == null
+                ? existingWarning.getComment()
+                : null;
+
+        if (dto.getWarningType() == null) {
+            if (existingWarning != null && existingWarning.getDeletedAt() == null) {
+                existingWarning.setDeletedAt(LocalDateTime.now());
+                weeklySessionBehaviorWarningRepository.save(existingWarning);
+            }
+            return Optional.empty();
+        }
+
+        WeeklySessionBehaviorWarning warning = existingWarning;
+        if (warning == null) {
+            warning = WeeklySessionBehaviorWarning.builder()
+                    .weeklySessionUser(sessionUser)
+                    .build();
+        }
+        warning.setWarningType(dto.getWarningType());
+        warning.setComment(dto.getWarningComment().trim());
+        warning.setCreatedByUser(actor);
+        warning.setDeletedAt(null);
+        sessionUser.setBehaviorWarning(weeklySessionBehaviorWarningRepository.save(warning));
+
+        boolean changed = previousType != dto.getWarningType()
+                || previousComment == null
+                || !previousComment.trim().equals(dto.getWarningComment().trim());
+        if (!changed) {
+            return Optional.empty();
+        }
+
+        String participantName = sessionUser.getUser() == null
+                ? "Catecúmeno"
+                : (sessionUser.getUser().getName() + " " + sessionUser.getUser().getLastName()).trim();
+        return Optional.of(new ObservationNotificationService.PersonalWarningNotificationItem(
+                sessionUser.getUser() != null ? sessionUser.getUser().getUuid() : null,
+                participantName,
+                dto.getWarningType(),
+                dto.getWarningComment().trim()));
+    }
+
+    private boolean isAttendanceEditable(WeeklySession session, boolean currentUserAdmin) {
         if (Integer.valueOf(2).equals(session.getStatus())) {
             throw new SalleException(ErrorCodes.SESSION_LOCKED);
         }
 
-        if (isCurrentUserAdmin()) {
-            return;
+        if (currentUserAdmin) {
+            return true;
         }
 
-        if (session.getSessionDateTime() == null
-                || !session.getSessionDateTime().toLocalDate().isEqual(todayMadrid())) {
-            throw new SalleException(ErrorCodes.SESSION_LOCKED);
-        }
+        return session.getSessionDateTime() != null
+                && session.getSessionDateTime().toLocalDate().isEqual(todayMadrid());
     }
 
     private boolean isCurrentUserAdmin() {

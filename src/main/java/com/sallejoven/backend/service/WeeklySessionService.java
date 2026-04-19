@@ -3,6 +3,7 @@ package com.sallejoven.backend.service;
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.mapper.WeeklySessionMapper;
 import com.sallejoven.backend.model.dto.WeeklySessionDto;
+import com.sallejoven.backend.model.dto.WeeklySessionSummaryDto;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
@@ -16,9 +17,13 @@ import com.sallejoven.backend.repository.VitalSituationSessionRepository;
 import com.sallejoven.backend.repository.WeeklySessionRepository;
 import com.sallejoven.backend.utils.ReferenceParser;
 import java.time.LocalDate;
+import java.time.DayOfWeek;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.time.temporal.TemporalAdjusters;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +45,7 @@ public class WeeklySessionService {
     private final AuthService authService;
     private final GroupService groupService;
     private final WeeklySessionMapper weeklySessionMapper;
+    private final ObservationNotificationService observationNotificationService;
 
     public Optional<WeeklySession> findById(UUID uuid) {
         return weeklySessionRepository.findById(uuid);
@@ -93,6 +99,37 @@ public class WeeklySessionService {
         return weeklySessionRepository.findByGroupsAndPastStatus(effectiveGroups, isPast, today, onlyPublished, pageable);
     }
 
+    public Map<UUID, WeeklySessionSummaryDto> getWeeklySummaryByGroupIds(List<UUID> groupUuids) {
+        if (groupUuids == null || groupUuids.isEmpty()) {
+            return Map.of();
+        }
+
+        LocalDate today = ZonedDateTime.now(ZoneId.of("Europe/Madrid")).toLocalDate();
+        LocalDate currentWeekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate currentWeekEnd = currentWeekStart.plusDays(6);
+        LocalDate previousWeekStart = currentWeekStart.minusWeeks(1);
+        LocalDate previousWeekEnd = previousWeekStart.plusDays(6);
+
+        Map<UUID, WeeklySessionSummaryDto> summaries = new LinkedHashMap<>();
+        for (UUID groupUuid : groupUuids) {
+            summaries.put(groupUuid, new WeeklySessionSummaryDto(0, 0));
+        }
+
+        weeklySessionRepository.summarizeWeeklySessionsByGroup(
+                        groupUuids,
+                        currentWeekStart,
+                        currentWeekEnd,
+                        previousWeekStart,
+                        previousWeekEnd)
+                .forEach(row -> summaries.put(
+                        row.getGroupUuid(),
+                        new WeeklySessionSummaryDto(
+                                toInt(row.getCurrentWeekCount()),
+                                toInt(row.getPreviousWeekCount()))));
+
+        return summaries;
+    }
+
     @Transactional
     public WeeklySessionDto saveWeeklySession(WeeklySessionRequest request) {
         VitalSituationSession vitalSituationSession = resolveVitalSituationSession(request.getVitalSituationSessionUuid());
@@ -111,6 +148,9 @@ public class WeeklySessionService {
         session = weeklySessionRepository.save(session);
         List<UserGroup> targetUserGroups = userGroupService.findByGroupId(group.getUuid());
         weeklySessionUserService.assignSessionToUserGroups(session, targetUserGroups);
+        if (request.getObservations() != null && !request.getObservations().isBlank()) {
+            observationNotificationService.notifyGeneralObservation(session, request.getObservations().trim(), authService.getCurrentUser());
+        }
         return weeklySessionMapper.toDto(session);
     }
 
@@ -119,6 +159,7 @@ public class WeeklySessionService {
         WeeklySession session = weeklySessionRepository.findById(sessionUuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.WEEKLY_SESSION_NOT_FOUND));
 
+        String previousObservations = session.getObservations();
         if (request.getVitalSituationSessionUuid() != null && !request.getVitalSituationSessionUuid().isBlank()) {
             session.setVitalSituationSession(resolveVitalSituationSession(request.getVitalSituationSessionUuid()));
         }
@@ -139,6 +180,9 @@ public class WeeklySessionService {
         }
 
         WeeklySession saved = weeklySessionRepository.save(session);
+        if (shouldNotifyGeneralObservation(previousObservations, saved.getObservations())) {
+            observationNotificationService.notifyGeneralObservation(saved, saved.getObservations().trim(), authService.getCurrentUser());
+        }
         return weeklySessionMapper.toDto(saved);
     }
 
@@ -174,5 +218,16 @@ public class WeeklySessionService {
                 .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
         return groupRepository.findByUuid(uuid)
                 .orElseThrow(() -> new SalleException(ErrorCodes.GROUP_NOT_FOUND));
+    }
+
+    private boolean shouldNotifyGeneralObservation(String previousObservations, String nextObservations) {
+        if (nextObservations == null || nextObservations.isBlank()) {
+            return false;
+        }
+        return previousObservations == null || !previousObservations.trim().equals(nextObservations.trim());
+    }
+
+    private int toInt(Long value) {
+        return value == null ? 0 : Math.toIntExact(value);
     }
 }

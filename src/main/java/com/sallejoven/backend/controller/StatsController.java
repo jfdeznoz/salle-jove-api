@@ -45,7 +45,7 @@ public class StatsController {
         return ResponseEntity.ok(statsService.getAvailableYears(userUuid));
     }
 
-    @PreAuthorize("@authz.isAnyManagerType()")
+    @PreAuthorize("@authz.canViewGroupStats(#groupReference)")
     @GetMapping("/group/{groupReference}/attendance")
     public ResponseEntity<GroupAttendanceStatsDto> getGroupAttendanceStats(@PathVariable String groupReference,
                                                                            @RequestParam(required = false) Integer year) {

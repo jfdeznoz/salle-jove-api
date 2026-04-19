@@ -16,6 +16,8 @@ public record GroupAttendanceStatsDto(
             String title,
             String vitalSituationTitle,
             String content,
+            Integer yellowWarnings,
+            Integer redWarnings,
             Integer attendanceCount,
             Integer totalCount
     ) {}
@@ -24,6 +26,8 @@ public record GroupAttendanceStatsDto(
             java.util.UUID userUuid,
             String name,
             String lastName,
+            Integer yellowWarnings,
+            Integer redWarnings,
             Integer sessionsAttended,
             Integer sessionsTotal,
             Double rate
