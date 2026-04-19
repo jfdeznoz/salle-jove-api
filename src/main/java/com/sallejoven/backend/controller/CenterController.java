@@ -100,11 +100,7 @@ public class CenterController {
     public ResponseEntity<List<UserCenterGroupsDto>> myCenters() {
         UserSalle me = authService.getCurrentUser();
         List<Role> roles = authService.getCurrentUserRoles();
-        var raws = centerService.getCentersForUserRaw(me, roles);
-        List<UserCenterGroupsDto> dtos = raws.stream()
-                .map(raw -> new UserCenterGroupsDto(raw.center().getUuid(), raw.center().getName(), raw.center().getCity(), raw.groups()))
-                .toList();
-        return ResponseEntity.ok(dtos);
+        return ResponseEntity.ok(centerService.getCentersForUserWithWeeklySummary(me, roles));
     }
 
     @PreAuthorize("@authz.canViewUserCenters(#userId)")

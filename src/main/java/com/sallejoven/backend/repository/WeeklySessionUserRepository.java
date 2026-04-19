@@ -47,8 +47,10 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
     @Query("""
         SELECT wsu
         FROM WeeklySessionUser wsu
+        LEFT JOIN FETCH wsu.behaviorWarning warning
         JOIN wsu.user u
         WHERE wsu.weeklySession.uuid = :sessionUuid
+          AND (warning is null or warning.deletedAt is null)
           AND wsu.deletedAt IS NULL
           AND u.deletedAt IS NULL
         ORDER BY COALESCE(u.lastName, '') ASC, COALESCE(u.name, '') ASC, wsu.uuid ASC
@@ -85,8 +87,10 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
     @Query("""
         SELECT wsu
         FROM WeeklySessionUser wsu
+        LEFT JOIN FETCH wsu.behaviorWarning warning
         WHERE wsu.weeklySession.uuid = :sessionUuid
           AND wsu.user.uuid = :userUuid
+          AND (warning is null or warning.deletedAt is null)
           AND wsu.deletedAt IS NULL
           AND wsu.user.deletedAt IS NULL
     """)
@@ -174,22 +178,18 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
           AND wsu.deletedAt IS NULL
           AND u.deletedAt IS NULL
           AND ws.deletedAt IS NULL
+          AND ws.sessionDateTime >= :academicYearStart
+          AND ws.sessionDateTime < :nextAcademicYearStart
           AND (ws.sessionDateTime < :startOfToday OR wsu.status IS NOT NULL)
-          AND EXISTS (
-                SELECT 1
-                FROM UserGroup ug
-                WHERE ug.user.uuid = u.uuid
-                  AND ug.group.uuid = ws.group.uuid
-                  AND ug.year = :year
-                  AND ug.deletedAt IS NULL
-          )
     """)
     UserSessionAttendanceStatsProjection findUserAttendanceStats(@Param("userUuid") UUID userUuid,
-                                                                 @Param("year") Integer year,
+                                                                 @Param("academicYearStart") LocalDateTime academicYearStart,
+                                                                 @Param("nextAcademicYearStart") LocalDateTime nextAcademicYearStart,
                                                                  @Param("startOfToday") LocalDateTime startOfToday);
 
     @Query("""
-        SELECT ws.sessionDateTime AS date,
+        SELECT ws.uuid AS sessionUuid,
+               ws.sessionDateTime AS date,
                ws.title AS title,
                vs.title AS vitalSituationTitle,
                vss.title AS vitalSituationSessionTitle,
@@ -198,28 +198,26 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
                    WHEN wsu.status = 1 THEN true
                    ELSE false
                END AS attended,
-               wsu.justified AS justified
+               wsu.justified AS justified,
+               warning.warningType AS warningType
         FROM WeeklySessionUser wsu
         JOIN wsu.weeklySession ws
         JOIN ws.vitalSituationSession vss
         JOIN vss.vitalSituation vs
         JOIN wsu.user u
+        LEFT JOIN wsu.behaviorWarning warning
         WHERE u.uuid = :userUuid
           AND wsu.deletedAt IS NULL
           AND u.deletedAt IS NULL
           AND ws.deletedAt IS NULL
-          AND EXISTS (
-                SELECT 1
-                FROM UserGroup ug
-                WHERE ug.user.uuid = u.uuid
-                  AND ug.group.uuid = ws.group.uuid
-                  AND ug.year = :year
-                  AND ug.deletedAt IS NULL
-          )
+          AND ws.sessionDateTime >= :academicYearStart
+          AND ws.sessionDateTime < :nextAcademicYearStart
+          AND (warning IS NULL OR warning.deletedAt IS NULL)
         ORDER BY ws.sessionDateTime DESC, wsu.uuid DESC
     """)
     List<UserRecentSessionProjection> findRecentSessionsByUser(@Param("userUuid") UUID userUuid,
-                                                               @Param("year") Integer year,
+                                                               @Param("academicYearStart") LocalDateTime academicYearStart,
+                                                               @Param("nextAcademicYearStart") LocalDateTime nextAcademicYearStart,
                                                                @Param("startOfToday") LocalDateTime startOfToday,
                                                                Pageable pageable);
 

@@ -5,11 +5,14 @@ import com.sallejoven.backend.model.dto.CenterAttendanceStatsDto;
 import com.sallejoven.backend.model.dto.GroupAttendanceStatsDto;
 import com.sallejoven.backend.model.dto.UserAttendanceStatsDto;
 import com.sallejoven.backend.model.entity.Center;
+import com.sallejoven.backend.repository.WeeklySessionBehaviorWarningRepository;
 import com.sallejoven.backend.repository.EventUserRepository;
 import com.sallejoven.backend.repository.UserGroupRepository;
+import com.sallejoven.backend.repository.WeeklySessionRepository;
 import com.sallejoven.backend.repository.WeeklySessionUserRepository;
 import com.sallejoven.backend.repository.projection.AttendanceTotalsProjection;
 import com.sallejoven.backend.repository.projection.CenterGroupSessionRateProjection;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +37,8 @@ public class StatsService {
     private final GroupService groupService;
     private final CenterService centerService;
     private final WeeklySessionUserRepository weeklySessionUserRepository;
+    private final WeeklySessionRepository weeklySessionRepository;
+    private final WeeklySessionBehaviorWarningRepository weeklySessionBehaviorWarningRepository;
     private final EventUserRepository eventUserRepository;
     private final UserGroupRepository userGroupRepository;
 
@@ -41,20 +46,75 @@ public class StatsService {
         userService.findByUserId(userUuid);
         int resolvedYear = resolveYear(year);
         LocalDateTime startOfToday = startOfTodayMadrid();
+        LocalDateTime academicYearStart = startOfAcademicYear(resolvedYear);
+        LocalDateTime nextAcademicYearStart = startOfAcademicYear(resolvedYear + 1);
 
-        var sessionStats = weeklySessionUserRepository.findUserAttendanceStats(userUuid, resolvedYear, startOfToday);
+        var sessionStats = weeklySessionUserRepository.findUserAttendanceStats(
+                userUuid,
+                academicYearStart,
+                nextAcademicYearStart,
+                startOfToday);
         var eventStats = eventUserRepository.findUserAttendanceStats(userUuid, resolvedYear);
+        var warningStats = weeklySessionBehaviorWarningRepository.findUserWarningTotals(
+                userUuid,
+                academicYearStart,
+                nextAcademicYearStart);
+        List<UserAttendanceStatsDto.AcademicGroupDto> memberships = userGroupRepository
+                .findByUser_UuidAndYearAndDeletedAtIsNull(userUuid, resolvedYear)
+                .stream()
+                .map(ug -> new UserAttendanceStatsDto.AcademicGroupDto(
+                        ug.getGroup().getCenter().getName(),
+                        ug.getGroup().getStage(),
+                        ug.getUserType()))
+                .distinct()
+                .sorted(Comparator.comparing(
+                                UserAttendanceStatsDto.AcademicGroupDto::centerName,
+                                Comparator.nullsLast(String::compareToIgnoreCase))
+                        .thenComparing(
+                                UserAttendanceStatsDto.AcademicGroupDto::stage,
+                                Comparator.nullsLast(Integer::compareTo))
+                        .thenComparing(
+                                UserAttendanceStatsDto.AcademicGroupDto::userType,
+                                Comparator.nullsLast(Integer::compareTo)))
+                .toList();
 
         List<UserAttendanceStatsDto.RecentSessionDto> recentSessions = weeklySessionUserRepository
-                .findRecentSessionsByUser(userUuid, resolvedYear, startOfToday, PageRequest.of(0, 50))
+                .findRecentSessionsByUser(
+                        userUuid,
+                        academicYearStart,
+                        nextAcademicYearStart,
+                        startOfToday,
+                        PageRequest.of(0, 50))
                 .stream()
                 .map(row -> new UserAttendanceStatsDto.RecentSessionDto(
+                        row.getSessionUuid(),
                         row.getDate(),
                         row.getTitle(),
                         row.getVitalSituationTitle(),
                         row.getVitalSituationSessionTitle(),
                         row.getAttended(),
-                        Boolean.TRUE.equals(row.getJustified())))
+                        Boolean.TRUE.equals(row.getJustified()),
+                        row.getWarningType()))
+                .toList();
+
+        List<UserAttendanceStatsDto.LedSessionDto> ledSessions = weeklySessionRepository
+                .findLedSessionsByUser(
+                        userUuid,
+                        resolvedYear,
+                        academicYearStart,
+                        nextAcademicYearStart,
+                        PageRequest.of(0, 100))
+                .stream()
+                .map(row -> new UserAttendanceStatsDto.LedSessionDto(
+                        row.getSessionUuid(),
+                        row.getDate(),
+                        row.getTitle(),
+                        row.getVitalSituationTitle(),
+                        row.getVitalSituationSessionTitle(),
+                        row.getContent(),
+                        row.getObservations(),
+                        row.getCenterName(),
+                        row.getStage()))
                 .toList();
 
         return new UserAttendanceStatsDto(
@@ -71,7 +131,14 @@ public class StatsService {
                         rate(
                                 eventStats == null ? null : eventStats.getAttended(),
                                 eventStats == null ? null : eventStats.getTotal())),
-                recentSessions
+                new UserAttendanceStatsDto.WarningStatsDto(
+                        toInt(warningStats == null ? null : warningStats.getYellowCount()),
+                        toInt(warningStats == null ? null : warningStats.getRedCount()),
+                        toInt((warningStats == null ? null : warningStats.getYellowCount()))
+                                + toInt((warningStats == null ? null : warningStats.getRedCount()))),
+                memberships,
+                recentSessions,
+                ledSessions
         );
     }
 
@@ -93,9 +160,41 @@ public class StatsService {
                         row.getTitle(),
                         row.getVitalSituationTitle(),
                         row.getContent(),
+                        0,
+                        0,
                         toInt(row.getAttendanceCount()),
                         toInt(row.getTotalCount())))
                 .toList();
+
+        Map<UUID, int[]> warningsBySession = weeklySessionBehaviorWarningRepository
+                .findGroupSessionWarningTotals(groupUuid, resolvedYear)
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        row -> row.getReferenceUuid(),
+                        row -> new int[] {toInt(row.getYellowCount()), toInt(row.getRedCount())}));
+
+        sessions = sessions.stream()
+                .map(session -> {
+                    int[] warningCounts = warningsBySession.getOrDefault(session.uuid(), new int[] {0, 0});
+                    return new GroupAttendanceStatsDto.SessionSummaryDto(
+                            session.uuid(),
+                            session.date(),
+                            session.title(),
+                            session.vitalSituationTitle(),
+                            session.content(),
+                            warningCounts[0],
+                            warningCounts[1],
+                            session.attendanceCount(),
+                            session.totalCount());
+                })
+                .toList();
+
+        Map<UUID, int[]> warningsByMember = weeklySessionBehaviorWarningRepository
+                .findGroupMemberWarningTotals(groupUuid, resolvedYear)
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        row -> row.getReferenceUuid(),
+                        row -> new int[] {toInt(row.getYellowCount()), toInt(row.getRedCount())}));
 
         List<GroupAttendanceStatsDto.MemberAttendanceDto> members = weeklySessionUserRepository
                 .findGroupMemberAttendance(groupUuid, resolvedYear, startOfToday)
@@ -104,6 +203,8 @@ public class StatsService {
                         row.getUserUuid(),
                         row.getName(),
                         row.getLastName(),
+                        warningsByMember.getOrDefault(row.getUserUuid(), new int[] {0, 0})[0],
+                        warningsByMember.getOrDefault(row.getUserUuid(), new int[] {0, 0})[1],
                         toInt(row.getSessionsAttended()),
                         toInt(row.getSessionsTotal()),
                         rate(row.getSessionsAttended(), row.getSessionsTotal())))
@@ -130,15 +231,41 @@ public class StatsService {
                         entry.getKey(),
                         entry.getValue().stage(),
                         entry.getValue().sessionsCount(),
-                        entry.getValue().averageRate()))
+                        entry.getValue().averageRate(),
+                        0,
+                        0))
                 .sorted(Comparator.comparing(
                         CenterAttendanceStatsDto.GroupStatsDto::stage,
                         Comparator.nullsLast(Integer::compareTo)))
                 .toList();
 
+        Map<UUID, int[]> warningsByGroup = weeklySessionBehaviorWarningRepository.findCenterGroupWarningTotals(centerUuid, resolvedYear)
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        row -> row.getGroupUuid(),
+                        row -> new int[] {toInt(row.getYellowCount()), toInt(row.getRedCount())}));
+
+        groups = groups.stream()
+                .map(group -> {
+                    int[] warningCounts = warningsByGroup.getOrDefault(group.groupUuid(), new int[] {0, 0});
+                    return new CenterAttendanceStatsDto.GroupStatsDto(
+                            group.groupUuid(),
+                            group.stage(),
+                            group.sessionsCount(),
+                            group.avgAttendanceRate(),
+                            warningCounts[0],
+                            warningCounts[1]);
+                })
+                .toList();
+
         AttendanceTotalsProjection overallTotals = weeklySessionUserRepository.findCenterAttendanceTotals(centerUuid, resolvedYear, startOfToday);
-        return new CenterAttendanceStatsDto(groups, rate(overallTotals == null ? null : overallTotals.getAttended(),
-                overallTotals == null ? null : overallTotals.getTotal()));
+        var overallWarnings = weeklySessionBehaviorWarningRepository.findCenterWarningTotals(centerUuid, resolvedYear);
+        return new CenterAttendanceStatsDto(
+                groups,
+                rate(overallTotals == null ? null : overallTotals.getAttended(),
+                        overallTotals == null ? null : overallTotals.getTotal()),
+                toInt(overallWarnings == null ? null : overallWarnings.getYellowCount()),
+                toInt(overallWarnings == null ? null : overallWarnings.getRedCount()));
     }
 
     public AdminOverviewDto getAdminOverview(Integer year) {
@@ -165,6 +292,7 @@ public class StatsService {
 
         AttendanceTotalsProjection globalSessionTotals = weeklySessionUserRepository.findGlobalAttendanceTotals(resolvedYear, startOfToday);
         AttendanceTotalsProjection globalEventTotals = eventUserRepository.findGlobalAttendanceTotals(resolvedYear);
+        var globalWarnings = weeklySessionBehaviorWarningRepository.findGlobalWarningTotals(resolvedYear);
 
         return new AdminOverviewDto(
                 centers,
@@ -174,6 +302,8 @@ public class StatsService {
                         globalSessionTotals == null ? null : globalSessionTotals.getTotal()),
                 rate(globalEventTotals == null ? null : globalEventTotals.getAttended(),
                         globalEventTotals == null ? null : globalEventTotals.getTotal()),
+                toInt(globalWarnings == null ? null : globalWarnings.getYellowCount()),
+                toInt(globalWarnings == null ? null : globalWarnings.getRedCount()),
                 toInt(userGroupRepository.countDistinctUsersByYear(resolvedYear)),
                 toInt(weeklySessionUserRepository.countDistinctSessionsByYear(resolvedYear)),
                 toInt(eventUserRepository.countDistinctEventsByYear(resolvedYear))
@@ -186,6 +316,7 @@ public class StatsService {
 
         AttendanceTotalsProjection sessionTotals = weeklySessionUserRepository.findCenterAttendanceTotals(center.getUuid(), year, startOfToday);
         AttendanceTotalsProjection eventTotals = eventUserRepository.findCenterAttendanceTotals(center.getUuid(), year);
+        var warningTotals = weeklySessionBehaviorWarningRepository.findCenterWarningTotals(center.getUuid(), year);
 
         return new AdminOverviewDto.CenterOverviewDto(
                 center.getUuid(),
@@ -196,7 +327,9 @@ public class StatsService {
                 rate(sessionTotals == null ? null : sessionTotals.getAttended(),
                         sessionTotals == null ? null : sessionTotals.getTotal()),
                 rate(eventTotals == null ? null : eventTotals.getAttended(),
-                        eventTotals == null ? null : eventTotals.getTotal())
+                        eventTotals == null ? null : eventTotals.getTotal()),
+                toInt(warningTotals == null ? null : warningTotals.getYellowCount()),
+                toInt(warningTotals == null ? null : warningTotals.getRedCount())
         );
     }
 
@@ -219,6 +352,10 @@ public class StatsService {
         return java.time.ZonedDateTime.now(ZoneId.of("Europe/Madrid"))
                 .toLocalDate()
                 .atStartOfDay();
+    }
+
+    private LocalDateTime startOfAcademicYear(int year) {
+        return LocalDate.of(year, 9, 1).atStartOfDay();
     }
 
     private static final class GroupRateAccumulator {

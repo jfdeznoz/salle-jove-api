@@ -106,7 +106,7 @@ public class WeeklySessionController {
                 .collect(Collectors.toList()));
     }
 
-    @PreAuthorize("@authz.canManageWeeklySessionGroupParticipants(#sessionUuid, #groupUuid)")
+    @PreAuthorize("@authz.canUpdateWeeklySessionGroupParticipants(#sessionUuid, #groupUuid)")
     @PostMapping("/{sessionUuid}/groups/{groupUuid}/participants")
     public ResponseEntity<Void> updateAttendance(@PathVariable UUID sessionUuid,
                                                  @PathVariable UUID groupUuid,

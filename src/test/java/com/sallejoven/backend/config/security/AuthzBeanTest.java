@@ -15,6 +15,7 @@ import com.sallejoven.backend.repository.UserCenterRepository;
 import com.sallejoven.backend.repository.UserGroupRepository;
 import com.sallejoven.backend.repository.UserPendingRepository;
 import com.sallejoven.backend.repository.UserRepository;
+import com.sallejoven.backend.repository.WeeklySessionRepository;
 import com.sallejoven.backend.service.AcademicStateService;
 import com.sallejoven.backend.service.AuthorityService;
 import com.sallejoven.backend.service.EventService;
@@ -54,6 +55,7 @@ class AuthzBeanTest {
     @Mock EventGroupRepository eventGroupRepo;
     @Mock AuthorityService authorityService;
     @Mock UserPendingRepository userPendingRepo;
+    @Mock WeeklySessionRepository weeklySessionRepository;
     @Mock WeeklySessionService weeklySessionService;
     @Mock VitalSituationService vitalSituationService;
 
@@ -98,7 +100,7 @@ class AuthzBeanTest {
 
         when(userRepo.findByUuid(targetUuid)).thenReturn(Optional.of(target));
         when(userRepo.findByEmail("leader@example.com")).thenReturn(Optional.of(actor));
-        when(academicStateService.getVisibleYear()).thenReturn(2025);
+        when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
         when(userGroupRepo.findDistinctCenterUuidsByUserUuidAndYear(targetUuid, 2025)).thenReturn(List.of(centerUuid));
         when(userCenterRepo.findDistinctCenterUuidsByUserUuidAndYear(targetUuid, 2025)).thenReturn(List.of());
 
@@ -113,10 +115,256 @@ class AuthzBeanTest {
         assertThat(allowed).isTrue();
         verify(userRepo).findByUuid(targetUuid);
         verify(userRepo).findByEmail("leader@example.com");
-        verify(academicStateService).getVisibleYear();
+        verify(academicStateService).getVisibleYearOrNull();
         verify(userGroupRepo).findDistinctCenterUuidsByUserUuidAndYear(targetUuid, 2025);
         verify(userCenterRepo).findDistinctCenterUuidsByUserUuidAndYear(targetUuid, 2025);
         verifyNoMoreInteractions(userRepo, userGroupRepo, userCenterRepo, academicStateService, authorityService);
+    }
+
+    @Test
+    void canViewUserGroups_returnsTrue_forAnimatorViewingSharedCatechumen() {
+        UUID actorUuid = UUID.randomUUID();
+        UUID targetUuid = UUID.randomUUID();
+        UUID sharedGroupUuid = UUID.randomUUID();
+
+        UserSalle actor = new UserSalle();
+        actor.setUuid(actorUuid);
+
+        UserSalle target = new UserSalle();
+        target.setUuid(targetUuid);
+
+        GroupSalle sharedGroup = new GroupSalle();
+        sharedGroup.setUuid(sharedGroupUuid);
+
+        var participantMembership = mock(com.sallejoven.backend.model.entity.UserGroup.class);
+        when(participantMembership.getGroup()).thenReturn(sharedGroup);
+
+        when(userRepo.findByUuid(targetUuid)).thenReturn(Optional.of(target));
+        when(userRepo.findByEmail("animator@example.com")).thenReturn(Optional.of(actor));
+        when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
+        when(authorityService.extractAnimatorGroupIdsForYear(
+                Set.of("GROUP:" + sharedGroupUuid + ":ANIMATOR:2025"), 2025))
+                .thenReturn(Set.of(sharedGroupUuid));
+        when(userGroupRepo.findByUser_UuidAndYearAndDeletedAtIsNullAndUserType(targetUuid, 2025, 0))
+                .thenReturn(List.of(participantMembership));
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "animator@example.com",
+                        "N/A",
+                        List.of(new SimpleGrantedAuthority("GROUP:" + sharedGroupUuid + ":ANIMATOR:2025"))));
+
+        assertThat(authzBean.canViewUserGroups(targetUuid)).isTrue();
+        assertThat(authzBean.canViewUserCenters(targetUuid)).isTrue();
+        assertThat(authzBean.canViewUserStats(targetUuid.toString())).isTrue();
+    }
+
+    @Test
+    void canViewUserGroups_returnsFalse_forAnimatorViewingCatechumenFromOtherGroup() {
+        UUID actorUuid = UUID.randomUUID();
+        UUID targetUuid = UUID.randomUUID();
+        UUID actorGroupUuid = UUID.randomUUID();
+        UUID targetGroupUuid = UUID.randomUUID();
+
+        UserSalle actor = new UserSalle();
+        actor.setUuid(actorUuid);
+
+        UserSalle target = new UserSalle();
+        target.setUuid(targetUuid);
+
+        GroupSalle targetGroup = new GroupSalle();
+        targetGroup.setUuid(targetGroupUuid);
+
+        var participantMembership = mock(com.sallejoven.backend.model.entity.UserGroup.class);
+        when(participantMembership.getGroup()).thenReturn(targetGroup);
+
+        when(userRepo.findByUuid(targetUuid)).thenReturn(Optional.of(target));
+        when(userRepo.findByEmail("animator@example.com")).thenReturn(Optional.of(actor));
+        when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
+        when(authorityService.extractAnimatorGroupIdsForYear(
+                Set.of("GROUP:" + actorGroupUuid + ":ANIMATOR:2025"), 2025))
+                .thenReturn(Set.of(actorGroupUuid));
+        when(userGroupRepo.findByUser_UuidAndYearAndDeletedAtIsNullAndUserType(targetUuid, 2025, 0))
+                .thenReturn(List.of(participantMembership));
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "animator@example.com",
+                        "N/A",
+                        List.of(new SimpleGrantedAuthority("GROUP:" + actorGroupUuid + ":ANIMATOR:2025"))));
+
+        assertThat(authzBean.canViewUserGroups(targetUuid)).isFalse();
+        assertThat(authzBean.canViewUserCenters(targetUuid)).isFalse();
+        assertThat(authzBean.canViewUserStats(targetUuid.toString())).isFalse();
+    }
+
+    @Test
+    void canViewUserGroups_returnsFalse_forAnimatorViewingUserWithoutParticipantMembership() {
+        UUID actorUuid = UUID.randomUUID();
+        UUID targetUuid = UUID.randomUUID();
+        UUID sharedGroupUuid = UUID.randomUUID();
+
+        UserSalle actor = new UserSalle();
+        actor.setUuid(actorUuid);
+
+        UserSalle target = new UserSalle();
+        target.setUuid(targetUuid);
+
+        when(userRepo.findByUuid(targetUuid)).thenReturn(Optional.of(target));
+        when(userRepo.findByEmail("animator@example.com")).thenReturn(Optional.of(actor));
+        when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
+        when(authorityService.extractAnimatorGroupIdsForYear(
+                Set.of("GROUP:" + sharedGroupUuid + ":ANIMATOR:2025"), 2025))
+                .thenReturn(Set.of(sharedGroupUuid));
+        when(userGroupRepo.findByUser_UuidAndYearAndDeletedAtIsNullAndUserType(targetUuid, 2025, 0))
+                .thenReturn(List.of());
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "animator@example.com",
+                        "N/A",
+                        List.of(new SimpleGrantedAuthority("GROUP:" + sharedGroupUuid + ":ANIMATOR:2025"))));
+
+        assertThat(authzBean.canViewUserGroups(targetUuid)).isFalse();
+        assertThat(authzBean.canViewUserStats(targetUuid.toString())).isFalse();
+    }
+
+    @Test
+    void canManageWeeklySessionForEditOrDelete_returnsTrue_forAnimatorWithFutureSession() {
+        UUID sessionUuid = UUID.randomUUID();
+        UUID groupUuid = UUID.randomUUID();
+        UUID centerUuid = UUID.randomUUID();
+
+        WeeklySessionRepository.AuthView authView = new WeeklySessionRepository.AuthView() {
+            @Override
+            public UUID getUuid() {
+                return sessionUuid;
+            }
+
+            @Override
+            public Integer getStatus() {
+                return 1;
+            }
+
+            @Override
+            public UUID getGroupUuid() {
+                return groupUuid;
+            }
+
+            @Override
+            public UUID getCenterUuid() {
+                return centerUuid;
+            }
+
+            @Override
+            public LocalDateTime getSessionDateTime() {
+                return LocalDateTime.now().plusHours(2);
+            }
+        };
+
+        when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
+        when(weeklySessionRepository.findAuthViewByUuid(sessionUuid)).thenReturn(Optional.of(authView));
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "animator@example.com",
+                        "N/A",
+                        List.of(new SimpleGrantedAuthority("GROUP:" + groupUuid + ":ANIMATOR:2025"))));
+
+        assertThat(authzBean.canManageWeeklySessionForEditOrDelete(sessionUuid)).isTrue();
+    }
+
+    @Test
+    void canManageWeeklySessionForEditOrDelete_returnsFalse_forAnimatorWithPastSession() {
+        UUID sessionUuid = UUID.randomUUID();
+        UUID groupUuid = UUID.randomUUID();
+        UUID centerUuid = UUID.randomUUID();
+
+        WeeklySessionRepository.AuthView authView = new WeeklySessionRepository.AuthView() {
+            @Override
+            public UUID getUuid() {
+                return sessionUuid;
+            }
+
+            @Override
+            public Integer getStatus() {
+                return 1;
+            }
+
+            @Override
+            public UUID getGroupUuid() {
+                return groupUuid;
+            }
+
+            @Override
+            public UUID getCenterUuid() {
+                return centerUuid;
+            }
+
+            @Override
+            public LocalDateTime getSessionDateTime() {
+                return LocalDateTime.now().minusHours(2);
+            }
+        };
+
+        when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
+        when(weeklySessionRepository.findAuthViewByUuid(sessionUuid)).thenReturn(Optional.of(authView));
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "animator@example.com",
+                        "N/A",
+                        List.of(new SimpleGrantedAuthority("GROUP:" + groupUuid + ":ANIMATOR:2025"))));
+
+        assertThat(authzBean.canManageWeeklySessionForEditOrDelete(sessionUuid)).isFalse();
+    }
+
+    @Test
+    void canEditUserAsAnimator_returnsTrue_forSharedCatechumen() {
+        UUID targetUuid = UUID.randomUUID();
+        UUID sharedGroupUuid = UUID.randomUUID();
+
+        GroupSalle sharedGroup = new GroupSalle();
+        sharedGroup.setUuid(sharedGroupUuid);
+
+        var participantMembership = mock(com.sallejoven.backend.model.entity.UserGroup.class);
+        when(participantMembership.getGroup()).thenReturn(sharedGroup);
+
+        when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
+        when(authorityService.extractAnimatorGroupIdsForYear(
+                Set.of("GROUP:" + sharedGroupUuid + ":ANIMATOR:2025"), 2025))
+                .thenReturn(Set.of(sharedGroupUuid));
+        when(userGroupRepo.findByUser_UuidAndYearAndDeletedAtIsNullAndUserType(targetUuid, 2025, 0))
+                .thenReturn(List.of(participantMembership));
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "animator@example.com",
+                        "N/A",
+                        List.of(new SimpleGrantedAuthority("GROUP:" + sharedGroupUuid + ":ANIMATOR:2025"))));
+
+        assertThat(authzBean.canEditUserAsAnimator(targetUuid)).isTrue();
+    }
+
+    @Test
+    void canEditUserAsAnimator_returnsFalse_forSharedCatechist() {
+        UUID targetUuid = UUID.randomUUID();
+        UUID sharedGroupUuid = UUID.randomUUID();
+
+        when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
+        when(authorityService.extractAnimatorGroupIdsForYear(
+                Set.of("GROUP:" + sharedGroupUuid + ":ANIMATOR:2025"), 2025))
+                .thenReturn(Set.of(sharedGroupUuid));
+        when(userGroupRepo.findByUser_UuidAndYearAndDeletedAtIsNullAndUserType(targetUuid, 2025, 0))
+                .thenReturn(List.of());
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "animator@example.com",
+                        "N/A",
+                        List.of(new SimpleGrantedAuthority("GROUP:" + sharedGroupUuid + ":ANIMATOR:2025"))));
+
+        assertThat(authzBean.canEditUserAsAnimator(targetUuid)).isFalse();
     }
 
     @Test
@@ -174,6 +422,39 @@ class AuthzBeanTest {
     }
 
     @Test
+    void canUpdateWeeklySessionGroupParticipants_returnsTrue_forPastSession_nonAdmin() {
+        UUID sessionUuid = UUID.randomUUID();
+        UUID centerUuid = UUID.randomUUID();
+        UUID groupUuid = UUID.randomUUID();
+
+        Center center = new Center();
+        center.setUuid(centerUuid);
+
+        GroupSalle group = new GroupSalle();
+        group.setUuid(groupUuid);
+        group.setCenter(center);
+
+        WeeklySession session = WeeklySession.builder()
+                .uuid(sessionUuid)
+                .group(group)
+                .status(1)
+                .sessionDateTime(LocalDateTime.now().minusDays(1))
+                .title("Sesion")
+                .build();
+
+        when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
+        when(weeklySessionService.findById(sessionUuid)).thenReturn(Optional.of(session));
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "animator@example.com",
+                        "N/A",
+                        List.of(new SimpleGrantedAuthority("GROUP:" + groupUuid + ":ANIMATOR:2025"))));
+
+        assertThat(authzBean.canUpdateWeeklySessionGroupParticipants(sessionUuid, groupUuid)).isTrue();
+    }
+
+    @Test
     void canManageEventGroupParticipants_returnsFalse_forAnimator() {
         UUID eventUuid = UUID.randomUUID();
         UUID centerUuid = UUID.randomUUID();
@@ -219,23 +500,27 @@ class AuthzBeanTest {
     }
 
     @Test
-    void canViewUserGroups_returnsFalse_forAnimatorEvenIfTargetSharesGroup() {
+    void canViewUserGroups_returnsFalse_forAnimatorWithoutParticipantMembership() {
         UUID actorUuid = UUID.randomUUID();
         UUID targetUuid = UUID.randomUUID();
+        UUID groupUuid = UUID.randomUUID();
 
         UserSalle actor = new UserSalle();
         actor.setUuid(actorUuid);
 
         when(userRepo.findByEmail("animator@example.com")).thenReturn(Optional.of(actor));
-        when(academicStateService.getVisibleYear()).thenReturn(2025);
-        when(userGroupRepo.findDistinctCenterUuidsByUserUuidAndYear(targetUuid, 2025)).thenReturn(List.of(UUID.randomUUID()));
-        when(userCenterRepo.findDistinctCenterUuidsByUserUuidAndYear(targetUuid, 2025)).thenReturn(List.of());
+        when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
+        when(authorityService.extractAnimatorGroupIdsForYear(
+                Set.of("GROUP:" + groupUuid + ":ANIMATOR:2025"), 2025))
+                .thenReturn(Set.of(groupUuid));
+        when(userGroupRepo.findByUser_UuidAndYearAndDeletedAtIsNullAndUserType(targetUuid, 2025, 0))
+                .thenReturn(List.of());
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
                         "animator@example.com",
                         "N/A",
-                        List.of(new SimpleGrantedAuthority("GROUP:" + UUID.randomUUID() + ":ANIMATOR:2025"))));
+                        List.of(new SimpleGrantedAuthority("GROUP:" + groupUuid + ":ANIMATOR:2025"))));
 
         assertThat(authzBean.canViewUserGroups(targetUuid)).isFalse();
     }

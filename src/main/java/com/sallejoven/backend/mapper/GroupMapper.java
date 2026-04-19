@@ -26,6 +26,7 @@ public interface GroupMapper {
     @Mapping(target = "groupUuid", source = "group.uuid")
     @Mapping(target = "uuid", source = "uuid")
     @Mapping(target = "stage", source = "group.stage")
+    @Mapping(target = "weeklySessionSummary", ignore = true)
     UserGroupDto toUserGroupDto(UserGroup userGroup);
 
     default String formatCenterName(Center center) {

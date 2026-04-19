@@ -7,6 +7,7 @@ import com.sallejoven.backend.model.dto.VitalSituationSessionDto;
 import com.sallejoven.backend.model.entity.VitalSituation;
 import com.sallejoven.backend.model.entity.VitalSituationSession;
 import com.sallejoven.backend.model.enums.ErrorCodes;
+import com.sallejoven.backend.model.requestDto.DefaultFlagRequest;
 import com.sallejoven.backend.model.requestDto.VitalSituationEditRequest;
 import com.sallejoven.backend.model.requestDto.VitalSituationRequest;
 import com.sallejoven.backend.model.requestDto.VitalSituationSessionEditRequest;
@@ -90,6 +91,15 @@ public class VitalSituationController {
         return ResponseEntity.ok(vitalSituationService.findById(vs.getUuid()).orElseThrow());
     }
 
+    @PreAuthorize("@authz.isCurrentUserAdmin()")
+    @PutMapping(value = "/{uuid}/default-flag", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<VitalSituationDto> updateVitalSituationDefaultFlag(
+            @PathVariable UUID uuid,
+            @Valid @RequestBody DefaultFlagRequest request) {
+        VitalSituation vs = vitalSituationService.setVitalSituationDefaultFlag(uuid, request.isDefault());
+        return ResponseEntity.ok(vitalSituationService.findById(vs.getUuid()).orElseThrow());
+    }
+
     @PreAuthorize("@authz.canDeleteVitalSituation(#uuid)")
     @DeleteMapping("/{uuid}")
     public ResponseEntity<Void> deleteVitalSituation(@PathVariable UUID uuid) {
@@ -111,6 +121,15 @@ public class VitalSituationController {
             @PathVariable UUID uuid,
             @Valid @RequestBody VitalSituationSessionEditRequest request) {
         VitalSituationSession vss = vitalSituationService.updateVitalSituationSession(uuid, request);
+        return ResponseEntity.ok(vitalSituationService.findSessionById(vss.getUuid()).orElseThrow());
+    }
+
+    @PreAuthorize("@authz.isCurrentUserAdmin()")
+    @PutMapping(value = "/sessions/{uuid}/default-flag", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<VitalSituationSessionDto> updateVitalSituationSessionDefaultFlag(
+            @PathVariable UUID uuid,
+            @Valid @RequestBody DefaultFlagRequest request) {
+        VitalSituationSession vss = vitalSituationService.setVitalSituationSessionDefaultFlag(uuid, request.isDefault());
         return ResponseEntity.ok(vitalSituationService.findSessionById(vss.getUuid()).orElseThrow());
     }
 

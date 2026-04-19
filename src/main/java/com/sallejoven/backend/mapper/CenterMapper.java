@@ -31,6 +31,7 @@ public interface CenterMapper {
     @Mapping(target = "centerName", source = "name")
     @Mapping(target = "cityName", source = "city")
     @Mapping(target = "groups", ignore = true)
+    @Mapping(target = "weeklySessionSummary", ignore = true)
     UserCenterGroupsDto toUserCenterGroupsDtoNoGroups(Center center);
 
     default CenterDto toCenterDtoWithGroups(Center center, List<GroupDto> groups) {

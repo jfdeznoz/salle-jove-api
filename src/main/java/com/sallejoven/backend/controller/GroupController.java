@@ -58,7 +58,7 @@ public class GroupController {
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<List<UserGroupDto>> getAllGroupsByCenter(@PathVariable UUID centerId) {
         List<UserGroupDto> groupDtos = groupService.findGroupsByCenterId(centerId).stream()
-                .map(group -> new UserGroupDto(UserType.ADMIN.toInt(), group.getUuid(), null, group.getStage()))
+                .map(group -> new UserGroupDto(UserType.ADMIN.toInt(), group.getUuid(), null, group.getStage(), null))
                 .toList();
         return ResponseEntity.ok(groupDtos);
     }
