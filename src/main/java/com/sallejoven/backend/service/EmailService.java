@@ -54,4 +54,8 @@ public class EmailService {
 
         mailSender.send(message);
     }
+
+    public void sendHtmlEmail(String to, String subject, String htmlContent) throws MessagingException {
+        sendEmailWithAttachments(to, subject, htmlContent, Map.of());
+    }
 }

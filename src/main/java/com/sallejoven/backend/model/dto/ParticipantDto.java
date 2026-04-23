@@ -32,5 +32,6 @@ public record ParticipantDto(
     String justificationReason,
     WeeklySessionWarningType warningType,
     String warningComment,
+    String warningCreatedByName,
     Integer userType
 ) {}

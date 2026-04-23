@@ -308,6 +308,7 @@ public class WeeklySessionUserService {
         warning.setWarningType(dto.getWarningType());
         warning.setComment(dto.getWarningComment().trim());
         warning.setCreatedByUser(actor);
+        warning.setCreatedByName(buildFullName(actor));
         warning.setDeletedAt(null);
         sessionUser.setBehaviorWarning(weeklySessionBehaviorWarningRepository.save(warning));
 
@@ -326,6 +327,16 @@ public class WeeklySessionUserService {
                 participantName,
                 dto.getWarningType(),
                 dto.getWarningComment().trim()));
+    }
+
+    private String buildFullName(UserSalle user) {
+        if (user == null) {
+            return "";
+        }
+
+        String firstName = user.getName() == null ? "" : user.getName().trim();
+        String lastName = user.getLastName() == null ? "" : user.getLastName().trim();
+        return (firstName + " " + lastName).trim();
     }
 
     private boolean isAttendanceEditable(WeeklySession session, boolean currentUserAdmin) {

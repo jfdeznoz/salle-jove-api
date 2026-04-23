@@ -21,10 +21,12 @@ import com.sallejoven.backend.repository.RefreshTokenRepository;
 import com.sallejoven.backend.repository.UserCenterRepository;
 import com.sallejoven.backend.repository.UserGroupRepository;
 import com.sallejoven.backend.repository.UserRepository;
+import com.sallejoven.backend.repository.WeeklySessionBehaviorWarningRepository;
 import com.sallejoven.backend.repository.WeeklySessionUserRepository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,6 +51,7 @@ class UserServiceTest {
     @Mock UserCenterRepository userCenterRepository;
     @Mock EventUserRepository eventUserRepository;
     @Mock WeeklySessionUserRepository weeklySessionUserRepository;
+    @Mock WeeklySessionBehaviorWarningRepository weeklySessionBehaviorWarningRepository;
     @Mock RefreshTokenRepository refreshTokenRepository;
 
     @InjectMocks UserService userService;
@@ -84,6 +87,41 @@ class UserServiceTest {
 
         verify(userRepository, never()).searchUsersNormalizedByCenterUuids(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anySet());
         verifyNoInteractions(userGroupRepository);
+    }
+
+    @Test
+    void deleteUser_marksUserGroupsAndCentersAsDeleted_andRevokesRefreshTokens_only() {
+        UserSalle user = actor(false);
+        UserGroup userGroup = UserGroup.builder()
+                .uuid(UUID.randomUUID())
+                .user(user)
+                .group(group())
+                .userType(0)
+                .year(2025)
+                .build();
+        user.setGroups(Set.of(userGroup));
+        UserCenter userCenter = UserCenter.builder()
+                .uuid(UUID.randomUUID())
+                .user(user)
+                .center(center())
+                .userType(3)
+                .year(2025)
+                .build();
+
+        when(userRepository.findById(user.getUuid())).thenReturn(Optional.of(user));
+        when(userCenterRepository.findAllByUserIncludingDeleted(user.getUuid())).thenReturn(List.of(userCenter));
+        when(userRepository.save(any(UserSalle.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        userService.deleteUser(user.getUuid());
+
+        assertThat(user.getDeletedAt()).isNotNull();
+        assertThat(userGroup.getDeletedAt()).isNotNull();
+        assertThat(userCenter.getDeletedAt()).isNotNull();
+
+        verify(userRepository).save(user);
+        verify(userCenterRepository).findAllByUserIncludingDeleted(user.getUuid());
+        verify(refreshTokenRepository).deleteByUserUuid(user.getUuid());
+        verifyNoInteractions(eventUserService, weeklySessionUserRepository, eventUserRepository, weeklySessionBehaviorWarningRepository);
     }
 
     @Test
@@ -178,7 +216,7 @@ class UserServiceTest {
     }
 
     @Test
-    void reactivate_skipsDeletedBaseEventRegistration_whenMergeAlreadyActivatedEquivalentEventUser() {
+    void reactivate_mergesIntoDeletedBaseEventRegistration_whenBaseAlreadyHasSameEvent() {
         UserSalle base = deletedUser();
         UserSalle mergeFrom = activeUser();
         Event event = event();
@@ -204,25 +242,64 @@ class UserServiceTest {
         when(userCenterRepository.findAllByUserIncludingDeleted(base.getUuid())).thenReturn(List.of());
         when(eventUserRepository.findAllByUserIncludingDeleted(mergeFrom.getUuid())).thenReturn(List.of(sourceEventUser));
         when(eventUserRepository.findAllByUserIncludingDeleted(base.getUuid())).thenReturn(List.of(deletedBaseEventUser));
-        when(eventUserRepository.findActiveByEventAndUser(event.getUuid(), base.getUuid()))
-                .thenReturn(Optional.empty(), Optional.of(sourceEventUser));
+        when(eventUserRepository.findByEventAndUserIncludingDeleted(event.getUuid(), base.getUuid()))
+                .thenReturn(Optional.of(deletedBaseEventUser));
         when(userRepository.save(any(UserSalle.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(eventUserRepository.save(any(EventUser.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         UserSalle result = userService.reactivate(base.getUuid(), mergeFrom.getUuid());
 
         assertThat(result.getDeletedAt()).isNull();
-        assertThat(sourceEventUser.getUser()).isSameAs(base);
-        assertThat(sourceEventUser.getDeletedAt()).isNull();
-        assertThat(deletedBaseEventUser.getDeletedAt()).isNotNull();
+        assertThat(sourceEventUser.getUser()).isSameAs(mergeFrom);
+        assertThat(sourceEventUser.getDeletedAt()).isNotNull();
+        assertThat(deletedBaseEventUser.getDeletedAt()).isNull();
 
+        verify(eventUserRepository).save(deletedBaseEventUser);
         verify(eventUserRepository).save(sourceEventUser);
-        verify(eventUserRepository, never()).save(deletedBaseEventUser);
         verify(eventUserRepository, never()).reactivateByUser(base.getUuid());
     }
 
     @Test
-    void reactivate_skipsDeletedBaseWeeklySessionAttendance_whenMergeAlreadyActivatedEquivalentSessionUser() {
+    void reactivate_ignoresDeletedSourceEventRegistration_whenBaseAlreadyHasActiveEventUser() {
+        UserSalle base = deletedUser();
+        UserSalle mergeFrom = activeUser();
+        Event event = event();
+        EventUser deletedSourceEventUser = EventUser.builder()
+                .uuid(UUID.randomUUID())
+                .user(mergeFrom)
+                .event(event)
+                .status(1)
+                .deletedAt(LocalDateTime.now().minusDays(3))
+                .build();
+        EventUser activeBaseEventUser = EventUser.builder()
+                .uuid(UUID.randomUUID())
+                .user(base)
+                .event(event)
+                .status(0)
+                .build();
+
+        when(userRepository.findByIdForUpdate(base.getUuid())).thenReturn(Optional.of(base));
+        when(userRepository.findByIdForUpdate(mergeFrom.getUuid())).thenReturn(Optional.of(mergeFrom));
+        when(userGroupRepository.findAllByUserIncludingDeleted(mergeFrom.getUuid())).thenReturn(List.of());
+        when(userGroupRepository.findDeletedByUser(base.getUuid())).thenReturn(List.of());
+        when(userCenterRepository.findAllByUserIncludingDeleted(mergeFrom.getUuid())).thenReturn(List.of());
+        when(userCenterRepository.findAllByUserIncludingDeleted(base.getUuid())).thenReturn(List.of());
+        when(eventUserRepository.findAllByUserIncludingDeleted(mergeFrom.getUuid())).thenReturn(List.of(deletedSourceEventUser));
+        when(eventUserRepository.findAllByUserIncludingDeleted(base.getUuid())).thenReturn(List.of(activeBaseEventUser));
+        when(userRepository.save(any(UserSalle.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        UserSalle result = userService.reactivate(base.getUuid(), mergeFrom.getUuid());
+
+        assertThat(result.getDeletedAt()).isNull();
+        assertThat(activeBaseEventUser.getStatus()).isEqualTo(0);
+        assertThat(deletedSourceEventUser.getDeletedAt()).isNotNull();
+
+        verify(eventUserRepository, never()).save(any(EventUser.class));
+        verify(eventUserRepository, never()).reactivateByUser(base.getUuid());
+    }
+
+    @Test
+    void reactivate_mergesIntoDeletedBaseWeeklySessionAttendance_whenBaseAlreadyHasSameSession() {
         UserSalle base = deletedUser();
         UserSalle mergeFrom = activeUser();
         WeeklySession weeklySession = weeklySession();
@@ -250,20 +327,67 @@ class UserServiceTest {
         when(eventUserRepository.findAllByUserIncludingDeleted(base.getUuid())).thenReturn(List.of());
         when(weeklySessionUserRepository.findAllByUserIncludingDeleted(mergeFrom.getUuid())).thenReturn(List.of(sourceSessionUser));
         when(weeklySessionUserRepository.findAllByUserIncludingDeleted(base.getUuid())).thenReturn(List.of(deletedBaseSessionUser));
-        when(weeklySessionUserRepository.findActiveBySessionAndUser(weeklySession.getUuid(), base.getUuid()))
-                .thenReturn(Optional.empty(), Optional.of(sourceSessionUser));
+        when(weeklySessionUserRepository.findBySessionAndUserIncludingDeleted(weeklySession.getUuid(), base.getUuid()))
+                .thenReturn(Optional.of(deletedBaseSessionUser));
         when(userRepository.save(any(UserSalle.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(weeklySessionUserRepository.save(any(WeeklySessionUser.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(weeklySessionBehaviorWarningRepository.findByWeeklySessionUserUuidIncludingDeleted(any(UUID.class)))
+                .thenReturn(Optional.empty());
 
         UserSalle result = userService.reactivate(base.getUuid(), mergeFrom.getUuid());
 
         assertThat(result.getDeletedAt()).isNull();
-        assertThat(sourceSessionUser.getUser()).isSameAs(base);
-        assertThat(sourceSessionUser.getDeletedAt()).isNull();
-        assertThat(deletedBaseSessionUser.getDeletedAt()).isNotNull();
+        assertThat(sourceSessionUser.getUser()).isSameAs(mergeFrom);
+        assertThat(sourceSessionUser.getDeletedAt()).isNotNull();
+        assertThat(deletedBaseSessionUser.getDeletedAt()).isNull();
 
+        verify(weeklySessionUserRepository).save(deletedBaseSessionUser);
         verify(weeklySessionUserRepository).save(sourceSessionUser);
-        verify(weeklySessionUserRepository, never()).save(deletedBaseSessionUser);
+        verify(weeklySessionUserRepository, never()).reactivateByUser(base.getUuid());
+    }
+
+    @Test
+    void reactivate_ignoresDeletedSourceWeeklySessionAttendance_whenBaseAlreadyHasActiveSessionUser() {
+        UserSalle base = deletedUser();
+        UserSalle mergeFrom = activeUser();
+        WeeklySession weeklySession = weeklySession();
+        WeeklySessionUser deletedSourceSessionUser = WeeklySessionUser.builder()
+                .uuid(UUID.randomUUID())
+                .user(mergeFrom)
+                .weeklySession(weeklySession)
+                .status(1)
+                .deletedAt(LocalDateTime.now().minusDays(2))
+                .build();
+        WeeklySessionUser activeBaseSessionUser = WeeklySessionUser.builder()
+                .uuid(UUID.randomUUID())
+                .user(base)
+                .weeklySession(weeklySession)
+                .status(0)
+                .justified(true)
+                .justificationReason("Motivo previo")
+                .build();
+
+        when(userRepository.findByIdForUpdate(base.getUuid())).thenReturn(Optional.of(base));
+        when(userRepository.findByIdForUpdate(mergeFrom.getUuid())).thenReturn(Optional.of(mergeFrom));
+        when(userGroupRepository.findAllByUserIncludingDeleted(mergeFrom.getUuid())).thenReturn(List.of());
+        when(userGroupRepository.findDeletedByUser(base.getUuid())).thenReturn(List.of());
+        when(userCenterRepository.findAllByUserIncludingDeleted(mergeFrom.getUuid())).thenReturn(List.of());
+        when(userCenterRepository.findAllByUserIncludingDeleted(base.getUuid())).thenReturn(List.of());
+        when(eventUserRepository.findAllByUserIncludingDeleted(mergeFrom.getUuid())).thenReturn(List.of());
+        when(eventUserRepository.findAllByUserIncludingDeleted(base.getUuid())).thenReturn(List.of());
+        when(weeklySessionUserRepository.findAllByUserIncludingDeleted(mergeFrom.getUuid())).thenReturn(List.of(deletedSourceSessionUser));
+        when(weeklySessionUserRepository.findAllByUserIncludingDeleted(base.getUuid())).thenReturn(List.of(activeBaseSessionUser));
+        when(userRepository.save(any(UserSalle.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        UserSalle result = userService.reactivate(base.getUuid(), mergeFrom.getUuid());
+
+        assertThat(result.getDeletedAt()).isNull();
+        assertThat(activeBaseSessionUser.getStatus()).isEqualTo(0);
+        assertThat(activeBaseSessionUser.getJustified()).isTrue();
+        assertThat(activeBaseSessionUser.getJustificationReason()).isEqualTo("Motivo previo");
+        assertThat(deletedSourceSessionUser.getDeletedAt()).isNotNull();
+
+        verify(weeklySessionUserRepository, never()).save(any(WeeklySessionUser.class));
         verify(weeklySessionUserRepository, never()).reactivateByUser(base.getUuid());
     }
 

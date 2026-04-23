@@ -45,11 +45,16 @@ public abstract class WeeklySessionMapper {
     protected abstract WeeklySessionDto toDto(WeeklySession session, Integer attendanceCount, Integer totalCount);
 
     public WeeklySessionDto toDto(WeeklySession session) {
+        int visibleYear = academicStateService.getVisibleYear();
         WeeklySessionUserRepository.AttendanceCountProjection counts =
-                weeklySessionUserRepository.countAttendanceBySessionUuid(session.getUuid(), academicStateService.getVisibleYear());
+                weeklySessionUserRepository.countAttendanceBySessionUuid(session.getUuid(), visibleYear);
         var warningTotals = weeklySessionBehaviorWarningRepository.findSessionWarningTotals(session.getUuid());
         WeeklySessionUser currentUserSession = weeklySessionUserRepository
-                .findBySessionUuidAndUserUuid(session.getUuid(), authService.getCurrentUser().getUuid())
+                .findBySessionUserAndGroup(
+                        session.getUuid(),
+                        authService.getCurrentUser().getUuid(),
+                        session.getGroup().getUuid(),
+                        visibleYear)
                 .orElse(null);
         int attendanceCount = toInt(counts == null ? null : counts.getAttendanceCount());
         int totalCount = toInt(counts == null ? null : counts.getTotalCount());

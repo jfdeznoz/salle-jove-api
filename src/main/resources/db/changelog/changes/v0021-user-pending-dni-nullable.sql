@@ -1,0 +1,2 @@
+ALTER TABLE user_pending
+    ALTER COLUMN dni DROP NOT NULL;

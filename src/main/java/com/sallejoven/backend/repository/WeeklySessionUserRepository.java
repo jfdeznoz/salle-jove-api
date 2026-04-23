@@ -68,6 +68,7 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
     @Query("""
         SELECT wsu
         FROM WeeklySessionUser wsu
+        LEFT JOIN FETCH wsu.behaviorWarning warning
         JOIN UserGroup ug
           ON ug.user.uuid = wsu.user.uuid
          AND ug.group.uuid = :groupUuid
@@ -76,6 +77,7 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
          AND ug.deletedAt IS NULL
         WHERE wsu.weeklySession.uuid = :sessionUuid
           AND wsu.user.uuid = :userUuid
+          AND (warning IS NULL OR warning.deletedAt IS NULL)
           AND wsu.deletedAt IS NULL
           AND wsu.user.deletedAt IS NULL
     """)
@@ -178,11 +180,21 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
           AND wsu.deletedAt IS NULL
           AND u.deletedAt IS NULL
           AND ws.deletedAt IS NULL
+          AND EXISTS (
+                SELECT 1
+                FROM UserGroup ug
+                WHERE ug.user.uuid = u.uuid
+                  AND ug.group.uuid = ws.group.uuid
+                  AND ug.userType = 0
+                  AND ug.year = :year
+                  AND ug.deletedAt IS NULL
+          )
           AND ws.sessionDateTime >= :academicYearStart
           AND ws.sessionDateTime < :nextAcademicYearStart
           AND (ws.sessionDateTime < :startOfToday OR wsu.status IS NOT NULL)
     """)
     UserSessionAttendanceStatsProjection findUserAttendanceStats(@Param("userUuid") UUID userUuid,
+                                                                 @Param("year") Integer year,
                                                                  @Param("academicYearStart") LocalDateTime academicYearStart,
                                                                  @Param("nextAcademicYearStart") LocalDateTime nextAcademicYearStart,
                                                                  @Param("startOfToday") LocalDateTime startOfToday);
@@ -210,12 +222,22 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
           AND wsu.deletedAt IS NULL
           AND u.deletedAt IS NULL
           AND ws.deletedAt IS NULL
+          AND EXISTS (
+                SELECT 1
+                FROM UserGroup ug
+                WHERE ug.user.uuid = u.uuid
+                  AND ug.group.uuid = ws.group.uuid
+                  AND ug.userType = 0
+                  AND ug.year = :year
+                  AND ug.deletedAt IS NULL
+          )
           AND ws.sessionDateTime >= :academicYearStart
           AND ws.sessionDateTime < :nextAcademicYearStart
           AND (warning IS NULL OR warning.deletedAt IS NULL)
         ORDER BY ws.sessionDateTime DESC, wsu.uuid DESC
     """)
     List<UserRecentSessionProjection> findRecentSessionsByUser(@Param("userUuid") UUID userUuid,
+                                                               @Param("year") Integer year,
                                                                @Param("academicYearStart") LocalDateTime academicYearStart,
                                                                @Param("nextAcademicYearStart") LocalDateTime nextAcademicYearStart,
                                                                @Param("startOfToday") LocalDateTime startOfToday,
@@ -363,6 +385,14 @@ public interface WeeklySessionUserRepository extends JpaRepository<WeeklySession
 
     @Query("select wsu from WeeklySessionUser wsu where wsu.user.uuid = :userUuid")
     List<WeeklySessionUser> findAllByUserIncludingDeleted(@Param("userUuid") UUID userUuid);
+
+    @Query("""
+        select wsu from WeeklySessionUser wsu
+         where wsu.weeklySession.uuid = :sessionUuid
+           and wsu.user.uuid = :userUuid
+    """)
+    Optional<WeeklySessionUser> findBySessionAndUserIncludingDeleted(@Param("sessionUuid") UUID sessionUuid,
+                                                                     @Param("userUuid") UUID userUuid);
 
     @Modifying
     @Query("""

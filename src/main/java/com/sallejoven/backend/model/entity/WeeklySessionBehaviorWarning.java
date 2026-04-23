@@ -49,6 +49,9 @@ public class WeeklySessionBehaviorWarning {
     @JoinColumn(name = "created_by_user_uuid", nullable = false, referencedColumnName = "uuid")
     private UserSalle createdByUser;
 
+    @Column(name = "created_by_name", nullable = false, length = 200)
+    private String createdByName;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 

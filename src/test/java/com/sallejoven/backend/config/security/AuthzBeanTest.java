@@ -7,6 +7,7 @@ import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.entity.WeeklySession;
 import com.sallejoven.backend.model.enums.ErrorCodes;
+import com.sallejoven.backend.model.requestDto.WeeklySessionEditRequest;
 import java.time.LocalDateTime;
 import com.sallejoven.backend.repository.CenterRepository;
 import com.sallejoven.backend.repository.EventGroupRepository;
@@ -121,6 +122,20 @@ class AuthzBeanTest {
         verify(academicStateService).getVisibleYearOrNull();
         verify(userGroupRepo).findDistinctCenterUuidsByUserUuidAndYear(targetUuid, 2025);
         verify(userCenterRepo).findDistinctCenterUuidsByUserUuidAndYear(targetUuid, 2025);
+        verifyNoMoreInteractions(userRepo, userGroupRepo, userCenterRepo, academicStateService, authorityService);
+    }
+
+    @Test
+    void canManageUser_returnsTrue_forAdmin() {
+        UUID targetUuid = UUID.randomUUID();
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "admin@example.com",
+                        "N/A",
+                        List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+
+        assertThat(authzBean.canManageUser(targetUuid)).isTrue();
         verifyNoMoreInteractions(userRepo, userGroupRepo, userCenterRepo, academicStateService, authorityService);
     }
 
@@ -320,6 +335,252 @@ class AuthzBeanTest {
                         List.of(new SimpleGrantedAuthority("GROUP:" + groupUuid + ":ANIMATOR:2025"))));
 
         assertThat(authzBean.canManageWeeklySessionForEditOrDelete(sessionUuid)).isFalse();
+    }
+
+    @Test
+    void canEditWeeklySession_returnsTrue_forAnimatorObservationsOnSessionDay() {
+        UUID sessionUuid = UUID.randomUUID();
+        UUID groupUuid = UUID.randomUUID();
+        UUID centerUuid = UUID.randomUUID();
+
+        WeeklySessionRepository.AuthView authView = new WeeklySessionRepository.AuthView() {
+            @Override
+            public UUID getUuid() {
+                return sessionUuid;
+            }
+
+            @Override
+            public Integer getStatus() {
+                return 1;
+            }
+
+            @Override
+            public UUID getGroupUuid() {
+                return groupUuid;
+            }
+
+            @Override
+            public UUID getCenterUuid() {
+                return centerUuid;
+            }
+
+            @Override
+            public LocalDateTime getSessionDateTime() {
+                return LocalDateTime.now(MADRID_ZONE).withHour(18);
+            }
+        };
+
+        WeeklySessionEditRequest request = WeeklySessionEditRequest.builder()
+                .observations("Nueva observacion")
+                .build();
+
+        when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
+        when(weeklySessionRepository.findAuthViewByUuid(sessionUuid)).thenReturn(Optional.of(authView));
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "animator@example.com",
+                        "N/A",
+                        List.of(new SimpleGrantedAuthority("GROUP:" + groupUuid + ":ANIMATOR:2025"))));
+
+        assertThat(authzBean.canEditWeeklySession(sessionUuid, request)).isTrue();
+        assertThat(authzBean.canEditWeeklySessionObservations(sessionUuid)).isTrue();
+    }
+
+    @Test
+    void canEditWeeklySession_returnsFalse_forAnimatorObservationsAfterSessionDay() {
+        UUID sessionUuid = UUID.randomUUID();
+        UUID groupUuid = UUID.randomUUID();
+        UUID centerUuid = UUID.randomUUID();
+
+        WeeklySessionRepository.AuthView authView = new WeeklySessionRepository.AuthView() {
+            @Override
+            public UUID getUuid() {
+                return sessionUuid;
+            }
+
+            @Override
+            public Integer getStatus() {
+                return 1;
+            }
+
+            @Override
+            public UUID getGroupUuid() {
+                return groupUuid;
+            }
+
+            @Override
+            public UUID getCenterUuid() {
+                return centerUuid;
+            }
+
+            @Override
+            public LocalDateTime getSessionDateTime() {
+                return LocalDateTime.now(MADRID_ZONE).minusDays(1);
+            }
+        };
+
+        WeeklySessionEditRequest request = WeeklySessionEditRequest.builder()
+                .observations("Nueva observacion")
+                .build();
+
+        when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
+        when(weeklySessionRepository.findAuthViewByUuid(sessionUuid)).thenReturn(Optional.of(authView));
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "animator@example.com",
+                        "N/A",
+                        List.of(new SimpleGrantedAuthority("GROUP:" + groupUuid + ":ANIMATOR:2025"))));
+
+        assertThat(authzBean.canEditWeeklySession(sessionUuid, request)).isFalse();
+        assertThat(authzBean.canEditWeeklySessionObservations(sessionUuid)).isFalse();
+    }
+
+    @Test
+    void canEditWeeklySession_returnsFalse_forAnimatorTryingToEditTitleOnSessionDay() {
+        UUID sessionUuid = UUID.randomUUID();
+        UUID groupUuid = UUID.randomUUID();
+        UUID centerUuid = UUID.randomUUID();
+
+        WeeklySessionRepository.AuthView authView = new WeeklySessionRepository.AuthView() {
+            @Override
+            public UUID getUuid() {
+                return sessionUuid;
+            }
+
+            @Override
+            public Integer getStatus() {
+                return 1;
+            }
+
+            @Override
+            public UUID getGroupUuid() {
+                return groupUuid;
+            }
+
+            @Override
+            public UUID getCenterUuid() {
+                return centerUuid;
+            }
+
+            @Override
+            public LocalDateTime getSessionDateTime() {
+                return LocalDateTime.now(MADRID_ZONE).withHour(18);
+            }
+        };
+
+        WeeklySessionEditRequest request = WeeklySessionEditRequest.builder()
+                .title("Titulo editado")
+                .observations("Nueva observacion")
+                .build();
+
+        when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
+        when(weeklySessionRepository.findAuthViewByUuid(sessionUuid)).thenReturn(Optional.of(authView));
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "animator@example.com",
+                        "N/A",
+                        List.of(new SimpleGrantedAuthority("GROUP:" + groupUuid + ":ANIMATOR:2025"))));
+
+        assertThat(authzBean.canEditWeeklySession(sessionUuid, request)).isFalse();
+    }
+
+    @Test
+    void canEditWeeklySession_returnsFalse_forParticipantObservationsOnSessionDay() {
+        UUID sessionUuid = UUID.randomUUID();
+        UUID groupUuid = UUID.randomUUID();
+        UUID centerUuid = UUID.randomUUID();
+
+        WeeklySessionRepository.AuthView authView = new WeeklySessionRepository.AuthView() {
+            @Override
+            public UUID getUuid() {
+                return sessionUuid;
+            }
+
+            @Override
+            public Integer getStatus() {
+                return 1;
+            }
+
+            @Override
+            public UUID getGroupUuid() {
+                return groupUuid;
+            }
+
+            @Override
+            public UUID getCenterUuid() {
+                return centerUuid;
+            }
+
+            @Override
+            public LocalDateTime getSessionDateTime() {
+                return LocalDateTime.now(MADRID_ZONE).withHour(18);
+            }
+        };
+
+        WeeklySessionEditRequest request = WeeklySessionEditRequest.builder()
+                .observations("Nueva observacion")
+                .build();
+
+        when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
+        when(weeklySessionRepository.findAuthViewByUuid(sessionUuid)).thenReturn(Optional.of(authView));
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("participant@example.com", "N/A"));
+
+        assertThat(authzBean.canEditWeeklySession(sessionUuid, request)).isFalse();
+        assertThat(authzBean.canEditWeeklySessionObservations(sessionUuid)).isFalse();
+    }
+
+    @Test
+    void canEditWeeklySession_returnsTrue_forGroupLeaderEditingTitleWithoutObservations() {
+        UUID sessionUuid = UUID.randomUUID();
+        UUID groupUuid = UUID.randomUUID();
+        UUID centerUuid = UUID.randomUUID();
+
+        WeeklySessionRepository.AuthView authView = new WeeklySessionRepository.AuthView() {
+            @Override
+            public UUID getUuid() {
+                return sessionUuid;
+            }
+
+            @Override
+            public Integer getStatus() {
+                return 1;
+            }
+
+            @Override
+            public UUID getGroupUuid() {
+                return groupUuid;
+            }
+
+            @Override
+            public UUID getCenterUuid() {
+                return centerUuid;
+            }
+
+            @Override
+            public LocalDateTime getSessionDateTime() {
+                return LocalDateTime.now(MADRID_ZONE).minusDays(2);
+            }
+        };
+
+        WeeklySessionEditRequest request = WeeklySessionEditRequest.builder()
+                .title("Titulo editado")
+                .build();
+
+        when(academicStateService.getVisibleYearOrNull()).thenReturn(2025);
+        when(weeklySessionRepository.findAuthViewByUuid(sessionUuid)).thenReturn(Optional.of(authView));
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "leader@example.com",
+                        "N/A",
+                        List.of(new SimpleGrantedAuthority("CENTER:" + centerUuid + ":GROUP_LEADER:2025"))));
+
+        assertThat(authzBean.canEditWeeklySession(sessionUuid, request)).isTrue();
     }
 
     @Test
