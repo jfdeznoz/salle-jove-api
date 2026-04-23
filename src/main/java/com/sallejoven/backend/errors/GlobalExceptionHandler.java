@@ -29,6 +29,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Error handleMethodArgumentNotValid(MethodArgumentNotValidException ex, HttpServletRequest req) {
         Error out = new Error(HttpStatus.BAD_REQUEST);
+        out.setCode("VALIDATION_ERROR");
         out.setMessage("Validation failed");
         out.setPath(req.getRequestURI());
         out.setDebugMessage("Invalid request body");
@@ -49,6 +50,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Error handleConstraintViolation(Exception ex, HttpServletRequest req) {
         Error out = new Error(HttpStatus.BAD_REQUEST);
+        out.setCode("VALIDATION_ERROR");
         out.setMessage("Validation failed");
         out.setPath(req.getRequestURI());
         out.setDebugMessage(ex.getMessage());
@@ -61,6 +63,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Error handleBadRequest(Exception ex, HttpServletRequest req) {
         Error out = new Error(HttpStatus.BAD_REQUEST);
+        out.setCode("BAD_REQUEST");
         out.setMessage("Bad request");
         out.setPath(req.getRequestURI());
         out.setDebugMessage(safe(ex.getMessage()));
@@ -73,6 +76,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Error> handleRse(ResponseStatusException ex, HttpServletRequest req) {
         HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
         Error out = new Error(status != null ? status : HttpStatus.BAD_REQUEST);
+        out.setCode(resolveResponseStatusCode(ex));
         out.setMessage(ex.getReason() != null ? ex.getReason() : "Business error");
         out.setPath(req.getRequestURI());
         out.setDebugMessage(null);
@@ -84,6 +88,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.CONFLICT)
     public Error handleDataIntegrity(DataIntegrityViolationException ex, HttpServletRequest req) {
         Error out = new Error(HttpStatus.CONFLICT);
+        out.setCode("DATA_CONFLICT");
         out.setMessage("Data conflict");
         out.setPath(req.getRequestURI());
         out.setDebugMessage(null);
@@ -96,6 +101,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Error handleSalle(SalleException ex, HttpServletRequest req) {
         Error out = new Error(HttpStatus.BAD_REQUEST);
+        out.setCode(ex.getErrorCode());
         out.setMessage(ex.getMessage());
         out.setPath(req.getRequestURI());
         out.setDebugMessage(ex.getAdditionalInfo());
@@ -110,6 +116,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public Error handleAccessDenied(RuntimeException ex, HttpServletRequest req) {
         Error out = new Error(HttpStatus.FORBIDDEN);
+        out.setCode("ACCESS_DENIED");
         out.setMessage("Access denied");
         out.setPath(req.getRequestURI());
         out.setDebugMessage(null); // opcional: oculta el detalle en prod
@@ -122,11 +129,29 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public Error handleAny(Exception ex, HttpServletRequest req) {
         Error out = new Error(HttpStatus.INTERNAL_SERVER_ERROR);
+        out.setCode("INTERNAL_ERROR");
         out.setMessage("Internal Server Error");
         out.setPath(req.getRequestURI());
         out.setDebugMessage(null);
         log.error("500 Unhandled exception on {}: {}", req.getRequestURI(), ex.getMessage(), ex);
         return out;
+    }
+
+    private static String resolveResponseStatusCode(ResponseStatusException ex) {
+        int status = ex.getStatusCode().value();
+        if (status == HttpStatus.UNAUTHORIZED.value()) {
+            return "UNAUTHORIZED";
+        }
+        if (status == HttpStatus.FORBIDDEN.value()) {
+            return "FORBIDDEN";
+        }
+        if (status == HttpStatus.NOT_FOUND.value()) {
+            return "NOT_FOUND";
+        }
+        if (status == HttpStatus.CONFLICT.value()) {
+            return "CONFLICT";
+        }
+        return "BUSINESS_ERROR";
     }
 
     private static String mostSpecific(DataIntegrityViolationException ex) {

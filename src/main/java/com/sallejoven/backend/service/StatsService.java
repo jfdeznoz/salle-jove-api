@@ -51,6 +51,7 @@ public class StatsService {
 
         var sessionStats = weeklySessionUserRepository.findUserAttendanceStats(
                 userUuid,
+                resolvedYear,
                 academicYearStart,
                 nextAcademicYearStart,
                 startOfToday);
@@ -81,6 +82,7 @@ public class StatsService {
         List<UserAttendanceStatsDto.RecentSessionDto> recentSessions = weeklySessionUserRepository
                 .findRecentSessionsByUser(
                         userUuid,
+                        resolvedYear,
                         academicYearStart,
                         nextAcademicYearStart,
                         startOfToday,

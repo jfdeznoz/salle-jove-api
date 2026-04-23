@@ -3,11 +3,14 @@ package com.sallejoven.backend.service;
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.Center;
 import com.sallejoven.backend.model.entity.Event;
+import com.sallejoven.backend.model.entity.EventUser;
 import com.sallejoven.backend.model.entity.GroupSalle;
 import com.sallejoven.backend.model.entity.UserCenter;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserPending;
 import com.sallejoven.backend.model.entity.UserSalle;
+import com.sallejoven.backend.model.entity.WeeklySessionBehaviorWarning;
+import com.sallejoven.backend.model.entity.WeeklySessionUser;
 import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.model.enums.Role;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
@@ -17,6 +20,7 @@ import com.sallejoven.backend.repository.RefreshTokenRepository;
 import com.sallejoven.backend.repository.UserCenterRepository;
 import com.sallejoven.backend.repository.UserGroupRepository;
 import com.sallejoven.backend.repository.UserRepository;
+import com.sallejoven.backend.repository.WeeklySessionBehaviorWarningRepository;
 import com.sallejoven.backend.repository.WeeklySessionUserRepository;
 import com.sallejoven.backend.utils.ReferenceParser;
 import com.sallejoven.backend.utils.TextNormalizeUtils;
@@ -51,6 +55,7 @@ public class UserService {
     private final UserCenterRepository userCenterRepository;
     private final EventUserRepository eventUserRepository;
     private final WeeklySessionUserRepository weeklySessionUserRepository;
+    private final WeeklySessionBehaviorWarningRepository weeklySessionBehaviorWarningRepository;
     private final RefreshTokenRepository refreshTokenRepository;
 
     public UserSalle findByEmail(String email) {
@@ -264,17 +269,16 @@ public class UserService {
         UserSalle user = findByUserId(uuid);
         LocalDateTime when = LocalDateTime.now();
 
-        if (user.getGroups() != null && !user.getGroups().isEmpty()) {
-            List<UUID> userGroupUuids = user.getGroups().stream()
-                    .map(UserGroup::getUuid)
-                    .filter(Objects::nonNull)
-                    .toList();
-
+        if (user.getGroups() != null) {
             user.getGroups().forEach(userGroup -> userGroup.setDeletedAt(when));
-            if (!userGroupUuids.isEmpty()) {
-                eventUserService.softDeleteByUserGroupIds(userGroupUuids, when);
-            }
         }
+        userCenterRepository.findAllByUserIncludingDeleted(uuid).forEach(userCenter -> {
+            if (userCenter.getDeletedAt() == null) {
+                userCenter.setDeletedAt(when);
+            }
+        });
+
+        refreshTokenRepository.deleteByUserUuid(uuid);
         user.setDeletedAt(when);
         userRepository.save(user);
     }
@@ -447,6 +451,9 @@ public class UserService {
     private void migrateUserGroupsFrom(UserSalle base, UserSalle source) {
         UUID baseUuid = base.getUuid();
         userGroupRepository.findAllByUserIncludingDeleted(source.getUuid()).forEach(ug -> {
+            if (ug.getDeletedAt() != null) {
+                return;
+            }
             UUID groupUuid = ug.getGroup().getUuid();
             Integer year = ug.getYear();
             boolean conflict = userGroupRepository
@@ -463,6 +470,9 @@ public class UserService {
     private void migrateUserCentersFrom(UserSalle base, UserSalle source) {
         UUID baseUuid = base.getUuid();
         userCenterRepository.findAllByUserIncludingDeleted(source.getUuid()).forEach(uc -> {
+            if (uc.getDeletedAt() != null) {
+                return;
+            }
             boolean conflict = userCenterRepository.existsByUser_UuidAndCenter_UuidAndYearAndDeletedAtIsNullAndUserType(
                     baseUuid,
                     uc.getCenter().getUuid(),
@@ -479,32 +489,130 @@ public class UserService {
 
     private void migrateEventUsersFrom(UserSalle base, UserSalle source) {
         UUID baseUuid = base.getUuid();
-        eventUserRepository.findAllByUserIncludingDeleted(source.getUuid()).forEach(eu -> {
-            UUID eventUuid = eu.getEvent().getUuid();
-            boolean conflict = eventUserRepository
-                    .findActiveByEventAndUser(eventUuid, baseUuid)
-                    .isPresent();
-            if (!conflict) {
-                eu.setUser(base);
-                eu.setDeletedAt(null);
-                eventUserRepository.save(eu);
+        eventUserRepository.findAllByUserIncludingDeleted(source.getUuid()).forEach(sourceEventUser -> {
+            if (sourceEventUser.getDeletedAt() != null) {
+                return;
             }
+            EventUser baseEventUser = eventUserRepository
+                    .findByEventAndUserIncludingDeleted(sourceEventUser.getEvent().getUuid(), baseUuid)
+                    .orElse(null);
+            if (baseEventUser == null) {
+                sourceEventUser.setUser(base);
+                sourceEventUser.setDeletedAt(null);
+                eventUserRepository.save(sourceEventUser);
+                return;
+            }
+            mergeEventUsers(baseEventUser, sourceEventUser);
         });
     }
 
     private void migrateWeeklySessionUsersFrom(UserSalle base, UserSalle source) {
         UUID baseUuid = base.getUuid();
-        weeklySessionUserRepository.findAllByUserIncludingDeleted(source.getUuid()).forEach(wsu -> {
-            UUID sessionUuid = wsu.getWeeklySession().getUuid();
-            boolean conflict = weeklySessionUserRepository
-                    .findActiveBySessionAndUser(sessionUuid, baseUuid)
-                    .isPresent();
-            if (!conflict) {
-                wsu.setUser(base);
-                wsu.setDeletedAt(null);
-                weeklySessionUserRepository.save(wsu);
+        weeklySessionUserRepository.findAllByUserIncludingDeleted(source.getUuid()).forEach(sourceSessionUser -> {
+            if (sourceSessionUser.getDeletedAt() != null) {
+                return;
             }
+            WeeklySessionUser baseSessionUser = weeklySessionUserRepository
+                    .findBySessionAndUserIncludingDeleted(sourceSessionUser.getWeeklySession().getUuid(), baseUuid)
+                    .orElse(null);
+            if (baseSessionUser == null) {
+                sourceSessionUser.setUser(base);
+                sourceSessionUser.setDeletedAt(null);
+                weeklySessionUserRepository.save(sourceSessionUser);
+                return;
+            }
+            mergeWeeklySessionUsers(baseSessionUser, sourceSessionUser);
         });
+    }
+
+    private void mergeEventUsers(EventUser target, EventUser source) {
+        target.setStatus(target.getStatus() == 1 || source.getStatus() == 1 ? 1 : source.getStatus());
+        target.setDeletedAt(null);
+        eventUserRepository.save(target);
+        markEventUserAsMerged(source);
+    }
+
+    private void markEventUserAsMerged(EventUser source) {
+        if (source.getDeletedAt() == null) {
+            source.setDeletedAt(LocalDateTime.now());
+            eventUserRepository.save(source);
+        }
+    }
+
+    private void mergeWeeklySessionUsers(WeeklySessionUser target, WeeklySessionUser source) {
+        Integer mergedStatus = mergeWeeklySessionStatus(target.getStatus(), source.getStatus());
+        target.setStatus(mergedStatus);
+        target.setDeletedAt(null);
+
+        if (Integer.valueOf(1).equals(mergedStatus)) {
+            target.setJustified(false);
+            target.setJustificationReason(null);
+        } else {
+            boolean justified = Boolean.TRUE.equals(target.getJustified()) || Boolean.TRUE.equals(source.getJustified());
+            target.setJustified(justified);
+            target.setJustificationReason(justified
+                    ? firstNonBlank(source.getJustificationReason(), target.getJustificationReason())
+                    : null);
+        }
+
+        weeklySessionUserRepository.save(target);
+        mergeWeeklySessionWarnings(target, source);
+        markWeeklySessionUserAsMerged(source);
+    }
+
+    private Integer mergeWeeklySessionStatus(Integer targetStatus, Integer sourceStatus) {
+        if (Integer.valueOf(1).equals(targetStatus) || Integer.valueOf(1).equals(sourceStatus)) {
+            return 1;
+        }
+        return sourceStatus != null ? sourceStatus : targetStatus;
+    }
+
+    private void mergeWeeklySessionWarnings(WeeklySessionUser target, WeeklySessionUser source) {
+        WeeklySessionBehaviorWarning targetWarning = weeklySessionBehaviorWarningRepository
+                .findByWeeklySessionUserUuidIncludingDeleted(target.getUuid())
+                .orElse(null);
+        WeeklySessionBehaviorWarning sourceWarning = weeklySessionBehaviorWarningRepository
+                .findByWeeklySessionUserUuidIncludingDeleted(source.getUuid())
+                .orElse(null);
+
+        if (sourceWarning == null) {
+            return;
+        }
+
+        if (targetWarning == null) {
+            sourceWarning.setWeeklySessionUser(target);
+            weeklySessionBehaviorWarningRepository.save(sourceWarning);
+            return;
+        }
+
+        boolean sourceActive = sourceWarning.getDeletedAt() == null;
+        boolean targetActive = targetWarning.getDeletedAt() == null;
+
+        if (sourceActive && (!targetActive || shouldPreferSourceWarning(targetWarning, sourceWarning))) {
+            targetWarning.setWarningType(sourceWarning.getWarningType());
+            targetWarning.setComment(sourceWarning.getComment());
+            targetWarning.setCreatedByUser(sourceWarning.getCreatedByUser());
+            targetWarning.setCreatedByName(sourceWarning.getCreatedByName());
+            targetWarning.setDeletedAt(null);
+            weeklySessionBehaviorWarningRepository.save(targetWarning);
+        }
+
+        if (sourceActive) {
+            sourceWarning.setDeletedAt(LocalDateTime.now());
+            weeklySessionBehaviorWarningRepository.save(sourceWarning);
+        }
+    }
+
+    private boolean shouldPreferSourceWarning(WeeklySessionBehaviorWarning targetWarning,
+                                              WeeklySessionBehaviorWarning sourceWarning) {
+        return sourceWarning.getWarningType().ordinal() > targetWarning.getWarningType().ordinal();
+    }
+
+    private void markWeeklySessionUserAsMerged(WeeklySessionUser source) {
+        if (source.getDeletedAt() == null) {
+            source.setDeletedAt(LocalDateTime.now());
+            weeklySessionUserRepository.save(source);
+        }
     }
 
     private void reactivateOwnRelations(UUID userUuid) {
@@ -611,5 +719,12 @@ public class UserService {
 
     private static String trimReq(String value) {
         return value == null ? null : value.trim();
+    }
+
+    private static String firstNonBlank(String preferred, String fallback) {
+        if (!isBlank(preferred)) {
+            return preferred;
+        }
+        return isBlank(fallback) ? null : fallback;
     }
 }

@@ -7,6 +7,7 @@ import com.sallejoven.backend.model.entity.UserSalle;
 import com.sallejoven.backend.model.enums.ErrorCodes;
 import com.sallejoven.backend.model.requestDto.EventRequest;
 import com.sallejoven.backend.model.requestDto.GroupRequest;
+import com.sallejoven.backend.model.requestDto.WeeklySessionEditRequest;
 import com.sallejoven.backend.model.requestDto.UserSalleRequest;
 import com.sallejoven.backend.repository.CenterRepository;
 import com.sallejoven.backend.repository.EventGroupRepository;
@@ -412,6 +413,56 @@ public class AuthzBean {
         );
     }
 
+    public boolean canEditWeeklySession(UUID sessionUuid, WeeklySessionEditRequest request) {
+        if (request == null) {
+            return false;
+        }
+
+        boolean observationEditRequested = request.getObservations() != null;
+        boolean otherEditRequested = hasWeeklySessionNonObservationChanges(request);
+
+        if (observationEditRequested && !canEditWeeklySessionObservations(sessionUuid)) {
+            return false;
+        }
+
+        if (!otherEditRequested) {
+            return observationEditRequested;
+        }
+
+        return canManageWeeklySessionForEditOrDelete(sessionUuid);
+    }
+
+    public boolean canEditWeeklySessionObservations(UUID sessionUuid) {
+        var authorities = auths();
+        if (isAdmin(authorities)) {
+            return true;
+        }
+
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) {
+            return false;
+        }
+
+        var authViewOpt = weeklySessionRepository.findAuthViewByUuid(sessionUuid);
+        if (authViewOpt.isEmpty()) {
+            return false;
+        }
+
+        var authView = authViewOpt.get();
+        UUID groupUuid = authView.getGroupUuid();
+        if (groupUuid == null
+                || authView.getSessionDateTime() == null
+                || !authView.getSessionDateTime().toLocalDate().isEqual(todayMadrid())) {
+            return false;
+        }
+
+        if (hasGroupRole(groupUuid, "ANIMATOR")
+                || hasCenterOfGroup(groupUuid, "PASTORAL_DELEGATE", "GROUP_LEADER")) {
+            return true;
+        }
+        return false;
+    }
+
     public boolean canViewWeeklySessionGroupParticipants(UUID sessionUuid, UUID groupUuid) {
         var authorities = auths();
         if (isAdmin(authorities)) {
@@ -465,6 +516,18 @@ public class AuthzBean {
 
     private LocalDate todayMadrid() {
         return java.time.ZonedDateTime.now(ZoneId.of("Europe/Madrid")).toLocalDate();
+    }
+
+    private boolean hasWeeklySessionNonObservationChanges(WeeklySessionEditRequest request) {
+        return hasText(request.getVitalSituationSessionUuid())
+                || request.getTitle() != null
+                || hasText(request.getGroupUuid())
+                || request.getSessionDateTime() != null
+                || request.getContent() != null;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private boolean canViewAnyVitalSituation(Set<String> authorities) {

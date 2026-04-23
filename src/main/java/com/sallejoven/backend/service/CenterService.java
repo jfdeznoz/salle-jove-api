@@ -84,7 +84,7 @@ public class CenterService {
         String name = normalize(request.name());
         String city = normalize(request.city());
         validateCenterUniqueness(name, city, null);
-        Center saved = centerRepository.save(Center.builder().name(name).city(city).build());
+        Center saved = centerRepository.saveAndFlush(Center.builder().name(name).city(city).build());
         return centerMapper.toCenterDtoWithGroups(saved, List.of());
     }
 

@@ -74,7 +74,7 @@ public class WeeklySessionController {
         return ResponseEntity.ok(weeklySessionService.saveWeeklySession(request));
     }
 
-    @PreAuthorize("@authz.canManageWeeklySessionForEditOrDelete(#sessionUuid)")
+    @PreAuthorize("@authz.canEditWeeklySession(#sessionUuid, #request)")
     @PutMapping(value = "/{sessionUuid}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<WeeklySessionDto> editWeeklySession(
             @PathVariable UUID sessionUuid,

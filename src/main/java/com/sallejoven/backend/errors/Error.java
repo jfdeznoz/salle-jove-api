@@ -25,6 +25,7 @@ public class Error {
     @JsonDeserialize(using = LocalDateTimeDeserializer.class)
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime timestamp;
+    private String code;
     private String message;
     private String debugMessage;
     private String path;

@@ -69,7 +69,7 @@ public class GroupController {
         return ResponseEntity.ok(GroupResponse.from(groupService.findById(groupId)));
     }
 
-    @PreAuthorize("hasRole('ADMIN') or @authz.hasCenterRole(@authz.requestCenterId(#request), 'PASTORAL_DELEGATE','GROUP_LEADER')")
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/")
     public ResponseEntity<GroupResponse> createGroup(@Valid @RequestBody GroupRequest request) {
         GroupSalle saved = groupService.createGroup(UUID.fromString(request.centerUuid()), request.stage());

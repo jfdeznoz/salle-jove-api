@@ -38,6 +38,7 @@ public class RegistrationService {
     @Transactional
     public UserPending registerPublic(UserSalleRequest req) {
         String role = roleHelper.normalizeRole(req.getRol());
+        String dni = trimOrNull(req.getDni());
         Center center = resolveCenter(req);
         GroupSalle group = resolveGroup(req);
 
@@ -50,34 +51,34 @@ public class RegistrationService {
         if (userRepository.existsByEmail(req.getEmail()) || userPendingRepository.existsByEmail(req.getEmail())) {
             throw new SalleException(ErrorCodes.EMAIL_ALREADY_EXISTS);
         }
-        if (req.getDni() != null && !req.getDni().isBlank()
-                && (userRepository.existsByDni(req.getDni()) || userPendingRepository.existsByDni(req.getDni()))) {
+        if (dni != null
+                && (userRepository.existsByDni(dni) || userPendingRepository.existsByDni(dni))) {
             throw new SalleException(ErrorCodes.DNI_ALREADY_EXISTS);
         }
 
         UserPending pending = UserPending.builder()
-                .name(req.getName())
-                .lastName(req.getLastName())
-                .dni(req.getDni())
-                .phone(req.getPhone())
-                .email(req.getEmail())
+                .name(trimReq(req.getName()))
+                .lastName(trimReq(req.getLastName()))
+                .dni(dni)
+                .phone(trimOrNull(req.getPhone()))
+                .email(trimReq(req.getEmail()))
                 .tshirtSize(req.getTshirtSize())
-                .healthCardNumber(req.getHealthCardNumber())
-                .intolerances(req.getIntolerances())
-                .chronicDiseases(req.getChronicDiseases())
-                .city(req.getCity())
-                .address(req.getAddress())
+                .healthCardNumber(trimOrNull(req.getHealthCardNumber()))
+                .intolerances(trimOrNull(req.getIntolerances()))
+                .chronicDiseases(trimOrNull(req.getChronicDiseases()))
+                .city(trimOrNull(req.getCity()))
+                .address(trimOrNull(req.getAddress()))
                 .imageAuthorization(req.getImageAuthorization())
                 .birthDate(req.getBirthDate())
                 .roles(role)
                 .password(passwordEncoder.encode(req.getPassword()))
                 .gender(req.getGender())
-                .motherFullName(req.getMotherFullName())
-                .fatherFullName(req.getFatherFullName())
-                .motherEmail(req.getMotherEmail())
-                .fatherEmail(req.getFatherEmail())
-                .motherPhone(req.getMotherPhone())
-                .fatherPhone(req.getFatherPhone())
+                .motherFullName(trimOrNull(req.getMotherFullName()))
+                .fatherFullName(trimOrNull(req.getFatherFullName()))
+                .motherEmail(trimOrNull(req.getMotherEmail()))
+                .fatherEmail(trimOrNull(req.getFatherEmail()))
+                .motherPhone(trimOrNull(req.getMotherPhone()))
+                .fatherPhone(trimOrNull(req.getFatherPhone()))
                 .centerUuid(center != null ? center.getUuid() : null)
                 .groupUuid(group != null ? group.getUuid() : null)
                 .createdAt(LocalDateTime.now())
@@ -213,5 +214,17 @@ public class RegistrationService {
             throw new SalleException(ErrorCodes.GROUP_NOT_FOUND);
         }
         return groupService.findById(pending.getGroupUuid());
+    }
+
+    private static String trimOrNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static String trimReq(String value) {
+        return value == null ? null : value.trim();
     }
 }

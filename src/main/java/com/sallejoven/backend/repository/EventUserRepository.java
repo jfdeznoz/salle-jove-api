@@ -229,6 +229,14 @@ public interface EventUserRepository extends JpaRepository<EventUser, UUID> {
     @Query("select eu from EventUser eu where eu.user.uuid = :userUuid")
     List<EventUser> findAllByUserIncludingDeleted(@Param("userUuid") UUID userUuid);
 
+    @Query("""
+        select eu from EventUser eu
+         where eu.event.uuid = :eventUuid
+           and eu.user.uuid = :userUuid
+    """)
+    Optional<EventUser> findByEventAndUserIncludingDeleted(@Param("eventUuid") UUID eventUuid,
+                                                           @Param("userUuid") UUID userUuid);
+
     @Modifying
     @Query("""
         update EventUser eu

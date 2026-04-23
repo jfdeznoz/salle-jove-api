@@ -35,6 +35,7 @@ public interface ParticipantMapper {
     @Mapping(target = "justificationReason", expression = "java(null)")
     @Mapping(target = "warningType", expression = "java(null)")
     @Mapping(target = "warningComment", expression = "java(null)")
+    @Mapping(target = "warningCreatedByName", expression = "java(null)")
     @Mapping(target = "userType", ignore = true)
     ParticipantDto toEventParticipant(EventUser eventUser);
 
@@ -64,6 +65,7 @@ public interface ParticipantMapper {
     @Mapping(target = "justificationReason", source = "justificationReason")
     @Mapping(target = "warningType", source = "behaviorWarning.warningType")
     @Mapping(target = "warningComment", source = "behaviorWarning.comment")
+    @Mapping(target = "warningCreatedByName", source = "behaviorWarning.createdByName")
     @Mapping(target = "userType", ignore = true)
     ParticipantDto toWeeklySessionParticipant(WeeklySessionUser weeklySessionUser);
 
@@ -103,6 +105,7 @@ public interface ParticipantMapper {
                 dto.justificationReason(),
                 dto.warningType(),
                 dto.warningComment(),
+                dto.warningCreatedByName(),
                 userType
         );
     }

@@ -3,9 +3,11 @@ package com.sallejoven.backend.service;
 import com.sallejoven.backend.errors.SalleException;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
+import com.sallejoven.backend.model.entity.WeeklySessionBehaviorWarning;
 import com.sallejoven.backend.model.entity.WeeklySession;
 import com.sallejoven.backend.model.entity.WeeklySessionUser;
 import com.sallejoven.backend.model.enums.ErrorCodes;
+import com.sallejoven.backend.model.enums.WeeklySessionWarningType;
 import com.sallejoven.backend.model.requestDto.AttendanceUpdateDto;
 import com.sallejoven.backend.repository.UserGroupRepository;
 import com.sallejoven.backend.repository.WeeklySessionBehaviorWarningRepository;
@@ -29,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -303,6 +306,97 @@ class WeeklySessionUserServiceTest {
     }
 
     @Test
+    void updateParticipantsAttendance_registersWarningCreatorName() {
+        UUID sessionUuid = UUID.randomUUID();
+        UUID groupUuid = UUID.randomUUID();
+        UUID userUuid = UUID.randomUUID();
+        UUID actorUuid = UUID.randomUUID();
+
+        WeeklySession session = WeeklySession.builder()
+                .uuid(sessionUuid)
+                .status(1)
+                .title("Sesion")
+                .sessionDateTime(LocalDateTime.now())
+                .build();
+        WeeklySessionUser sessionUser = WeeklySessionUser.builder()
+                .uuid(UUID.randomUUID())
+                .weeklySession(session)
+                .user(user(userUuid))
+                .status(null)
+                .build();
+        UserSalle actor = user(actorUuid, "Maria", "Garcia");
+
+        when(weeklySessionRepository.findById(sessionUuid)).thenReturn(Optional.of(session));
+        when(academicStateService.getVisibleYear()).thenReturn(2025);
+        when(userGroupRepository.findActiveByUserGroupYear(userUuid, groupUuid, 2025))
+                .thenReturn(Optional.of(UserGroup.builder().user(user(userUuid)).userType(0).year(2025).build()));
+        when(weeklySessionUserRepository.findBySessionUuidAndUserUuid(sessionUuid, userUuid))
+                .thenReturn(Optional.of(sessionUser));
+        when(authService.getCurrentUser()).thenReturn(actor);
+        when(weeklySessionBehaviorWarningRepository.save(any(WeeklySessionBehaviorWarning.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        weeklySessionUserService.updateParticipantsAttendance(
+                sessionUuid,
+                List.of(warningAttendanceUpdate(userUuid, WeeklySessionWarningType.YELLOW, "Interrumpio varias veces")),
+                groupUuid);
+
+        assertThat(sessionUser.getBehaviorWarning()).isNotNull();
+        assertThat(sessionUser.getBehaviorWarning().getCreatedByUser()).isEqualTo(actor);
+        assertThat(sessionUser.getBehaviorWarning().getCreatedByName()).isEqualTo("Maria Garcia");
+        verify(observationNotificationService).notifyPersonalWarnings(any(), any(), any());
+    }
+
+    @Test
+    void updateParticipantsAttendance_doesNotCreateNotificationWhenWarningDidNotChange() {
+        UUID sessionUuid = UUID.randomUUID();
+        UUID groupUuid = UUID.randomUUID();
+        UUID userUuid = UUID.randomUUID();
+        UUID actorUuid = UUID.randomUUID();
+
+        WeeklySession session = WeeklySession.builder()
+                .uuid(sessionUuid)
+                .status(1)
+                .title("Sesion")
+                .sessionDateTime(LocalDateTime.now())
+                .build();
+        WeeklySessionUser sessionUser = WeeklySessionUser.builder()
+                .uuid(UUID.randomUUID())
+                .weeklySession(session)
+                .user(user(userUuid))
+                .status(null)
+                .build();
+        WeeklySessionBehaviorWarning existingWarning = WeeklySessionBehaviorWarning.builder()
+                .uuid(UUID.randomUUID())
+                .weeklySessionUser(sessionUser)
+                .warningType(WeeklySessionWarningType.RED)
+                .comment("Falta de respeto")
+                .createdByUser(user(actorUuid, "Maria", "Garcia"))
+                .createdByName("Maria Garcia")
+                .build();
+
+        when(weeklySessionRepository.findById(sessionUuid)).thenReturn(Optional.of(session));
+        when(academicStateService.getVisibleYear()).thenReturn(2025);
+        when(userGroupRepository.findActiveByUserGroupYear(userUuid, groupUuid, 2025))
+                .thenReturn(Optional.of(UserGroup.builder().user(user(userUuid)).userType(0).year(2025).build()));
+        when(weeklySessionUserRepository.findBySessionUuidAndUserUuid(sessionUuid, userUuid))
+                .thenReturn(Optional.of(sessionUser));
+        when(weeklySessionBehaviorWarningRepository.findByWeeklySessionUserUuidIncludingDeleted(sessionUser.getUuid()))
+                .thenReturn(Optional.of(existingWarning));
+        when(authService.getCurrentUser()).thenReturn(user(actorUuid, "Maria", "Garcia"));
+        when(weeklySessionBehaviorWarningRepository.save(any(WeeklySessionBehaviorWarning.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        weeklySessionUserService.updateParticipantsAttendance(
+                sessionUuid,
+                List.of(warningAttendanceUpdate(userUuid, WeeklySessionWarningType.RED, "Falta de respeto")),
+                groupUuid);
+
+        assertThat(sessionUser.getBehaviorWarning().getCreatedByName()).isEqualTo("Maria Garcia");
+        verify(observationNotificationService, never()).notifyPersonalWarnings(any(), any(), any());
+    }
+
+    @Test
     void updateParticipantsAttendance_allowsJustifyingExistingAbsence_forPastSession_nonAdmin() {
         UUID sessionUuid = UUID.randomUUID();
         UUID groupUuid = UUID.randomUUID();
@@ -374,9 +468,25 @@ class WeeklySessionUserServiceTest {
         return dto;
     }
 
+    private static AttendanceUpdateDto warningAttendanceUpdate(
+            UUID userUuid,
+            WeeklySessionWarningType warningType,
+            String comment) {
+        AttendanceUpdateDto dto = attendanceUpdate(userUuid, null);
+        dto.setWarningType(warningType);
+        dto.setWarningComment(comment);
+        return dto;
+    }
+
     private static UserSalle user(UUID uuid) {
+        return user(uuid, null, null);
+    }
+
+    private static UserSalle user(UUID uuid, String name, String lastName) {
         UserSalle user = new UserSalle();
         user.setUuid(uuid);
+        user.setName(name);
+        user.setLastName(lastName);
         return user;
     }
 }

@@ -2,12 +2,14 @@ package com.sallejoven.backend.controller;
 
 import com.sallejoven.backend.config.security.AuthzBean;
 import com.sallejoven.backend.mapper.CenterMapper;
+import com.sallejoven.backend.model.dto.CenterDto;
 import com.sallejoven.backend.model.dto.UserCenterDto;
 import com.sallejoven.backend.model.dto.UserCenterGroupsDto;
 import com.sallejoven.backend.model.dto.UserGroupDto;
 import com.sallejoven.backend.model.entity.UserCenter;
 import com.sallejoven.backend.model.entity.UserGroup;
 import com.sallejoven.backend.model.entity.UserSalle;
+import com.sallejoven.backend.model.requestDto.CenterRequest;
 import com.sallejoven.backend.service.AuthService;
 import com.sallejoven.backend.service.CenterService;
 import com.sallejoven.backend.service.UserCenterService;
@@ -27,9 +29,12 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -124,5 +129,89 @@ class CenterControllerTest {
 
         verify(authz).canViewUserGroups(userUuid);
         verifyNoMoreInteractions(authz, centerService, userService, authService, centerMapper, userAssembler, userCenterService);
+    }
+
+    @Test
+    @WithMockUser
+    void createCenter_returnsForbidden_whenUserIsNotAdmin() throws Exception {
+        mockMvc.perform(post("/api/centers")
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "La Salle Test",
+                                  "city": "Palma"
+                                }
+                                """))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(authz, centerService, userService, authService, centerMapper, userAssembler, userCenterService);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void createCenter_returnsCreatedCenter_whenUserIsAdmin() throws Exception {
+        UUID centerUuid = UUID.randomUUID();
+        CenterDto dto = new CenterDto(centerUuid, "La Salle Test", "Palma", List.of());
+
+        when(centerService.createCenter(new CenterRequest("La Salle Test", "Palma"))).thenReturn(dto);
+
+        mockMvc.perform(post("/api/centers")
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "La Salle Test",
+                                  "city": "Palma"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(APPLICATION_JSON))
+                .andExpect(jsonPath("$.uuid").value(centerUuid.toString()))
+                .andExpect(jsonPath("$.name").value("La Salle Test"))
+                .andExpect(jsonPath("$.city").value("Palma"));
+
+        verify(centerService).createCenter(new CenterRequest("La Salle Test", "Palma"));
+        verifyNoMoreInteractions(centerService, authz, userService, authService, centerMapper, userAssembler, userCenterService);
+    }
+
+    @Test
+    @WithMockUser
+    void forkCenter_returnsForbidden_whenUserIsNotAdmin() throws Exception {
+        UUID centerUuid = UUID.randomUUID();
+        UUID groupUuid = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/centers/{id}/fork", centerUuid)
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "newName": "Centro nuevo",
+                                  "newCity": "Inca",
+                                  "groupUuids": ["%s"]
+                                }
+                                """.formatted(groupUuid)))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(authz, centerService, userService, authService, centerMapper, userAssembler, userCenterService);
+    }
+
+    @Test
+    @WithMockUser
+    void mergeCenter_returnsForbidden_whenUserIsNotAdmin() throws Exception {
+        UUID centerUuid = UUID.randomUUID();
+        UUID sourceCenterUuid = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/centers/{targetId}/merge", centerUuid)
+                        .with(csrf())
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceCenterUuid": "%s"
+                                }
+                                """.formatted(sourceCenterUuid)))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(authz, centerService, userService, authService, centerMapper, userAssembler, userCenterService);
     }
 }
