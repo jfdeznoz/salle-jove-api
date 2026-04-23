@@ -404,7 +404,7 @@ public class AuthzBean {
         }
         if (authorities.contains("GROUP:" + groupUuid + ":ANIMATOR:" + year)
                 && authView.getSessionDateTime() != null
-                && authView.getSessionDateTime().isAfter(java.time.LocalDateTime.now(ZoneId.of("Europe/Madrid")))) {
+                && authView.getSessionDateTime().toLocalDate().isAfter(todayMadrid())) {
             return true;
         }
         return centerUuid != null && (

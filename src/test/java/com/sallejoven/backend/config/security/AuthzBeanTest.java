@@ -276,7 +276,7 @@ class AuthzBeanTest {
 
             @Override
             public LocalDateTime getSessionDateTime() {
-                return LocalDateTime.now(MADRID_ZONE).plusHours(2);
+                return LocalDateTime.now(MADRID_ZONE).plusDays(1);
             }
         };
 
