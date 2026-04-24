@@ -376,6 +376,10 @@ public class AuthzBean {
         if (isAdmin(authorities)) {
             return true;
         }
+        Integer year = academicStateService.getVisibleYearOrNull();
+        if (year == null) {
+            return false;
+        }
         UUID groupUuid = requestGroupId(req);
         if (groupUuid == null) {
             return false;

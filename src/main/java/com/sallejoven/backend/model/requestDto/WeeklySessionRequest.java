@@ -25,6 +25,7 @@ public class WeeklySessionRequest {
     @Size(max = 150)
     private String title;
 
+    @NotBlank
     private String groupUuid;
 
     @NotNull
