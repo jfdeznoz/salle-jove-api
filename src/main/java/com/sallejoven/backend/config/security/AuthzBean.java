@@ -587,7 +587,7 @@ public class AuthzBean {
     }
 
     public boolean canCreateOrEditVitalSituation(com.sallejoven.backend.model.requestDto.VitalSituationRequest req) {
-        return isAnyManagerType() || isAdmin(auths());
+        return isAnyManagerType() || hasAnyAnimatorRole() || isAdmin(auths());
     }
 
     public boolean canEditVitalSituation(UUID uuid) {
@@ -597,7 +597,7 @@ public class AuthzBean {
         return vitalSituationService.findById(uuid)
                 .filter(vitalSituation -> !Boolean.TRUE.equals(vitalSituation.isDefault()))
                 .isPresent()
-                && isAnyManagerType();
+                && (isAnyManagerType() || hasAnyAnimatorRole());
     }
 
     public boolean canDeleteVitalSituation(UUID uuid) {
@@ -605,7 +605,7 @@ public class AuthzBean {
     }
 
     public boolean canCreateOrEditVitalSituationSession(com.sallejoven.backend.model.requestDto.VitalSituationSessionRequest req) {
-        return isAnyManagerType() || isAdmin(auths());
+        return isAnyManagerType() || hasAnyAnimatorRole() || isAdmin(auths());
     }
 
     public boolean canEditVitalSituationSession(UUID uuid) {
@@ -615,7 +615,7 @@ public class AuthzBean {
         return vitalSituationService.findSessionById(uuid)
                 .filter(session -> !Boolean.TRUE.equals(session.isDefault()))
                 .isPresent()
-                && isAnyManagerType();
+                && (isAnyManagerType() || hasAnyAnimatorRole());
     }
 
     public boolean canDeleteVitalSituationSession(UUID uuid) {
